@@ -1,0 +1,164 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Air King Brand — Sky Blue / Deep Navy / Gold / Green */
+
+/* LIGHT MODE */
+:root {
+  --button-outline: rgba(0, 0, 0, 0.1);
+  --badge-outline: rgba(0, 0, 0, 0.05);
+  --opaque-button-border-intensity: -8;
+  --elevate-1: rgba(15, 23, 42, 0.03);
+  --elevate-2: rgba(15, 23, 42, 0.08);
+
+  /* Surfaces — bright white with subtle blue tint */
+  --background: 210 40% 99%;
+  --foreground: 222 47% 11%;
+  --border: 214 32% 88%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --card-border: 214 32% 90%;
+
+  /* Sidebar — deep navy */
+  --sidebar: 222 47% 11%;
+  --sidebar-foreground: 210 40% 96%;
+  --sidebar-border: 222 32% 18%;
+  --sidebar-primary: 199 89% 48%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 222 32% 18%;
+  --sidebar-accent-foreground: 210 40% 96%;
+  --sidebar-ring: 199 89% 48%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --popover-border: 214 32% 88%;
+
+  /* Primary — sky blue */
+  --primary: 199 89% 42%;
+  --primary-foreground: 0 0% 100%;
+
+  /* Secondary — soft blue-gray */
+  --secondary: 210 40% 94%;
+  --secondary-foreground: 222 47% 20%;
+
+  /* Muted */
+  --muted: 210 40% 95%;
+  --muted-foreground: 215 16% 47%;
+
+  /* Accent — soft gold tint */
+  --accent: 46 65% 94%;
+  --accent-foreground: 222 47% 11%;
+
+  /* Status colors */
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+
+  --input: 214 32% 80%;
+  --ring: 199 89% 42%;
+
+  /* Chart colors */
+  --chart-1: 199 89% 42%;
+  --chart-2: 142 72% 33%;
+  --chart-3: 46 65% 48%;
+  --chart-4: 222 47% 30%;
+  --chart-5: 27 87% 55%;
+
+  --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --radius: 0.5rem;
+
+  --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0);
+  --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0);
+  --shadow-sm: 0px 1px 2px -1px hsl(222 47% 11% / 0.06);
+  --shadow: 0px 1px 3px -1px hsl(222 47% 11% / 0.08);
+  --shadow-md: 0px 2px 6px -1px hsl(222 47% 11% / 0.1);
+  --shadow-lg: 0px 4px 12px -2px hsl(222 47% 11% / 0.12);
+  --shadow-xl: 0px 8px 24px -4px hsl(222 47% 11% / 0.15);
+  --shadow-2xl: 0px 12px 32px -4px hsl(222 47% 11% / 0.2);
+
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+
+  --sidebar-primary-border: hsl(var(--sidebar-primary));
+  --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --sidebar-accent-border: hsl(var(--sidebar-accent));
+  --sidebar-accent-border: hsl(from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --primary-border: hsl(var(--primary));
+  --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --secondary-border: hsl(var(--secondary));
+  --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --muted-border: hsl(var(--muted));
+  --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --accent-border: hsl(var(--accent));
+  --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --destructive-border: hsl(var(--destructive));
+  --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+}
+
+/* DARK MODE */
+.dark {
+  --background: 222 47% 8%;
+  --foreground: 210 40% 92%;
+  --border: 222 32% 18%;
+  --card: 222 47% 11%;
+  --card-foreground: 210 40% 92%;
+  --card-border: 222 32% 18%;
+  --sidebar: 222 47% 6%;
+  --sidebar-foreground: 210 40% 92%;
+  --sidebar-border: 222 32% 14%;
+  --sidebar-primary: 199 89% 52%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 222 32% 16%;
+  --sidebar-accent-foreground: 210 40% 92%;
+  --sidebar-ring: 199 89% 52%;
+  --popover: 222 47% 11%;
+  --popover-foreground: 210 40% 92%;
+  --popover-border: 222 32% 18%;
+  --primary: 199 89% 52%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 222 32% 18%;
+  --secondary-foreground: 210 40% 92%;
+  --muted: 222 32% 16%;
+  --muted-foreground: 215 16% 57%;
+  --accent: 46 30% 18%;
+  --accent-foreground: 210 40% 92%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --input: 222 32% 24%;
+  --ring: 199 89% 52%;
+  --chart-1: 199 89% 52%;
+  --chart-2: 142 72% 40%;
+  --chart-3: 46 65% 52%;
+  --chart-4: 210 40% 60%;
+  --chart-5: 27 87% 55%;
+  --elevate-1: rgba(0, 0, 0, 0.08);
+  --elevate-2: rgba(0, 0, 0, 0.15);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
