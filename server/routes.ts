@@ -32,9 +32,10 @@ async function getCallerProfile(authHeader?: string) {
   if (!res.ok) return null;
   const user = (await res.json()) as { id: string; email?: string };
   // Load the caller's own profile row (RLS allows self-read).
+  // The caller's JWT goes on Authorization; the service key goes on apikey.
   const pRes = await fetch(
     `${SUPABASE_URL}/rest/v1/profiles?id=eq.${user.id}&select=company_id,role,full_name`,
-    { headers: supabaseHeaders(authHeader) }
+    { headers: { ...supabaseHeaders(SERVICE_ROLE_KEY), Authorization: authHeader } }
   );
   if (!pRes.ok) return null;
   const rows = (await pRes.json()) as any[];
