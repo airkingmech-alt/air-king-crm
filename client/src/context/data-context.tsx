@@ -72,12 +72,22 @@ interface DataContextValue {
 const uid = (prefix: string) => `${prefix}${crypto.randomUUID().slice(0, 8)}`;
 
 // Fire-and-forget Supabase insert/update for a jsonb-blob table.
-// Logs on failure; local state was already updated optimistically.
-const persistBlob = async (table: string, id: string, customerId: string, data: unknown) => {
-  const { error } = await supabase
-    .from(table)
-    .upsert({ id, company_id: "air-king", customer_id: customerId, data });
-  if (error) console.error(`Failed to persist ${table} ${id}:`, error.message);
+// `customerId` is optional because the `customers` table has no customer_id column.
+// Returns the error (if any) so callers can surface it to the UI.
+const persistBlob = async (
+  table: string,
+  id: string,
+  data: unknown,
+  customerId?: string,
+): Promise<string | null> => {
+  const row: Record<string, unknown> = { id, company_id: "air-king", data };
+  if (customerId) row.customer_id = customerId;
+  const { error } = await supabase.from(table).upsert(row);
+  if (error) {
+    console.error(`Failed to persist ${table} ${id}:`, error.message);
+    return error.message;
+  }
+  return null;
 };
 
 const DataContext = createContext<DataContextValue | null>(null);
@@ -212,7 +222,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       ],
     };
     setCustomers((prev) => [newCustomer, ...prev]);
-    persistBlob("customers", id, id, newCustomer);
+    persistBlob("customers", id, newCustomer);
     return newCustomer;
   }, []);
 
@@ -337,7 +347,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       quoteId: data.quoteId,
     };
     setWorkOrders((prev) => [wo, ...prev]);
-    persistBlob("work_orders", wo.id, wo.customerId, wo);
+    persistBlob("work_orders", wo.id, wo, wo.customerId);
     return wo;
   }, []);
 
@@ -354,7 +364,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       items: [{ description: data.description, amount: data.amount }],
     };
     setInvoices((prev) => [inv, ...prev]);
-    persistBlob("invoices", inv.id, inv.customerId, inv);
+    persistBlob("invoices", inv.id, inv, inv.customerId);
     return inv;
   }, []);
 
@@ -380,7 +390,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       taxRate: 0,
     };
     setQuotes((prev) => [q, ...prev]);
-    persistBlob("quotes", q.id, q.customerId, q);
+    persistBlob("quotes", q.id, q, q.customerId);
     return q;
   }, []);
 
@@ -389,7 +399,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!current) return;
     const updated: Quote = { ...current, status: status as Quote["status"] };
     setQuotes((prev) => prev.map((q) => q.id === quoteId ? updated : q));
-    persistBlob("quotes", quoteId, updated.customerId, updated);
+    persistBlob("quotes", quoteId, updated, updated.customerId);
   }, []);
 
   const updateWorkOrder = useCallback((workOrderId: string, updates: Partial<WorkOrder>) => {
@@ -397,7 +407,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!current) return;
     const updated: WorkOrder = { ...current, ...updates };
     setWorkOrders((prev) => prev.map((wo) => wo.id === workOrderId ? updated : wo));
-    persistBlob("work_orders", workOrderId, updated.customerId, updated);
+    persistBlob("work_orders", workOrderId, updated, updated.customerId);
   }, []);
 
   const enrollMembership = useCallback((data: { customerId: string; customerName: string; propertyAddress: string; systemDescription: string; billingFrequency: "Annual" | "Monthly" }): CrownCareMembership => {
@@ -423,7 +433,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       status: "Active",
     };
     setMemberships((prev) => [m, ...prev]);
-    persistBlob("memberships", m.id, m.customerId, m);
+    persistBlob("memberships", m.id, m, m.customerId);
     return m;
   }, []);
 
