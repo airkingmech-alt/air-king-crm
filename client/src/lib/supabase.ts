@@ -14,7 +14,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl ?? "", supabaseAnonKey ?? "", {
-  auth: { persistSession: false },
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
 });
 
 // Helper: extract the entity object from a jsonb-blob row.
