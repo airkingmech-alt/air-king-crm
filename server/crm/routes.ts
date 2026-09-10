@@ -610,6 +610,15 @@ export function registerCrm(app: Express) {
           decision: z.enum(["accepted", "declined"]),
           signature: z.string().max(150).default(""),
           option: z.string().max(30).default(""),
+          addons: z
+            .array(
+              z
+                .string()
+                .regex(/^[a-z0-9-]+$/)
+                .max(80),
+            )
+            .max(20)
+            .default([]),
           message: z.string().max(2000).default(""),
           confirmed: z.boolean(),
         })
@@ -626,6 +635,7 @@ export function registerCrm(app: Express) {
           p_decision: d.decision,
           p_signature: d.signature,
           p_option: d.option,
+          p_addons: d.addons,
           p_message: d.message,
         }),
       );
