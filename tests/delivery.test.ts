@@ -6,6 +6,7 @@ import {
   allowed,
   readUnsubscribe,
   unsubscribeUrl,
+  html,
 } from "../server/crm/delivery";
 import { randomUUID } from "node:crypto";
 process.env.SUPABASE_URL = "https://unit-test.supabase.invalid";
@@ -14,6 +15,13 @@ process.env.RESEND_API_KEY = "unit-test-only";
 process.env.COMMUNICATION_SIGNING_SECRET =
   "unit-test-signing-key-not-a-real-credential";
 const original = globalThis.fetch;
+
+test("email links exclude trailing sentence punctuation", () => {
+  const link = "https://air-king-crm.onrender.com/#/customer/abc_123-XYZ";
+  const rendered = html(`Review your quote: ${link}. Please reply.`, "Air King");
+  assert.match(rendered, new RegExp(`href="${link.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`));
+  assert.doesNotMatch(rendered, /href="[^"]+\."/);
+});
 let providerCalls = 0;
 let providerResult = "success";
 const state: Record<string, any[]> = {};
