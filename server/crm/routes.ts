@@ -721,9 +721,11 @@ export function registerCrm(app: Express) {
     wrap(async (req, res) => {
       if (!process.env.STRIPE_WEBHOOK_SECRET)
         throw new Error("Stripe webhook is not configured.");
+      // Configuration errors are distinct from an invalid request signature.
+      const webhookClient = stripe();
       let e: Stripe.Event;
       try {
-        e = stripe().webhooks.constructEvent(
+        e = webhookClient.webhooks.constructEvent(
           req.rawBody as Buffer,
           req.headers["stripe-signature"] as string,
           process.env.STRIPE_WEBHOOK_SECRET,
