@@ -920,6 +920,14 @@ export function Integrations() {
             value={config.sender_email}
             onChange={(e) => set("sender_email", e.target.value)}
           />
+          <Label>Replies go to</Label>
+          <Input
+            disabled={!canEdit}
+            type="email"
+            placeholder="airkingmech@gmail.com"
+            value={config.reply_to_email || ""}
+            onChange={(e) => set("reply_to_email", e.target.value)}
+          />
           <Label>Google review link</Label>
           <Input
             disabled={!canEdit}
