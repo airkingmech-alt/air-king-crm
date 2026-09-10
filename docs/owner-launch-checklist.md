@@ -1,5 +1,7 @@
 # Air King CRM — owner launch checklist
 
+**Updated owner direction:** Twilio is deferred. Follow [the Stripe-first rollout](deploy-stripe-first.md); the Twilio steps below are for later and are not a prerequisite for preparing Stripe payments.
+
 The implementation is on `feature/payments-communications`, draft pull request #1. It is not deployed. Production accounts, passwords, customers and balances are unchanged. Do not merge the pull request or enable customer sending yet.
 
 ## First decision: a separate test environment

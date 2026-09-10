@@ -32,6 +32,11 @@ import {
   bodies,
 } from "./catalog";
 import { tick } from "./worker";
+import {
+  smsConfigured,
+  requireSmsForChannels,
+  requireAutomationProviders,
+} from "./readiness";
 const stripe = () => {
   if (!process.env.STRIPE_SECRET_KEY)
     throw new Error("Stripe is not connected.");
@@ -43,17 +48,15 @@ const wrap =
     try {
       await fn(req, res);
     } catch (e: any) {
-      res
-        .status(e.status || 400)
-        .json({
-          error:
-            e instanceof z.ZodError
-              ? "Please check the form fields."
-              : String(e.message || "Unable to complete this request.").slice(
-                  0,
-                  300,
-                ),
-        });
+      res.status(e.status || 400).json({
+        error:
+          e instanceof z.ZodError
+            ? "Please check the form fields."
+            : String(e.message || "Unable to complete this request.").slice(
+                0,
+                300,
+              ),
+      });
     }
   };
 const references = (r: Row, kind: string) => ({
@@ -105,11 +108,7 @@ export function registerCrm(app: Express) {
             ? "live"
             : "test",
           stripe_webhook: !!process.env.STRIPE_WEBHOOK_SECRET,
-          twilio: !!(
-            process.env.TWILIO_ACCOUNT_SID &&
-            process.env.TWILIO_AUTH_TOKEN &&
-            process.env.TWILIO_MESSAGING_SERVICE_SID
-          ),
+          twilio: smsConfigured(),
           email: !!process.env.RESEND_API_KEY,
           email_webhook: !!process.env.RESEND_WEBHOOK_SECRET,
           worker: !!process.env.CRM_WORKER_SECRET,
@@ -224,6 +223,7 @@ export function registerCrm(app: Express) {
         if (data.channel === "sms" && data.body.length > 1500)
           throw new Error("Keep text messages under 1,500 characters.");
       }
+      if (path === "automations") requireAutomationProviders(data);
       if (path === "automations")
         for (const step of data.steps) {
           if (["email", "sms"].includes(step.action)) {
@@ -265,7 +265,12 @@ export function registerCrm(app: Express) {
     wrap(async (req, res) => {
       const c = await caller(req, true);
       const enabled = z.boolean().parse(req.body.enabled);
-      await entity("automations", String(req.params.id), c.company);
+      const automation = await entity(
+        "automations",
+        String(req.params.id),
+        c.company,
+      );
+      requireAutomationProviders({ enabled, steps: automation.steps });
       await result(
         db()
           .from("automations")
@@ -450,6 +455,7 @@ export function registerCrm(app: Express) {
         .max(2)
         .parse(req.body.channels);
       const requestKey = key(req);
+      requireSmsForChannels(channels);
       const messages = [];
       for (const channel of Array.from(new Set(channels))) {
         const defaultTemplate = await result(
@@ -692,15 +698,13 @@ export function registerCrm(app: Express) {
       const data = readUnsubscribe(String(req.params.token));
       await entity("customers", data.customer, data.company);
       await result(
-        db()
-          .from("customer_communication_preferences")
-          .upsert({
-            customer_id: data.customer,
-            company_id: data.company,
-            email_marketing: false,
-            sms_marketing: false,
-            updated_at: new Date().toISOString(),
-          }),
+        db().from("customer_communication_preferences").upsert({
+          customer_id: data.customer,
+          company_id: data.company,
+          email_marketing: false,
+          sms_marketing: false,
+          updated_at: new Date().toISOString(),
+        }),
       );
       await event(
         { company_id: data.company, customer_id: data.customer },
@@ -880,30 +884,26 @@ export function registerCrm(app: Express) {
           );
         if (stop)
           await result(
-            db()
-              .from("customer_communication_preferences")
-              .upsert({
-                customer_id: m.customer_id,
-                company_id: m.company_id,
-                sms_stopped: true,
-                updated_at: new Date().toISOString(),
-              }),
+            db().from("customer_communication_preferences").upsert({
+              customer_id: m.customer_id,
+              company_id: m.company_id,
+              sms_stopped: true,
+              updated_at: new Date().toISOString(),
+            }),
           );
         if (
           req.body.OptOutType === "START" ||
           /^(START|UNSTOP)$/i.test(String(req.body.Body).trim())
         )
           await result(
-            db()
-              .from("customer_communication_preferences")
-              .upsert({
-                customer_id: m.customer_id,
-                company_id: m.company_id,
-                sms_stopped: false,
-                consent_source: "Customer replied START",
-                consent_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              }),
+            db().from("customer_communication_preferences").upsert({
+              customer_id: m.customer_id,
+              company_id: m.company_id,
+              sms_stopped: false,
+              consent_source: "Customer replied START",
+              consent_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }),
           );
         await event(
           {

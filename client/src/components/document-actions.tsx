@@ -19,6 +19,7 @@ export function DocumentActions({
     queryKey: ["crm-config"],
     queryFn: () => crm("crm/config"),
   });
+  const smsReady = Boolean(config?.connections.twilio);
   async function act(channels?: string[]) {
     setBusy(true);
     setNotice("");
@@ -61,17 +62,22 @@ export function DocumentActions({
           in Integrations.
         </p>
       )}
+      {config && !smsReady && (
+        <p className="text-sm text-muted-foreground">
+          Texting is not set up yet. You can add Twilio later in Integrations.
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-2">
         <Button disabled={busy} onClick={() => act(["email"])}>
           <Mail size={16} className="mr-2" />
           Email
         </Button>
-        <Button disabled={busy} onClick={() => act(["sms"])}>
+        <Button disabled={busy || !smsReady} onClick={() => act(["sms"])}>
           <MessageSquare size={16} className="mr-2" />
           Text
         </Button>
         <Button
-          disabled={busy}
+          disabled={busy || !smsReady}
           variant="outline"
           onClick={() => act(["email", "sms"])}
         >

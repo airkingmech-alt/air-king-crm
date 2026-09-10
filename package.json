@@ -12,7 +12,8 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "db:push": "drizzle-kit push",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "node --import tsx --test tests/*.test.ts",
+    "release:check": "npm run check && npm test && npm audit --omit=dev && npm run build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

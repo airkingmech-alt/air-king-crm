@@ -1,5 +1,10 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  createClient,
+  type SupabaseClient,
+  type SupabaseClientOptions,
+} from "@supabase/supabase-js";
 import { createHash, randomBytes } from "node:crypto";
+import WebSocket from "ws";
 import type { Request } from "express";
 export type Row = Record<string, any>;
 let client: SupabaseClient | undefined;
@@ -9,7 +14,16 @@ export function db() {
   return (client ??= createClient(
     process.env.SUPABASE_URL || "https://vnqtoehunolxvxywrizj.supabase.co",
     key,
-    { auth: { persistSession: false, autoRefreshToken: false } },
+    {
+      auth: { persistSession: false, autoRefreshToken: false },
+      // Render runs Node 20, which does not provide a native WebSocket.
+      // ws has Node-specific event overloads; Supabase accepts it as a transport.
+      realtime: {
+        transport: WebSocket as unknown as NonNullable<
+          SupabaseClientOptions<"public">["realtime"]
+        >["transport"],
+      },
+    },
   ));
 }
 export async function result(
