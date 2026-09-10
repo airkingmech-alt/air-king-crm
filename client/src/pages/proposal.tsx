@@ -1,3 +1,4 @@
+import {DocumentActions} from "@/components/document-actions";
 import { useParams, Link } from "wouter";
 import { useState, useEffect } from "react";
 import {
@@ -69,7 +70,7 @@ export default function Proposal() {
     if (quote?.status === "Won") {
       setAccepted(true);
       // Auto-select Better tier if none selected
-      if (!selectedTier) setSelectedTier("Better");
+      setSelectedTier(quote.selectedOption || quote.options.find(o=>o.tier==="Better")?.tier || quote.options[0]?.tier || null);
     }
   }, [quote?.status]);
 
@@ -205,7 +206,7 @@ export default function Proposal() {
                     ? "ring-2 ring-primary shadow-lg"
                     : "hover:shadow-md"
                 } ${option.isPopular ? "md:scale-105" : ""}`}
-                onClick={() => setSelectedTier(option.tier)}
+                onClick={() => {if(!accepted) setSelectedTier(option.tier);}}
               >
                 {option.isPopular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
@@ -434,99 +435,7 @@ export default function Proposal() {
       </div>
 
       {/* Send Dialog */}
-      <Dialog open={showSendDialog} onOpenChange={setShowSendDialog}>
-        <DialogContent className="sm:max-w-[440px] no-print">
-          <DialogHeader>
-            <DialogTitle>Send Proposal to Customer</DialogTitle>
-            <DialogDescription>Send this proposal via email or text message to {quote.customerName}.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            {/* Shareable Link */}
-            <div className="space-y-2">
-              <Label>Shareable Link</Label>
-              <div className="flex gap-2">
-                <Input
-                  readOnly
-                  value={`${window.location.origin}/#/proposals/${quote.id}`}
-                  className="text-xs"
-                  data-testid="input-share-link"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    navigator.clipboard.writeText(`${window.location.origin}/#/proposals/${quote.id}`);
-                    toast({ title: "Link copied", description: "Proposal link copied to clipboard." });
-                  }}
-                  data-testid="button-copy-link"
-                >
-                  <Copy size={14} />
-                </Button>
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Email Send */}
-            <div className="space-y-2">
-              <Label>Send via Email</Label>
-              <Input
-                type="email"
-                placeholder="customer@email.com"
-                value={sendTarget.email}
-                onChange={(e) => setSendTarget({ ...sendTarget, email: e.target.value })}
-                data-testid="input-send-email"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                disabled={!sendTarget.email}
-                onClick={() => {
-                  const subject = `HVAC Proposal ${quote.id} from Air King Mechanical Services`;
-                  const body = `Dear ${quote.customerName},\n\nPlease review your HVAC proposal from Air King Mechanical Services.\n\nProposal: ${quote.title}\nView your proposal here: ${window.location.origin}/#/proposals/${quote.id}\n\nIf you have any questions, please don't hesitate to contact us.\n\nBest regards,\nAir King Mechanical Services LLC\nKansas City, MO`;
-                  window.location.href = `mailto:${sendTarget.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-                  toast({ title: "Email opened", description: `Your email client should open with the proposal for ${sendTarget.email}.` });
-                }}
-                data-testid="button-send-email"
-              >
-                <Mail size={14} className="mr-1.5" /> Open Email Client
-              </Button>
-            </div>
-
-            <Separator />
-
-            {/* SMS Send */}
-            <div className="space-y-2">
-              <Label>Send via Text Message</Label>
-              <Input
-                type="tel"
-                placeholder="(816) 555-0100"
-                value={sendTarget.phone}
-                onChange={(e) => setSendTarget({ ...sendTarget, phone: e.target.value })}
-                data-testid="input-send-phone"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                disabled={!sendTarget.phone}
-                onClick={() => {
-                  const body = `Hi ${quote.customerName}, your HVAC proposal from Air King Mechanical Services is ready. View it here: ${window.location.origin}/#/proposals/${quote.id}`;
-                  window.location.href = `sms:${sendTarget.phone}?body=${encodeURIComponent(body)}`;
-                  toast({ title: "Text message opened", description: `Your messaging app should open with the proposal link.` });
-                }}
-                data-testid="button-send-sms"
-              >
-                <MessageSquare size={14} className="mr-1.5" /> Open Text Message
-              </Button>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSendDialog(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <Dialog open={showSendDialog} onOpenChange={setShowSendDialog}><DialogContent><DialogHeader><DialogTitle>Send to Customer</DialogTitle><DialogDescription>Share this document securely.</DialogDescription></DialogHeader><DocumentActions kind="quote" id={quote.id}/></DialogContent></Dialog>
     </div>
   );
 }

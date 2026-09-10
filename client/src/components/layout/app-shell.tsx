@@ -35,6 +35,9 @@ const navItems: { path: string; label: string; icon: any; ownerOnly?: boolean }[
   { path: "/schedule", label: "Schedule", icon: Calendar },
   { path: "/crown-care", label: "Crown Care", icon: Crown },
   { path: "/invoices", label: "Invoices", icon: Receipt },
+  { path: "/automations", label: "Automations", icon: Calendar },
+  { path: "/templates", label: "Templates", icon: FileText },
+  { path: "/integrations", label: "Integrations", icon: UserCog },
   { path: "/team", label: "Team", icon: UserCog, ownerOnly: true },
 ];
 

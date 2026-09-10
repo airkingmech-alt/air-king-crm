@@ -1,3 +1,5 @@
+import CustomerDocument, {Unsubscribe} from "@/pages/customer-document";
+import {Automations,Templates,Integrations} from "@/pages/communications";
 import { Switch, Route, Router } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { queryClient } from "./lib/queryClient";
@@ -33,6 +35,9 @@ function InternalRouter() {
         <Route path="/schedule" component={Schedule} />
         <Route path="/crown-care" component={CrownCare} />
         <Route path="/invoices" component={Invoices} />
+        <Route path="/automations" component={Automations} />
+        <Route path="/templates" component={Templates} />
+        <Route path="/integrations" component={Integrations} />
         <Route path="/team" component={Users} />
         <Route component={NotFound} />
       </Switch>
@@ -60,7 +65,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          <Gate />
+          <Router hook={useHashLocation}><Switch><Route path="/customer/:token" component={CustomerDocument}/><Route path="/unsubscribe/:token" component={Unsubscribe}/><Route><Gate /></Route></Switch></Router>
           <Toaster />
         </AuthProvider>
       </TooltipProvider>

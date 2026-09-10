@@ -5,18 +5,18 @@
 //
 //   api_credentials=["custom-cred:vnqtoehunolxvxywrizj.supabase.co"]
 //   npx tsx scripts/create-users.ts
-import httpx from "httpx"; // not used; we use fetch below
 
 const PROJECT = "vnqtoehunolxvxywrizj";
 const BASE = `https://${PROJECT}.supabase.co`;
 
 const USERS = [
-  { email: "colton@airkingmech.com", password: "AirKing-2026!", role: "owner", full_name: "Colton Nichols" },
-  { email: "james@airkingmech.com", password: "AirKing-2026!", role: "technician", full_name: "James Nichols" },
-  { email: "sarah@airkingmech.com", password: "AirKing-2026!", role: "dispatcher", full_name: "Sarah Nichols" },
+  { email: "colton@airkingmech.com", password: process.env.CRM_INITIAL_PASSWORD_COLTON ?? "", role: "owner", full_name: "Colton Nichols" },
+  { email: "james@airkingmech.com", password: process.env.CRM_INITIAL_PASSWORD_JAMES ?? "", role: "technician", full_name: "James Nichols" },
+  { email: "sarah@airkingmech.com", password: process.env.CRM_INITIAL_PASSWORD_SARAH ?? "", role: "dispatcher", full_name: "Sarah Nichols" },
 ];
 
 async function adminCreateUser(u: (typeof USERS)[number]) {
+  if (!u.password || u.password.length < 12) throw new Error("Set a unique, strong initial password in the matching CRM_INITIAL_PASSWORD_* environment variable.");
   const res = await fetch(`${BASE}/auth/v1/admin/users`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -86,7 +86,7 @@ async function upsertProfile(userId: string, u: (typeof USERS)[number]) {
   } catch (e) {
     console.log("Disable public signup: skipped (do it in Supabase Auth settings)");
   }
-  console.log("Done. Logins: colton/james/sarah @airkingmech.com  pw: AirKing-2026!");
+  console.log("Use the unique initial passwords supplied through environment variables.");
 })().catch((e) => {
   console.error(e);
   process.exit(1);

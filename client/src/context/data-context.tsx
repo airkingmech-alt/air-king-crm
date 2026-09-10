@@ -141,6 +141,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    const refresh = async () => {
+      const [inv, quotes, jobs] = await Promise.all([supabase.from("invoices").select("data"),supabase.from("quotes").select("data"),supabase.from("work_orders").select("data")]);
+      if (!inv.error && inv.data) setInvoices(extractEntities<Invoice>(inv.data));
+      if (!quotes.error && quotes.data) setQuotes(extractEntities<Quote>(quotes.data));
+      if (!jobs.error && jobs.data) setWorkOrders(extractEntities<WorkOrder>(jobs.data));
+    };
+    const timer = setInterval(refresh, 30000);
+    window.addEventListener("crm-refresh", refresh);
+    return () => { clearInterval(timer); window.removeEventListener("crm-refresh", refresh); };
+  }, []);
+
   const loadNotes = useCallback(async (customerId: string) => {
     try {
       const { data, error } = await supabase
