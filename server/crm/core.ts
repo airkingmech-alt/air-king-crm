@@ -188,7 +188,11 @@ export function publicFields(kind: string, data: Row): Row {
     scope: data.laborDescription || data.title,
     status: data.status,
     expiresAt: data.expiresAt,
+    createdAt: data.createdAt,
+    jobType: data.jobType,
     selectedOption: data.selectedOption,
+    selectedAddOns: data.selectedAddOns || [],
+    equipmentItems: data.equipmentItems || [],
     options: (data.options || []).map((o: Row) => ({
       tier: o.tier,
       label: o.label,
