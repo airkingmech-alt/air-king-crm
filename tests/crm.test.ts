@@ -62,6 +62,12 @@ before(async () => {
       "utf8",
     ),
   );
+  await pg.exec(
+    await readFile(
+      "supabase/migrations/20260910222500_save_quote_addons.sql",
+      "utf8",
+    ),
+  );
 });
 after(() => pg.close());
 test("staff database reads cannot expose another company's settings", async () => {
@@ -335,7 +341,7 @@ test("quote acceptance selects package and creates exactly one unscheduled work 
     ),
   );
   await sql(
-    "select crm_decide_quote('quote-1',$1,'Test','accepted','Test','Better','Please call')",
+    "select crm_decide_quote('quote-1',$1,'Test','accepted','Test','Better','Please call','[\"crown-care\"]'::jsonb)",
     [company],
   );
   await sql(
@@ -345,6 +351,11 @@ test("quote acceptance selects package and creates exactly one unscheduled work 
   const [q] = await sql("select data from quotes where id='quote-1'");
   assert.equal(q.data.status, "Won");
   assert.equal(q.data.selectedOption, "Better");
+  assert.deepEqual(q.data.selectedAddOns, ["crown-care"]);
+  const [acceptedWorkOrder] = await sql(
+    "select data from work_orders where data->>'quoteId'='quote-1'",
+  );
+  assert.deepEqual(acceptedWorkOrder.data.selectedAddOns, ["crown-care"]);
   assert.equal(
     (await sql("select * from work_orders where data->>'quoteId'='quote-1'"))
       .length,
