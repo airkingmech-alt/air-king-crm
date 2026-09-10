@@ -424,6 +424,9 @@ export async function deliver(
       ).emails.send(
         {
           from: `${ctx.config.sender_name} <${ctx.config.sender_email}>`,
+          ...(ctx.config.reply_to_email
+            ? { replyTo: ctx.config.reply_to_email }
+            : {}),
           to: msg.recipient,
           subject: msg.subject || "Air King Mechanical Services",
           text: msg.body,
