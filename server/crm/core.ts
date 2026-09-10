@@ -31,6 +31,8 @@ export async function caller(req: Request, admin = false) {
   );
   if (
     !profile ||
+    typeof profile.company_id !== "string" ||
+    !profile.company_id.trim() ||
     !["owner", "admin", "technician", "dispatcher"].includes(profile.role)
   )
     throw Object.assign(new Error("Staff access required."), { status: 403 });

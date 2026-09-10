@@ -11,7 +11,7 @@ import {
   merge,
   phone,
 } from "../server/crm/core";
-import { automationSchema } from "../server/crm/catalog";
+import { automationSchema, starters, bodies } from "../server/crm/catalog";
 import Stripe from "stripe";
 import twilio from "twilio";
 const pg = new PGlite();
@@ -64,6 +64,110 @@ before(async () => {
   );
 });
 after(() => pg.close());
+test("staff database reads cannot expose another company's settings", async () => {
+  await sql("insert into crm_settings(company_id) values('other-company')");
+  await pg.exec("begin; set local role authenticated;");
+  try {
+    const rows = await sql("select company_id from crm_settings");
+    assert.deepEqual(
+      rows.map((r) => r.company_id),
+      [company],
+    );
+    assert.equal(
+      (await sql("select * from crm_settings where company_id='other-company'"))
+        .length,
+      0,
+    );
+  } finally {
+    await pg.exec("rollback");
+  }
+});
+test("staff cannot write operational tables or invoke payment RPCs directly", async () => {
+  for (const query of [
+    "update crm_settings set data='{}' where company_id='test-company'",
+    "delete from payments where invoice_id='legacy'",
+    "select crm_record_payment('legacy','test-company',100,'Cash','forged')",
+    "select * from document_links",
+    "select * from stripe_events",
+    "select * from provider_webhook_events",
+  ]) {
+    await pg.exec("begin; set local role authenticated;");
+    try {
+      await assert.rejects(sql(query), /permission denied/i);
+    } finally {
+      await pg.exec("rollback");
+    }
+  }
+});
+test("anonymous database access to customer communications and payments is denied", async () => {
+  for (const table of [
+    "communications",
+    "communication_events",
+    "payments",
+    "quote_acceptances",
+    "document_links",
+  ]) {
+    await pg.exec("begin; set local role anon;");
+    try {
+      await assert.rejects(sql(`select * from ${table}`), /permission denied/i);
+    } finally {
+      await pg.exec("rollback");
+    }
+  }
+});
+test("all 14 starter automations install disabled and repeated setup creates no duplicates", async () => {
+  const definitions = starters.map(
+    ([name, trigger, bodyKey, category, steps]) => ({
+      name,
+      trigger,
+      description: "Test starter",
+      templates: ["email", "sms"].map((channel) => ({
+        name: `${name} ${channel}`,
+        channel,
+        category,
+        purpose: bodyKey,
+        description: "Test template",
+        subject: name,
+        body: bodies[bodyKey],
+      })),
+      steps: steps.map(([wait_minutes, action]) => ({
+        wait_minutes,
+        action,
+        conditions: [],
+      })),
+    }),
+  );
+  for (let i = 0; i < 2; i++)
+    await sql("select crm_install_starters($1,$2)", [
+      "starter-test-company",
+      definitions,
+    ]);
+  const automations = await sql(
+    "select * from automations where company_id='starter-test-company'",
+  );
+  assert.equal(automations.length, 14);
+  assert.ok(automations.every((a) => a.enabled === false));
+  assert.equal(
+    (
+      await sql(
+        "select * from message_templates where company_id='starter-test-company'",
+      )
+    ).length,
+    28,
+  );
+  for (const automation of automations) {
+    automationSchema.parse(automation);
+    for (const step of automation.steps) {
+      if (["email", "sms"].includes(step.action)) {
+        const [template] = await sql(
+          "select channel from message_templates where id=$1",
+          [step.template_id],
+        );
+        assert.equal(template.channel, step.action);
+      }
+    }
+  }
+});
 test("migration preserves historical balance and labels provenance", async () => {
   const [p] = await sql("select * from payments where invoice_id='legacy'");
   assert.equal(Number(p.amount_cents), 200000);

@@ -800,7 +800,7 @@ export function Integrations() {
             <CardContent className="p-5">
               <h2 className="font-semibold">{name}</h2>
               <p className="text-sm mt-2">
-                {data.connections[key] ? "Connected" : "Setup needed"}
+                {data.connections[key] ? "Configured" : "Setup needed"}
               </p>
               {key === "stripe" && (
                 <p className="text-xs text-muted-foreground">

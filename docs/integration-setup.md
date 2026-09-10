@@ -1,5 +1,7 @@
 # Payments and communications: rollout checklist
 
+Start with [owner-launch-checklist.md](owner-launch-checklist.md) for owner-only account setup and the staging decision.
+
 ## Safety defaults
 
 Payments, outbound sending, fees, and all starter automations start OFF. Do not enable sending until existing queued messages and customer consent have been reviewed. No provider-live payment or messaging tests have been performed yet.
@@ -25,7 +27,7 @@ Add these in the existing Render service's Environment screen:
 | `COMMUNICATION_SIGNING_SECRET` | Random 32-byte or longer secret for unsubscribe capabilities; keep stable |
 | `CRM_WORKER_SECRET` | Separate random 32-byte or longer secret for scheduled worker calls |
 
-Do not paste credentials into chat or put them in frontend variables. The Integrations screen shows presence/status, not credentials. “Connected” currently means configured, not an independently verified provider account.
+Do not paste credentials into chat or put them in frontend variables. The Integrations screen shows “Configured” when credentials are present, not an independently verified provider account.
 
 ## Stripe
 
