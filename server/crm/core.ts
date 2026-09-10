@@ -69,7 +69,7 @@ export async function entity(
   return row;
 }
 export async function settings(company: string): Promise<Row> {
-  return (
+  const data = (
     await result(
       db()
         .from("crm_settings")
@@ -78,6 +78,7 @@ export async function settings(company: string): Promise<Row> {
         .single(),
     )
   ).data;
+  return { reply_to_email: "", ...data };
 }
 export function origin() {
   const url = process.env.APP_BASE_URL || "https://air-king-crm.onrender.com";

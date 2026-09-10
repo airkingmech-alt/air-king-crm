@@ -141,6 +141,7 @@ export function registerCrm(app: Express) {
         fee_fixed_cents: z.number().int().min(0).max(100),
         sender_name: z.string().min(1).max(120),
         sender_email: z.union([z.email(), z.literal("")]),
+        reply_to_email: z.union([z.email(), z.literal("")]),
         review_url: z.union([
           z.url().refine((s) => s.startsWith("https://")),
           z.literal(""),
