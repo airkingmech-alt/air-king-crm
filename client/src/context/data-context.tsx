@@ -1,4 +1,12 @@
-import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+  type ReactNode,
+} from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { supabase, extractEntities } from "@/lib/supabase";
 import {
@@ -13,6 +21,7 @@ import {
   type Quote,
   type CrownCareMembership,
 } from "@/data/mock-data";
+import { pricebook } from "@/data/pricebook";
 
 // === Types ===
 export interface CustomerNote {
@@ -59,13 +68,44 @@ interface DataContextValue {
   addNote: (customerId: string, text: string) => void;
   getPhotos: (customerId: string) => CustomerPhoto[];
   addPhoto: (customerId: string, file: File) => Promise<void>;
-  createWorkOrder: (data: { customerId: string; customerName: string; type: string; property: string; description: string; quoteId?: string }) => WorkOrder;
-  createInvoice: (data: { customerId: string; customerName: string; amount: number; description: string; workOrderId?: string }) => Invoice;
-  createQuote: (data: { customerId: string; customerName: string; jobType: string; title: string; totalCost: number; customerPrice: number; equipmentItems?: string[]; laborDescription?: string }) => Quote;
+  createWorkOrder: (data: {
+    customerId: string;
+    customerName: string;
+    type: string;
+    property: string;
+    description: string;
+    quoteId?: string;
+  }) => WorkOrder;
+  createInvoice: (data: {
+    customerId: string;
+    customerName: string;
+    amount: number;
+    description: string;
+    workOrderId?: string;
+    quoteId?: string;
+    equipmentItems?: string[];
+    dueDate?: string;
+  }) => Invoice;
+  createQuote: (data: {
+    customerId: string;
+    customerName: string;
+    jobType: string;
+    title: string;
+    totalCost: number;
+    customerPrice: number;
+    equipmentItems?: string[];
+    laborDescription?: string;
+  }) => Quote;
   updateQuoteStatus: (quoteId: string, status: string) => void;
   updateWorkOrder: (workOrderId: string, updates: Partial<WorkOrder>) => void;
   memberships: CrownCareMembership[];
-  enrollMembership: (data: { customerId: string; customerName: string; propertyAddress: string; systemDescription: string; billingFrequency: "Annual" | "Monthly" }) => CrownCareMembership;
+  enrollMembership: (data: {
+    customerId: string;
+    customerName: string;
+    propertyAddress: string;
+    systemDescription: string;
+    billingFrequency: "Annual" | "Monthly";
+  }) => CrownCareMembership;
 }
 
 // Collision-safe ID generator: prefix + 8 hex chars from a UUID.
@@ -97,7 +137,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>(seedWorkOrders);
   const [invoices, setInvoices] = useState<Invoice[]>(seedInvoices);
   const [quotes, setQuotes] = useState<Quote[]>(seedQuotes);
-  const [memberships, setMemberships] = useState<CrownCareMembership[]>(seedMemberships);
+  const [memberships, setMemberships] =
+    useState<CrownCareMembership[]>(seedMemberships);
   const [notes, setNotes] = useState<CustomerNote[]>([]);
   const [photos, setPhotos] = useState<CustomerPhoto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,8 +147,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // to persist (jsonb blobs are replaced wholesale).
   const quotesRef = useRef(quotes);
   const workOrdersRef = useRef(workOrders);
-  useEffect(() => { quotesRef.current = quotes; }, [quotes]);
-  useEffect(() => { workOrdersRef.current = workOrders; }, [workOrders]);
+  const customersRef = useRef(customers);
+  useEffect(() => {
+    quotesRef.current = quotes;
+  }, [quotes]);
+  useEffect(() => {
+    workOrdersRef.current = workOrders;
+  }, [workOrders]);
+  useEffect(() => {
+    customersRef.current = customers;
+  }, [customers]);
 
   // Load all data from Supabase on mount; fall back to seed data if empty
   useEffect(() => {
@@ -133,24 +182,39 @@ export function DataProvider({ children }: { children: ReactNode }) {
         if (quoteData.length > 0) setQuotes(quoteData);
         if (memData.length > 0) setMemberships(memData);
       } catch (err) {
-        console.error("Failed to load data from Supabase, using seed data:", err);
+        console.error(
+          "Failed to load data from Supabase, using seed data:",
+          err,
+        );
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     const refresh = async () => {
-      const [inv, quotes, jobs] = await Promise.all([supabase.from("invoices").select("data"),supabase.from("quotes").select("data"),supabase.from("work_orders").select("data")]);
-      if (!inv.error && inv.data) setInvoices(extractEntities<Invoice>(inv.data));
-      if (!quotes.error && quotes.data) setQuotes(extractEntities<Quote>(quotes.data));
-      if (!jobs.error && jobs.data) setWorkOrders(extractEntities<WorkOrder>(jobs.data));
+      const [inv, quotes, jobs] = await Promise.all([
+        supabase.from("invoices").select("data"),
+        supabase.from("quotes").select("data"),
+        supabase.from("work_orders").select("data"),
+      ]);
+      if (!inv.error && inv.data)
+        setInvoices(extractEntities<Invoice>(inv.data));
+      if (!quotes.error && quotes.data)
+        setQuotes(extractEntities<Quote>(quotes.data));
+      if (!jobs.error && jobs.data)
+        setWorkOrders(extractEntities<WorkOrder>(jobs.data));
     };
     const timer = setInterval(refresh, 30000);
     window.addEventListener("crm-refresh", refresh);
-    return () => { clearInterval(timer); window.removeEventListener("crm-refresh", refresh); };
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("crm-refresh", refresh);
+    };
   }, []);
 
   const loadNotes = useCallback(async (customerId: string) => {
@@ -211,7 +275,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       type: data.type,
       name: data.name,
       contacts: [
-        { name: data.name, phone: data.phone || "(816) 555-0000", email: data.email || "noreply@email.com", role: "Primary" },
+        {
+          name: data.name,
+          phone: data.phone || "(816) 555-0000",
+          email: data.email || "noreply@email.com",
+          role: "Primary",
+        },
       ],
       properties: [
         {
@@ -230,7 +299,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString().slice(0, 10),
       tags: [],
       activity: [
-        { id: `act-${crypto.randomUUID().slice(0, 8)}`, type: "note", title: "Customer created", description: `Added via CRM — lead source: ${data.leadSource}`, date: new Date().toISOString().slice(0, 10), user: "Colton Nichols" },
+        {
+          id: `act-${crypto.randomUUID().slice(0, 8)}`,
+          type: "note",
+          title: "Customer created",
+          description: `Added via CRM — lead source: ${data.leadSource}`,
+          date: new Date().toISOString().slice(0, 10),
+          user: "Colton Nichols",
+        },
       ],
     };
     setCustomers((prev) => [newCustomer, ...prev]);
@@ -238,11 +314,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return newCustomer;
   }, []);
 
-  const getNotes = useCallback((customerId: string): CustomerNote[] => {
-    const hasLoaded = notes.some((n) => n.customerId === customerId);
-    if (!hasLoaded) loadNotes(customerId);
-    return notes.filter((n) => n.customerId === customerId);
-  }, [notes, loadNotes]);
+  const getNotes = useCallback(
+    (customerId: string): CustomerNote[] => {
+      const hasLoaded = notes.some((n) => n.customerId === customerId);
+      if (!hasLoaded) loadNotes(customerId);
+      return notes.filter((n) => n.customerId === customerId);
+    },
+    [notes, loadNotes],
+  );
 
   const addNote = useCallback((customerId: string, text: string) => {
     const note: CustomerNote = {
@@ -255,15 +334,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setNotes((prev) => [note, ...prev]);
     supabase
       .from("customer_notes")
-      .insert({ id: note.id, company_id: "air-king", customer_id: customerId, text, author: note.author, date: note.date })
-      .then(({ error }) => { if (error) console.error("Failed to persist note:", error.message); });
+      .insert({
+        id: note.id,
+        company_id: "air-king",
+        customer_id: customerId,
+        text,
+        author: note.author,
+        date: note.date,
+      })
+      .then(({ error }) => {
+        if (error) console.error("Failed to persist note:", error.message);
+      });
   }, []);
 
-  const getPhotos = useCallback((customerId: string): CustomerPhoto[] => {
-    const hasLoaded = photos.some((p) => p.customerId === customerId);
-    if (!hasLoaded) loadPhotos(customerId);
-    return photos.filter((p) => p.customerId === customerId);
-  }, [photos, loadPhotos]);
+  const getPhotos = useCallback(
+    (customerId: string): CustomerPhoto[] => {
+      const hasLoaded = photos.some((p) => p.customerId === customerId);
+      if (!hasLoaded) loadPhotos(customerId);
+      return photos.filter((p) => p.customerId === customerId);
+    },
+    [photos, loadPhotos],
+  );
 
   const addPhoto = useCallback(async (customerId: string, file: File) => {
     let dataUrl = await new Promise<string>((resolve) => {
@@ -310,15 +401,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // Persist photo metadata + base64 to Supabase
     const { error: insErr } = await supabase
       .from("customer_photos")
-      .insert({ id: photoId, company_id: "air-king", customer_id: customerId, data_url: dataUrl, file_name: file.name, uploaded_at: uploadedAt });
+      .insert({
+        id: photoId,
+        company_id: "air-king",
+        customer_id: customerId,
+        data_url: dataUrl,
+        file_name: file.name,
+        uploaded_at: uploadedAt,
+      });
     if (insErr) console.error("Failed to persist photo:", insErr.message);
 
     // AI analysis via Express proxy (needs secret key server-side)
     try {
-      const resp = await apiRequest("POST", "/api/analyze-photo", { image: dataUrl, fileName: file.name });
+      const resp = await apiRequest("POST", "/api/analyze-photo", {
+        image: dataUrl,
+        fileName: file.name,
+      });
       const result = await resp.json();
-      setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, analysis: result.note, analyzing: false } : p));
-      await supabase.from("customer_photos").update({ analysis: result.note }).eq("id", photoId);
+      setPhotos((prev) =>
+        prev.map((p) =>
+          p.id === photoId
+            ? { ...p, analysis: result.note, analyzing: false }
+            : p,
+        ),
+      );
+      await supabase
+        .from("customer_photos")
+        .update({ analysis: result.note })
+        .eq("id", photoId);
 
       const aiNote: CustomerNote = {
         id: uid("note-"),
@@ -328,9 +438,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
         date: uploadedAt,
       };
       setNotes((prev) => [aiNote, ...prev]);
-      await supabase.from("customer_notes").insert({ id: aiNote.id, company_id: "air-king", customer_id: customerId, text: aiNote.text, author: aiNote.author, date: aiNote.date });
+      await supabase
+        .from("customer_notes")
+        .insert({
+          id: aiNote.id,
+          company_id: "air-king",
+          customer_id: customerId,
+          text: aiNote.text,
+          author: aiNote.author,
+          date: aiNote.date,
+        });
     } catch (err) {
-      setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, analyzing: false } : p));
+      setPhotos((prev) =>
+        prev.map((p) => (p.id === photoId ? { ...p, analyzing: false } : p)),
+      );
       const fallbackNote: CustomerNote = {
         id: uid("note-"),
         customerId,
@@ -339,115 +460,285 @@ export function DataProvider({ children }: { children: ReactNode }) {
         date: uploadedAt,
       };
       setNotes((prev) => [fallbackNote, ...prev]);
-      await supabase.from("customer_notes").insert({ id: fallbackNote.id, company_id: "air-king", customer_id: customerId, text: fallbackNote.text, author: fallbackNote.author, date: fallbackNote.date });
+      await supabase
+        .from("customer_notes")
+        .insert({
+          id: fallbackNote.id,
+          company_id: "air-king",
+          customer_id: customerId,
+          text: fallbackNote.text,
+          author: fallbackNote.author,
+          date: fallbackNote.date,
+        });
     }
   }, []);
 
-  const createWorkOrder = useCallback((data: { customerId: string; customerName: string; type: string; property: string; description: string; quoteId?: string }): WorkOrder => {
-    const wo: WorkOrder = {
-      id: uid("WO-"),
-      customerId: data.customerId,
-      customerName: data.customerName,
-      property: data.property,
-      type: data.type,
-      status: "Scheduled",
-      scheduledDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
-      scheduledTime: "09:00",
-      technician: "James Nichols",
-      priority: "Normal",
-      description: data.description,
-      quoteId: data.quoteId,
-    };
-    setWorkOrders((prev) => [wo, ...prev]);
-    persistBlob("work_orders", wo.id, wo, wo.customerId);
-    return wo;
-  }, []);
+  const createWorkOrder = useCallback(
+    (data: {
+      customerId: string;
+      customerName: string;
+      type: string;
+      property: string;
+      description: string;
+      quoteId?: string;
+    }): WorkOrder => {
+      const wo: WorkOrder = {
+        id: uid("WO-"),
+        customerId: data.customerId,
+        customerName: data.customerName,
+        property: data.property,
+        type: data.type,
+        status: "Scheduled",
+        scheduledDate: new Date(Date.now() + 7 * 86400000)
+          .toISOString()
+          .slice(0, 10),
+        scheduledTime: "09:00",
+        technician: "James Nichols",
+        priority: "Normal",
+        description: data.description,
+        quoteId: data.quoteId,
+      };
+      setWorkOrders((prev) => [wo, ...prev]);
+      persistBlob("work_orders", wo.id, wo, wo.customerId);
+      return wo;
+    },
+    [],
+  );
 
-  const createInvoice = useCallback((data: { customerId: string; customerName: string; amount: number; description: string; workOrderId?: string }): Invoice => {
-    const inv: Invoice = {
-      id: uid("INV-"),
-      customerId: data.customerId,
-      customerName: data.customerName,
-      workOrderId: data.workOrderId,
-      amount: data.amount,
-      paidAmount: 0,
-      status: "Draft",
-      dueDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
-      items: [{ description: data.description, amount: data.amount }],
-    };
-    setInvoices((prev) => [inv, ...prev]);
-    persistBlob("invoices", inv.id, inv, inv.customerId);
-    return inv;
-  }, []);
+  const createInvoice = useCallback(
+    (data: {
+      customerId: string;
+      customerName: string;
+      amount: number;
+      description: string;
+      workOrderId?: string;
+      quoteId?: string;
+      equipmentItems?: string[];
+      dueDate?: string;
+    }): Invoice => {
+      const inv: Invoice = {
+        id: uid("INV-"),
+        customerId: data.customerId,
+        customerName: data.customerName,
+        workOrderId: data.workOrderId,
+        quoteId: data.quoteId,
+        equipmentItems: data.equipmentItems,
+        amount: data.amount,
+        paidAmount: 0,
+        status: "Draft",
+        dueDate:
+          data.dueDate ||
+          new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+        items: [{ description: data.description, amount: data.amount }],
+      };
+      setInvoices((prev) => [inv, ...prev]);
+      persistBlob("invoices", inv.id, inv, inv.customerId);
+      if (data.equipmentItems?.length) {
+        const customer = customersRef.current.find(
+          (c) => c.id === data.customerId,
+        );
+        const property = customer?.properties[0];
+        if (customer && property) {
+          const installed = data.equipmentItems
+            .map((equipmentId) =>
+              pricebook.find((item) => item.id === equipmentId),
+            )
+            .filter(Boolean)
+            .filter((item) =>
+              [
+                "Condenser",
+                "Evaporator Coil",
+                "Air Handler",
+                "Furnace",
+                "Heat Pump",
+              ].includes(item!.category),
+            )
+            .filter(
+              (item) =>
+                !property.systems.some(
+                  (system) => system.model === item!.model,
+                ),
+            )
+            .map((item) => {
+              const installedAt = new Date().toISOString().slice(0, 10);
+              const warranty = new Date();
+              warranty.setFullYear(warranty.getFullYear() + 10);
+              const type =
+                item!.category === "Condenser"
+                  ? "AC"
+                  : item!.category === "Evaporator Coil"
+                    ? "Coil"
+                    : item!.category === "Air Handler"
+                      ? "Air Handler"
+                      : item!.category === "Furnace"
+                        ? "Furnace"
+                        : item!.category === "Heat Pump"
+                          ? "Heat Pump"
+                          : "Package Unit";
+              return {
+                id: uid("sys-"),
+                type: type as import("@/data/mock-data").HVACSystem["type"],
+                brand: item!.brand,
+                model: item!.model,
+                serial: "Not recorded",
+                installDate: installedAt,
+                warrantyExp: warranty.toISOString().slice(0, 10),
+                status: "Warranty" as const,
+                notes: `${item!.description} · Added from invoice ${inv.id}`,
+              };
+            });
+          if (installed.length) {
+            const updated = {
+              ...customer,
+              properties: customer.properties.map((candidate, index) =>
+                index === 0
+                  ? {
+                      ...candidate,
+                      systems: [...candidate.systems, ...installed],
+                    }
+                  : candidate,
+              ),
+            };
+            setCustomers((current) =>
+              current.map((candidate) =>
+                candidate.id === updated.id ? updated : candidate,
+              ),
+            );
+            persistBlob("customers", updated.id, updated);
+          }
+        }
+      }
+      return inv;
+    },
+    [],
+  );
 
-  const createQuote = useCallback((data: { customerId: string; customerName: string; jobType: string; title: string; totalCost: number; customerPrice: number; equipmentItems?: string[]; laborDescription?: string }): Quote => {
-    const q: Quote = {
-      id: uid("Q-"),
-      customerId: data.customerId,
-      customerName: data.customerName,
-      jobType: data.jobType as Quote["jobType"],
-      title: data.title,
-      status: "Quote Sent",
-      createdAt: new Date().toISOString().slice(0, 10),
-      equipmentItems: data.equipmentItems,
-      laborDescription: data.laborDescription,
-      options: [
-        { tier: "Good", label: "Essential", equipment: "Standard efficiency", efficiency: "13 SEER", features: ["Reliable cooling", "10-year parts and labor warranty"], totalCost: data.totalCost, customerPrice: Math.round(data.customerPrice * 0.85) },
-        { tier: "Better", label: "Enhanced", equipment: "Upgraded efficiency", efficiency: "14 SEER", features: ["Upgraded efficiency", "10-year parts and labor warranty"], totalCost: data.totalCost, customerPrice: data.customerPrice, isPopular: true },
-        { tier: "Best", label: "Ultimate", equipment: "Premium high efficiency", efficiency: "16 SEER Variable", features: ["Premium efficiency", "10-year parts and labor warranty", "Wi-Fi thermostat"], totalCost: data.totalCost, customerPrice: Math.round(data.customerPrice * 1.25) },
-      ],
-      selectedAddOns: [],
-      laborCost: 0,
-      materialsCost: 0,
-      taxRate: 0,
-    };
-    setQuotes((prev) => [q, ...prev]);
-    persistBlob("quotes", q.id, q, q.customerId);
-    return q;
-  }, []);
+  const createQuote = useCallback(
+    (data: {
+      customerId: string;
+      customerName: string;
+      jobType: string;
+      title: string;
+      totalCost: number;
+      customerPrice: number;
+      equipmentItems?: string[];
+      laborDescription?: string;
+    }): Quote => {
+      const q: Quote = {
+        id: uid("Q-"),
+        customerId: data.customerId,
+        customerName: data.customerName,
+        jobType: data.jobType as Quote["jobType"],
+        title: data.title,
+        status: "Quote Sent",
+        createdAt: new Date().toISOString().slice(0, 10),
+        equipmentItems: data.equipmentItems,
+        laborDescription: data.laborDescription,
+        options: [
+          {
+            tier: "Good",
+            label: "Essential",
+            equipment: "Standard efficiency",
+            efficiency: "13 SEER",
+            features: ["Reliable cooling", "10-year parts and labor warranty"],
+            totalCost: data.totalCost,
+            customerPrice: Math.round(data.customerPrice * 0.85),
+          },
+          {
+            tier: "Better",
+            label: "Enhanced",
+            equipment: "Upgraded efficiency",
+            efficiency: "14 SEER",
+            features: [
+              "Upgraded efficiency",
+              "10-year parts and labor warranty",
+            ],
+            totalCost: data.totalCost,
+            customerPrice: data.customerPrice,
+            isPopular: true,
+          },
+          {
+            tier: "Best",
+            label: "Ultimate",
+            equipment: "Premium high efficiency",
+            efficiency: "16 SEER Variable",
+            features: [
+              "Premium efficiency",
+              "10-year parts and labor warranty",
+              "Wi-Fi thermostat",
+            ],
+            totalCost: data.totalCost,
+            customerPrice: Math.round(data.customerPrice * 1.25),
+          },
+        ],
+        selectedAddOns: [],
+        laborCost: 0,
+        materialsCost: 0,
+        taxRate: 0,
+      };
+      setQuotes((prev) => [q, ...prev]);
+      persistBlob("quotes", q.id, q, q.customerId);
+      return q;
+    },
+    [],
+  );
 
   const updateQuoteStatus = useCallback((quoteId: string, status: string) => {
     const current = quotesRef.current.find((q) => q.id === quoteId);
     if (!current) return;
     const updated: Quote = { ...current, status: status as Quote["status"] };
-    setQuotes((prev) => prev.map((q) => q.id === quoteId ? updated : q));
+    setQuotes((prev) => prev.map((q) => (q.id === quoteId ? updated : q)));
     persistBlob("quotes", quoteId, updated, updated.customerId);
   }, []);
 
-  const updateWorkOrder = useCallback((workOrderId: string, updates: Partial<WorkOrder>) => {
-    const current = workOrdersRef.current.find((wo) => wo.id === workOrderId);
-    if (!current) return;
-    const updated: WorkOrder = { ...current, ...updates };
-    setWorkOrders((prev) => prev.map((wo) => wo.id === workOrderId ? updated : wo));
-    persistBlob("work_orders", workOrderId, updated, updated.customerId);
-  }, []);
+  const updateWorkOrder = useCallback(
+    (workOrderId: string, updates: Partial<WorkOrder>) => {
+      const current = workOrdersRef.current.find((wo) => wo.id === workOrderId);
+      if (!current) return;
+      const updated: WorkOrder = { ...current, ...updates };
+      setWorkOrders((prev) =>
+        prev.map((wo) => (wo.id === workOrderId ? updated : wo)),
+      );
+      persistBlob("work_orders", workOrderId, updated, updated.customerId);
+    },
+    [],
+  );
 
-  const enrollMembership = useCallback((data: { customerId: string; customerName: string; propertyAddress: string; systemDescription: string; billingFrequency: "Annual" | "Monthly" }): CrownCareMembership => {
-    const today = new Date();
-    const renewal = new Date(today);
-    renewal.setFullYear(renewal.getFullYear() + 1);
-    const m: CrownCareMembership = {
-      id: uid("CC-"),
-      customerId: data.customerId,
-      customerName: data.customerName,
-      propertyAddress: data.propertyAddress,
-      systemId: "sys-new",
-      systemDescription: data.systemDescription,
-      startDate: today.toISOString().slice(0, 10),
-      renewalDate: renewal.toISOString().slice(0, 10),
-      billingFrequency: data.billingFrequency,
-      paymentStatus: "Pending",
-      autoRenew: true,
-      visitsIncluded: 2,
-      visitsUsed: 0,
-      springVisit: { status: "Unscheduled" },
-      fallVisit: { status: "Unscheduled" },
-      status: "Active",
-    };
-    setMemberships((prev) => [m, ...prev]);
-    persistBlob("memberships", m.id, m, m.customerId);
-    return m;
-  }, []);
+  const enrollMembership = useCallback(
+    (data: {
+      customerId: string;
+      customerName: string;
+      propertyAddress: string;
+      systemDescription: string;
+      billingFrequency: "Annual" | "Monthly";
+    }): CrownCareMembership => {
+      const today = new Date();
+      const renewal = new Date(today);
+      renewal.setFullYear(renewal.getFullYear() + 1);
+      const m: CrownCareMembership = {
+        id: uid("CC-"),
+        customerId: data.customerId,
+        customerName: data.customerName,
+        propertyAddress: data.propertyAddress,
+        systemId: "sys-new",
+        systemDescription: data.systemDescription,
+        startDate: today.toISOString().slice(0, 10),
+        renewalDate: renewal.toISOString().slice(0, 10),
+        billingFrequency: data.billingFrequency,
+        paymentStatus: "Pending",
+        autoRenew: true,
+        visitsIncluded: 2,
+        visitsUsed: 0,
+        springVisit: { status: "Unscheduled" },
+        fallVisit: { status: "Unscheduled" },
+        status: "Active",
+      };
+      setMemberships((prev) => [m, ...prev]);
+      persistBlob("memberships", m.id, m, m.customerId);
+      return m;
+    },
+    [],
+  );
 
   const value: DataContextValue = {
     customers,
