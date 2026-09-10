@@ -722,20 +722,27 @@ export default function CustomerDetail() {
           {customerInvoices.length ? (
             <div className="space-y-3">
               {customerInvoices.map((invoice) => (
-                <Card key={invoice.id}>
-                  <CardContent className="flex items-center justify-between gap-3 p-4">
-                    <div>
-                      <p className="font-semibold">{invoice.id}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {invoice.items[0]?.description} · Due {invoice.dueDate}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold">{fmtCurrency(invoice.amount)}</p>
-                      <Badge variant="outline">{invoice.status}</Badge>
-                    </div>
-                  </CardContent>
-                </Card>
+                <Link key={invoice.id} href={`/invoices/view/${invoice.id}`}>
+                  <Card className="cursor-pointer transition-shadow hover:shadow-md">
+                    <CardContent className="flex items-center justify-between gap-3 p-4">
+                      <div>
+                        <p className="font-semibold text-primary hover:underline">
+                          {invoice.id}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {invoice.items[0]?.description} · Due {invoice.dueDate}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <p className="font-bold">{fmtCurrency(invoice.amount)}</p>
+                          <Badge variant="outline">{invoice.status}</Badge>
+                        </div>
+                        <Button size="sm" variant="outline">View Invoice</Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
               ))}
             </div>
           ) : (
