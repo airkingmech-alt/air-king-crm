@@ -1,3 +1,4 @@
+import {DocumentActions} from "@/components/document-actions";
 import { useState } from "react";
 import { Link } from "wouter";
 import { Search, DollarSign, Download, Send, Plus, Copy, Mail, MessageSquare } from "lucide-react";
@@ -34,6 +35,7 @@ import {
 import { CustomerCombobox } from "@/components/customer-combobox";
 
 const statusConfig: Record<InvoiceStatus, { color: string; badge: string }> = {
+  Void: {color:"text-muted-foreground",badge:"bg-muted text-muted-foreground"},
   Draft: { color: "text-muted-foreground", badge: "bg-muted text-muted-foreground" },
   Sent: { color: "text-sky-600", badge: "bg-sky-100 text-sky-700 dark:bg-sky-950/30 dark:text-sky-400" },
   Paid: { color: "text-emerald-600", badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400" },
@@ -307,101 +309,7 @@ export default function Invoices() {
       </Dialog>
 
       {/* Send Invoice Dialog */}
-      <Dialog open={!!sendInvoice} onOpenChange={(open) => !open && setSendInvoice(null)}>
-        <DialogContent className="sm:max-w-[440px]">
-          <DialogHeader>
-            <DialogTitle>Send Invoice to Customer</DialogTitle>
-            <DialogDescription>
-              Send invoice {sendInvoice?.id} via email or text message to {sendInvoice?.customerName}.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            {/* Shareable Link */}
-            <div className="space-y-2">
-              <Label>Shareable Link</Label>
-              <div className="flex gap-2">
-                <Input
-                  readOnly
-                  value={`${window.location.origin}/#/invoices/view/${sendInvoice?.id}`}
-                  className="text-xs"
-                  data-testid="input-invoice-share-link"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    navigator.clipboard.writeText(`${window.location.origin}/#/invoices/view/${sendInvoice?.id}`);
-                    toast({ title: "Link copied", description: "Invoice link copied to clipboard." });
-                  }}
-                  data-testid="button-copy-invoice-link"
-                >
-                  <Copy size={14} />
-                </Button>
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Email Send */}
-            <div className="space-y-2">
-              <Label>Send via Email</Label>
-              <Input
-                type="email"
-                placeholder="customer@email.com"
-                value={sendTarget.email}
-                onChange={(e) => setSendTarget({ ...sendTarget, email: e.target.value })}
-                data-testid="input-send-invoice-email"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                disabled={!sendTarget.email}
-                onClick={() => {
-                  const subject = `Invoice ${sendInvoice?.id} from Air King Mechanical Services`;
-                  const body = `Dear ${sendInvoice?.customerName},\n\nPlease find your invoice from Air King Mechanical Services.\n\nInvoice: ${sendInvoice?.id}\nAmount: ${fmtCurrency(sendInvoice?.amount || 0)}\nDue Date: ${sendInvoice?.dueDate}\n\nView your invoice here: ${window.location.origin}/#/invoices/view/${sendInvoice?.id}\n\nIf you have any questions, please don't hesitate to contact us.\n\nBest regards,\nAir King Mechanical Services LLC\nKansas City, MO`;
-                  window.location.href = `mailto:${sendTarget.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-                  toast({ title: "Email opened", description: `Your email client should open with the invoice for ${sendTarget.email}.` });
-                }}
-                data-testid="button-send-invoice-email"
-              >
-                <Mail size={14} className="mr-1.5" /> Open Email Client
-              </Button>
-            </div>
-
-            <Separator />
-
-            {/* SMS Send */}
-            <div className="space-y-2">
-              <Label>Send via Text Message</Label>
-              <Input
-                type="tel"
-                placeholder="(816) 555-0100"
-                value={sendTarget.phone}
-                onChange={(e) => setSendTarget({ ...sendTarget, phone: e.target.value })}
-                data-testid="input-send-invoice-phone"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                disabled={!sendTarget.phone}
-                onClick={() => {
-                  const body = `Hi ${sendInvoice?.customerName}, your invoice from Air King Mechanical Services is ready. Invoice ${sendInvoice?.id} for ${fmtCurrency(sendInvoice?.amount || 0)}, due ${sendInvoice?.dueDate}. View here: ${window.location.origin}/#/invoices/view/${sendInvoice?.id}`;
-                  window.location.href = `sms:${sendTarget.phone}?body=${encodeURIComponent(body)}`;
-                  toast({ title: "Text message opened", description: `Your messaging app should open with the invoice link.` });
-                }}
-                data-testid="button-send-invoice-sms"
-              >
-                <MessageSquare size={14} className="mr-1.5" /> Open Text Message
-              </Button>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSendInvoice(null)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <Dialog open={!!sendInvoice} onOpenChange={open=>!open&&setSendInvoice(null)}><DialogContent><DialogHeader><DialogTitle>Send to Customer</DialogTitle><DialogDescription>Share this document securely.</DialogDescription></DialogHeader>{sendInvoice&&<DocumentActions kind="invoice" id={sendInvoice.id}/>}</DialogContent></Dialog>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import {CustomerCommunications} from "@/pages/communications";
 import { useState, useRef } from "react";
 import { useParams, Link } from "wouter";
 import {
@@ -560,6 +561,7 @@ export default function CustomerDetail() {
 
         {/* Activity Timeline */}
         <TabsContent value="activity">
+          <CustomerCommunications customerId={customer.id}/>
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold">Activity Timeline</CardTitle>

@@ -3,7 +3,7 @@
 
 export type LeadStatus = "New" | "Contacted" | "Appointment" | "Quote Sent" | "Won" | "Lost";
 export type WorkOrderStatus = "Unscheduled" | "Scheduled" | "Dispatched" | "In Progress" | "Completed" | "Cancelled" | "Needs Follow-up";
-export type InvoiceStatus = "Draft" | "Sent" | "Paid" | "Overdue" | "Partial";
+export type InvoiceStatus = "Draft" | "Sent" | "Paid" | "Overdue" | "Partial" | "Void";
 export type CustomerType = "Residential" | "Commercial";
 
 export interface Contact {
@@ -90,6 +90,10 @@ export interface Quote {
   createdAt: string;
   options: QuoteOption[];
   selectedAddOns: string[];
+  selectedOption?: string;
+  acceptedAt?: string;
+  declinedAt?: string;
+  expiresAt?: string;
   laborCost: number;
   materialsCost: number;
   taxRate: number;

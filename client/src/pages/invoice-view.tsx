@@ -1,3 +1,4 @@
+import {DocumentActions,InvoicePayments} from "@/components/document-actions";
 import { useParams } from "wouter";
 import { Wind, Check, CircleDollarSign, CalendarClock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -124,6 +125,7 @@ export default function InvoiceView() {
               To make a payment or ask a question about this invoice, please contact Air King Mechanical
               Services directly.
             </p>
+            <div className="print:hidden mt-6"><DocumentActions kind="invoice" id={invoice.id}/><InvoicePayments id={invoice.id}/></div>
           </CardContent>
         </Card>
 
