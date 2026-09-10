@@ -252,7 +252,11 @@ export function html(body: string, name: string) {
   const content = escapeHtml(body)
     .replace(
       /https:\/\/[^\s<]+/g,
-      (url) => `<a href="${url}" style="color:#0369a1">${url}</a>`,
+      (match) => {
+        const trailing = match.match(/[.,!?;:]+$/)?.[0] || "";
+        const url = trailing ? match.slice(0, -trailing.length) : match;
+        return `<a href="${url}" style="color:#0369a1">${url}</a>${trailing}`;
+      },
     )
     .replace(/\n/g, "<br>");
   return `<div style="font-family:Arial,sans-serif;background:#f0f9ff;padding:24px"><div style="max-width:600px;margin:auto;background:white;padding:28px;border-radius:12px"><h2 style="color:#075985">${escapeHtml(name)}</h2><div style="font-size:16px;line-height:1.6">${content}</div><hr><p style="color:#64748b">Air King Mechanical Services LLC · Lathrop, Missouri</p></div></div>`;
