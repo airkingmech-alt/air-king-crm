@@ -508,6 +508,215 @@ export function registerCrm(app: Express) {
       });
     }),
   );
+  app.get(
+    "/api/crm/referrals",
+    wrap(async (req, res) => {
+      const c = await caller(req);
+      await result(
+        db()
+          .from("coupons")
+          .update({ status: "expired", updated_at: new Date().toISOString() })
+          .eq("company_id", c.company)
+          .eq("status", "active")
+          .lt("expires_at", new Date().toISOString()),
+      );
+      const [referrals, coupons] = await Promise.all([
+        result(
+          db()
+            .from("referrals")
+            .select("*")
+            .eq("company_id", c.company)
+            .order("created_at", { ascending: false }),
+        ),
+        result(
+          db()
+            .from("coupons")
+            .select("*")
+            .eq("company_id", c.company)
+            .order("created_at", { ascending: false }),
+        ),
+      ]);
+      res.json({ referrals, coupons });
+    }),
+  );
+  app.post(
+    "/api/crm/referrals",
+    wrap(async (req, res) => {
+      const c = await caller(req);
+      const input = z
+        .object({
+          referring_customer_id: z.string().min(1).max(100),
+          referred_customer_id: z.string().min(1).max(100),
+          completed_job_id: z.string().min(1).max(100),
+          expires_at: z.iso.datetime(),
+          notes: z.string().max(1000).default(""),
+        })
+        .parse(req.body);
+      const coupon = await result(
+        db().rpc("crm_issue_referral", {
+          p_company: c.company,
+          p_referrer: input.referring_customer_id,
+          p_referred: input.referred_customer_id,
+          p_job: input.completed_job_id,
+          p_actor: c.id,
+          p_expires: input.expires_at,
+          p_notes: input.notes,
+        }),
+      );
+      const row = Array.isArray(coupon) ? coupon[0] : coupon;
+      await event(
+        {
+          company_id: c.company,
+          customer_id: row.customer_id,
+          job_id: input.completed_job_id,
+          coupon_id: row.id,
+          actor_id: c.id,
+        },
+        "coupon.issued",
+        { coupon_id: row.id, amount_cents: row.amount_cents },
+        `coupon-issued:${row.id}`,
+      );
+      res.json({ message: "$25 referral coupon created", coupon: row });
+    }),
+  );
+  app.post(
+    "/api/crm/coupons/:id/send",
+    wrap(async (req, res) => {
+      const c = await caller(req);
+      const coupon = await entity("coupons", String(req.params.id), c.company);
+      if (
+        coupon.status !== "active" ||
+        (coupon.expires_at && Date.parse(coupon.expires_at) <= Date.now())
+      )
+        throw new Error("Only an active, unexpired coupon can be emailed.");
+      const templates = await result(
+        db()
+          .from("message_templates")
+          .select("*")
+          .eq("company_id", c.company)
+          .eq("purpose", "referral_coupon")
+          .eq("channel", "email")
+          .eq("active", true)
+          .eq("archived", false)
+          .limit(1),
+      );
+      if (!templates[0])
+        throw new Error("The referral coupon email template is unavailable.");
+      const message = await queueMessage(
+        references(coupon, "coupon"),
+        "email",
+        templates[0],
+        `coupon:${coupon.id}:${key(req)}`,
+        "referral_coupon",
+        c.id,
+      );
+      await result(
+        db()
+          .from("coupons")
+          .update({
+            emailed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", coupon.id)
+          .eq("company_id", c.company),
+      );
+      res.json({
+        message: "Referral coupon email queued",
+        communication: message,
+      });
+    }),
+  );
+  app.post(
+    "/api/crm/coupons/:id/remind",
+    wrap(async (req, res) => {
+      const c = await caller(req);
+      const coupon = await entity("coupons", String(req.params.id), c.company);
+      if (
+        coupon.status !== "active" ||
+        (coupon.expires_at && Date.parse(coupon.expires_at) <= Date.now())
+      )
+        throw new Error("This coupon is no longer available for reminders.");
+      const templates = await result(
+        db()
+          .from("message_templates")
+          .select("*")
+          .eq("company_id", c.company)
+          .eq("purpose", "coupon_reminder")
+          .eq("channel", "email")
+          .eq("active", true)
+          .eq("archived", false)
+          .limit(1),
+      );
+      if (!templates[0])
+        throw new Error("The coupon reminder template is unavailable.");
+      const message = await queueMessage(
+        references(coupon, "coupon"),
+        "email",
+        templates[0],
+        `coupon-reminder:${coupon.id}:${key(req)}`,
+        "coupon_reminder",
+        c.id,
+      );
+      await result(
+        db()
+          .from("coupons")
+          .update({
+            reminder_sent_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", coupon.id)
+          .eq("company_id", c.company),
+      );
+      res.json({ message: "Coupon reminder queued", communication: message });
+    }),
+  );
+  app.post(
+    "/api/crm/coupons/:id/redeem",
+    wrap(async (req, res) => {
+      const c = await caller(req);
+      const coupon = await entity("coupons", String(req.params.id), c.company);
+      if (coupon.status !== "active")
+        throw new Error("This coupon is not active.");
+      if (coupon.expires_at && Date.parse(coupon.expires_at) <= Date.now())
+        throw new Error("This coupon has expired.");
+      const invoiceId = z
+        .union([z.string().min(1).max(100), z.literal("")])
+        .parse(req.body.invoice_id || "");
+      if (invoiceId) {
+        const invoice = await entity("invoices", invoiceId, c.company);
+        if (invoice.customer_id !== coupon.customer_id)
+          throw new Error("Choose an invoice for the coupon customer.");
+      }
+      const changed = await result(
+        db()
+          .from("coupons")
+          .update({
+            status: "used",
+            used_at: new Date().toISOString(),
+            used_invoice_id: invoiceId || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", coupon.id)
+          .eq("company_id", c.company)
+          .eq("status", "active")
+          .select(),
+      );
+      if (!changed[0]) throw new Error("This coupon was already updated.");
+      await event(
+        {
+          company_id: c.company,
+          customer_id: coupon.customer_id,
+          coupon_id: coupon.id,
+          invoice_id: invoiceId || null,
+          actor_id: c.id,
+        },
+        "coupon.redeemed",
+        { amount_cents: coupon.amount_cents },
+        `coupon-redeemed:${coupon.id}`,
+      );
+      res.json({ message: "Coupon marked as used", coupon: changed[0] });
+    }),
+  );
   app.post(
     "/api/crm/invoices/:id/void",
     wrap(async (req, res) => {

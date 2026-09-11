@@ -222,6 +222,10 @@ export const mergeFields = [
   "technician_name",
   "review_link",
   "receipt_amount",
+  "coupon_code",
+  "coupon_amount",
+  "coupon_expires",
+  "referred_customer_name",
   "unsubscribe_link",
 ];
 export function merge(template: string, values: Row) {

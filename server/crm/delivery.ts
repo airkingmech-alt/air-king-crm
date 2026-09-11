@@ -33,6 +33,15 @@ export async function context(ref: Row) {
   const job = ref.job_id
     ? await entity("work_orders", ref.job_id, ref.company_id)
     : null;
+  const coupon = ref.coupon_id
+    ? await entity("coupons", ref.coupon_id, ref.company_id)
+    : null;
+  const referral = coupon?.referral_id
+    ? await entity("referrals", coupon.referral_id, ref.company_id)
+    : null;
+  const referredCustomer = referral?.referred_customer_id
+    ? await entity("customers", referral.referred_customer_id, ref.company_id)
+    : null;
   const prefs = (await result(
     db()
       .from("customer_communication_preferences")
@@ -75,6 +84,17 @@ export async function context(ref: Row) {
     technician_name: job?.data.technician || "Your technician",
     review_link: config.review_url || "",
     receipt_amount: money((ref.metadata?.amount_cents || 0) / 100),
+    coupon_code: coupon?.code || "",
+    coupon_amount: money((coupon?.amount_cents || 0) / 100),
+    coupon_expires: coupon?.expires_at
+      ? new Date(coupon.expires_at).toLocaleDateString("en-US", {
+          timeZone: config.timezone,
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        })
+      : "No expiration",
+    referred_customer_name: referredCustomer?.data?.name || "a neighbor",
   };
   const rules = {
     quote_pending: quote ? !shouldStop("quote", quote.data) : false,
@@ -91,6 +111,10 @@ export async function context(ref: Row) {
       ? (Date.now() - Date.parse(customer.data.lastServiceAt)) /
         (30.4375 * 86400000)
       : null,
+    coupon_unused: coupon
+      ? coupon.status === "active" &&
+        (!coupon.expires_at || Date.parse(coupon.expires_at) > Date.now())
+      : false,
   };
   return {
     customer,
@@ -98,6 +122,7 @@ export async function context(ref: Row) {
     quote,
     invoice,
     job,
+    coupon,
     prefs,
     config,
     fields,
@@ -171,6 +196,7 @@ export async function queueMessage(
     quote_id: ref.quote_id || null,
     invoice_id: ref.invoice_id || null,
     job_id: ref.job_id || null,
+    coupon_id: ref.coupon_id || null,
     channel,
     category: template.category,
     recipient,
@@ -197,6 +223,7 @@ export async function queueMessage(
       quote_id: ref.quote_id || null,
       invoice_id: ref.invoice_id || null,
       job_id: ref.job_id || null,
+      coupon_id: ref.coupon_id || null,
       channel,
       status: message.status,
     },
@@ -250,16 +277,34 @@ const escapeHtml = (s: string) =>
   );
 export function html(body: string, name: string) {
   const content = escapeHtml(body)
-    .replace(
-      /https:\/\/[^\s<]+/g,
-      (match) => {
-        const trailing = match.match(/[.,!?;:]+$/)?.[0] || "";
-        const url = trailing ? match.slice(0, -trailing.length) : match;
-        return `<a href="${url}" style="color:#0369a1">${url}</a>${trailing}`;
-      },
-    )
+    .replace(/https:\/\/[^\s<]+/g, (match) => {
+      const trailing = match.match(/[.,!?;:]+$/)?.[0] || "";
+      const url = trailing ? match.slice(0, -trailing.length) : match;
+      return `<a href="${url}" style="color:#0369a1">${url}</a>${trailing}`;
+    })
     .replace(/\n/g, "<br>");
   return `<div style="font-family:Arial,sans-serif;background:#f0f9ff;padding:24px"><div style="max-width:600px;margin:auto;background:white;padding:28px;border-radius:12px"><h2 style="color:#075985">${escapeHtml(name)}</h2><div style="font-size:16px;line-height:1.6">${content}</div><hr><p style="color:#64748b">Air King Mechanical Services LLC · Lathrop, Missouri</p></div></div>`;
+}
+function couponHtml(body: string, name: string, values: Row) {
+  const intro = escapeHtml(body.split("REFERRAL REWARD")[0].trim()).replace(
+    /\n/g,
+    "<br>",
+  );
+  return `<div style="font-family:Arial,sans-serif;background:#f0f9ff;padding:24px">
+    <div style="max-width:600px;margin:auto;background:#fff;padding:28px;border-radius:14px">
+      <h2 style="color:#075985;margin-top:0">${escapeHtml(name)}</h2>
+      <p style="font-size:16px;line-height:1.6">${intro}</p>
+      <div style="margin:24px 0;border:2px dashed #d4a53a;border-radius:14px;padding:26px;text-align:center;background:#fffbeb">
+        <div style="color:#92400e;font-size:13px;font-weight:700;letter-spacing:2px">REFERRAL REWARD</div>
+        <div style="color:#075985;font-size:40px;font-weight:800;margin:8px 0">${escapeHtml(values.coupon_amount || "$25")} OFF</div>
+        <div style="font-size:17px;font-weight:700">YOUR NEXT SERVICE</div>
+        <div style="margin-top:18px;font-family:monospace;font-size:20px;background:#fff;padding:10px;border-radius:8px">Code: ${escapeHtml(values.coupon_code || "")}</div>
+        <div style="margin-top:10px;color:#64748b">Expires ${escapeHtml(values.coupon_expires || "")}</div>
+      </div>
+      <p style="font-size:14px;line-height:1.6;color:#475569">Mention this code when scheduling. One-time use; cannot be combined with another offer.</p>
+      <hr style="border:0;border-top:1px solid #e2e8f0"><p style="color:#64748b">Air King Mechanical Services LLC · Lathrop, Missouri</p>
+    </div>
+  </div>`;
 }
 async function stopReason(msg: Row, ctx: Awaited<ReturnType<typeof context>>) {
   if (!allowed(ctx, msg.channel, msg.category))
@@ -434,7 +479,10 @@ export async function deliver(
           to: msg.recipient,
           subject: msg.subject || "Air King Mechanical Services",
           text: msg.body,
-          html: html(msg.body, ctx.config.sender_name),
+          html:
+            msg.reason === "referral_coupon"
+              ? couponHtml(msg.body, ctx.config.sender_name, latestValues)
+              : html(msg.body, ctx.config.sender_name),
         },
         { idempotencyKey: msg.id },
       );

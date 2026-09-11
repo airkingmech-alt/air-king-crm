@@ -68,6 +68,12 @@ before(async () => {
       "utf8",
     ),
   );
+  await pg.exec(
+    await readFile(
+      "supabase/migrations/20260911183000_referral_coupons.sql",
+      "utf8",
+    ),
+  );
 });
 after(() => pg.close());
 test("staff database reads cannot expose another company's settings", async () => {
@@ -120,6 +126,43 @@ test("anonymous database access to customer communications and payments is denie
       await pg.exec("rollback");
     }
   }
+});
+test("completed referrals create one unique $25 coupon", async () => {
+  await sql(
+    "insert into customers(id,company_id,data) values('referred-test',$1,$2)",
+    [company, { name: "Referred Customer", leadStatus: "Won" }],
+  );
+  await sql(
+    "insert into work_orders(id,company_id,customer_id,data) values('job-referral',$1,'referred-test',$2)",
+    [company, { status: "Completed", description: "Installed system" }],
+  );
+  const reward = await sql(
+    "select * from crm_issue_referral($1,'customer-test','referred-test','job-referral',null,now()+interval '1 year','Neighbor referral')",
+    [company],
+  );
+  assert.equal(Number(reward[0].amount_cents), 2500);
+  assert.equal(reward[0].status, "active");
+  assert.match(reward[0].code, /^AK25-[A-F0-9]{8}$/);
+  await assert.rejects(
+    sql(
+      "select * from crm_issue_referral($1,'customer-test','referred-test','job-referral',null,now()+interval '1 year','Duplicate')",
+      [company],
+    ),
+    /already exists/i,
+  );
+});
+test("referral coupons require a completed job for the referred customer", async () => {
+  await sql(
+    "insert into work_orders(id,company_id,customer_id,data) values('job-open',$1,'referred-test',$2)",
+    [company, { status: "Scheduled" }],
+  );
+  await assert.rejects(
+    sql(
+      "select * from crm_issue_referral($1,'customer-test','referred-test','job-open',null,now()+interval '1 year','')",
+      [company],
+    ),
+    /completed job/i,
+  );
 });
 test("all 14 starter automations install disabled and repeated setup creates no duplicates", async () => {
   const definitions = starters.map(

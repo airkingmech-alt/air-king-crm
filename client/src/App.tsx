@@ -1,5 +1,5 @@
-import CustomerDocument, {Unsubscribe} from "@/pages/customer-document";
-import {Automations,Templates,Integrations} from "@/pages/communications";
+import CustomerDocument, { Unsubscribe } from "@/pages/customer-document";
+import { Automations, Templates, Integrations } from "@/pages/communications";
 import { Switch, Route, Router } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { queryClient } from "./lib/queryClient";
@@ -21,6 +21,7 @@ import CrownCare from "@/pages/crown-care";
 import Invoices from "@/pages/invoices";
 import InvoiceView from "@/pages/invoice-view";
 import Users from "@/pages/users";
+import Referrals from "@/pages/referrals";
 import NotFound from "@/pages/not-found";
 
 function InternalRouter() {
@@ -35,6 +36,7 @@ function InternalRouter() {
         <Route path="/schedule" component={Schedule} />
         <Route path="/crown-care" component={CrownCare} />
         <Route path="/invoices" component={Invoices} />
+        <Route path="/referrals" component={Referrals} />
         <Route path="/automations" component={Automations} />
         <Route path="/templates" component={Templates} />
         <Route path="/integrations" component={Integrations} />
@@ -65,7 +67,15 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          <Router hook={useHashLocation}><Switch><Route path="/customer/:token" component={CustomerDocument}/><Route path="/unsubscribe/:token" component={Unsubscribe}/><Route><Gate /></Route></Switch></Router>
+          <Router hook={useHashLocation}>
+            <Switch>
+              <Route path="/customer/:token" component={CustomerDocument} />
+              <Route path="/unsubscribe/:token" component={Unsubscribe} />
+              <Route>
+                <Gate />
+              </Route>
+            </Switch>
+          </Router>
           <Toaster />
         </AuthProvider>
       </TooltipProvider>

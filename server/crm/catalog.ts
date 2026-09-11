@@ -21,6 +21,7 @@ export const triggers = [
   "equipment.replacement_due",
   "campaign.seasonal",
   "payment.received",
+  "coupon.issued",
 ] as const;
 export const conditionFields = [
   "quote_pending",
@@ -33,6 +34,7 @@ export const conditionFields = [
   "job_type",
   "quote_amount",
   "months_since_service",
+  "coupon_unused",
 ] as const;
 export const conditionSchema = z.object({
   field: z.enum(conditionFields),
