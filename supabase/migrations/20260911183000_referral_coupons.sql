@@ -43,12 +43,18 @@ create index referrals_referrer
   on public.referrals(company_id, referring_customer_id, created_at desc);
 create index referrals_referred
   on public.referrals(company_id, referred_customer_id, created_at desc);
+create index referrals_referrer_fk
+  on public.referrals(referring_customer_id);
+create index referrals_referred_fk
+  on public.referrals(referred_customer_id);
 create index referrals_completed_job
   on public.referrals(completed_job_id);
 create index coupons_status
   on public.coupons(company_id, status, expires_at);
 create index coupons_customer
   on public.coupons(company_id, customer_id, created_at desc);
+create index coupons_customer_fk
+  on public.coupons(customer_id);
 create index coupons_used_invoice
   on public.coupons(used_invoice_id);
 
@@ -155,7 +161,7 @@ insert into public.message_templates(
 )
 select
   company_id,
-  'Referral reward â Email',
+  'Referral reward — Email',
   'referral_coupon',
   'Editable $25 referral thank-you coupon',
   'email',
@@ -182,7 +188,7 @@ insert into public.message_templates(
 )
 select
   company_id,
-  'Unused referral coupon reminder â Email',
+  'Unused referral coupon reminder — Email',
   'coupon_reminder',
   'Editable follow-up for an unused referral coupon',
   'email',
