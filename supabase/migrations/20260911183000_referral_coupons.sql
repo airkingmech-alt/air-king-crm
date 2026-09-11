@@ -43,15 +43,23 @@ create index referrals_referrer
   on public.referrals(company_id, referring_customer_id, created_at desc);
 create index referrals_referred
   on public.referrals(company_id, referred_customer_id, created_at desc);
+create index referrals_completed_job
+  on public.referrals(completed_job_id);
 create index coupons_status
   on public.coupons(company_id, status, expires_at);
 create index coupons_customer
   on public.coupons(company_id, customer_id, created_at desc);
+create index coupons_used_invoice
+  on public.coupons(used_invoice_id);
 
 alter table public.communication_events
   add column coupon_id uuid references public.coupons(id);
 alter table public.communications
   add column coupon_id uuid references public.coupons(id);
+create index communication_events_coupon
+  on public.communication_events(coupon_id);
+create index communications_coupon
+  on public.communications(coupon_id);
 
 alter table public.referrals enable row level security;
 alter table public.coupons enable row level security;
@@ -147,7 +155,7 @@ insert into public.message_templates(
 )
 select
   company_id,
-  'Referral reward — Email',
+  'Referral reward â Email',
   'referral_coupon',
   'Editable $25 referral thank-you coupon',
   'email',
@@ -174,7 +182,7 @@ insert into public.message_templates(
 )
 select
   company_id,
-  'Unused referral coupon reminder — Email',
+  'Unused referral coupon reminder â Email',
   'coupon_reminder',
   'Editable follow-up for an unused referral coupon',
   'email',
