@@ -76,6 +76,7 @@ async function processRun(run: Row) {
           quote_id: source.quote_id,
           invoice_id: source.invoice_id,
           job_id: source.job_id,
+          coupon_id: source.coupon_id,
         },
         "automation.activity",
         {

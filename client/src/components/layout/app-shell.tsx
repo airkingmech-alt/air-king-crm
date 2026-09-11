@@ -14,6 +14,7 @@ import {
   Moon,
   LogOut,
   UserCog,
+  Gift,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -27,7 +28,12 @@ const ROLE_LABELS: Record<AppRole, string> = {
   member: "Member",
 };
 
-const navItems: { path: string; label: string; icon: any; ownerOnly?: boolean }[] = [
+const navItems: {
+  path: string;
+  label: string;
+  icon: any;
+  ownerOnly?: boolean;
+}[] = [
   { path: "/", label: "Dashboard", icon: LayoutDashboard },
   { path: "/customers", label: "Customers", icon: Users },
   { path: "/quotes", label: "Quotes", icon: FileText },
@@ -35,6 +41,7 @@ const navItems: { path: string; label: string; icon: any; ownerOnly?: boolean }[
   { path: "/schedule", label: "Schedule", icon: Calendar },
   { path: "/crown-care", label: "Crown Care", icon: Crown },
   { path: "/invoices", label: "Invoices", icon: Receipt },
+  { path: "/referrals", label: "Coupons", icon: Gift },
   { path: "/automations", label: "Automations", icon: Calendar },
   { path: "/templates", label: "Templates", icon: FileText },
   { path: "/integrations", label: "Integrations", icon: UserCog },
@@ -44,20 +51,51 @@ const navItems: { path: string; label: string; icon: any; ownerOnly?: boolean }[
 export function AirKingLogo({ className }: { className?: string }) {
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
-      <svg width="32" height="32" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Air King logo">
+      <svg
+        width="32"
+        height="32"
+        viewBox="0 0 40 40"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-label="Air King logo"
+      >
         {/* Crown */}
-        <path d="M6 16L10 8L14 14L20 6L26 14L30 8L34 16L34 20L6 20L6 16Z" fill="#D4A53A" />
+        <path
+          d="M6 16L10 8L14 14L20 6L26 14L30 8L34 16L34 20L6 20L6 16Z"
+          fill="#D4A53A"
+        />
         <circle cx="10" cy="7" r="2" fill="#D4A53A" />
         <circle cx="20" cy="5" r="2" fill="#D4A53A" />
         <circle cx="30" cy="7" r="2" fill="#D4A53A" />
         {/* Text "AK" */}
-        <text x="20" y="33" textAnchor="middle" fontSize="12" fontWeight="800" fill="#DC2626" fontFamily="system-ui, sans-serif">AK</text>
+        <text
+          x="20"
+          y="33"
+          textAnchor="middle"
+          fontSize="12"
+          fontWeight="800"
+          fill="#DC2626"
+          fontFamily="system-ui, sans-serif"
+        >
+          AK
+        </text>
         {/* Base oval */}
-        <ellipse cx="20" cy="37" rx="12" ry="1.5" fill="#D4A53A" opacity="0.6" />
+        <ellipse
+          cx="20"
+          cy="37"
+          rx="12"
+          ry="1.5"
+          fill="#D4A53A"
+          opacity="0.6"
+        />
       </svg>
       <div className="flex flex-col leading-none">
-        <span className="text-sm font-extrabold tracking-tight text-white">AIR KING</span>
-        <span className="text-[10px] font-medium text-sky-300/80 tracking-wide">MECHANICAL SERVICES</span>
+        <span className="text-sm font-extrabold tracking-tight text-white">
+          AIR KING
+        </span>
+        <span className="text-[10px] font-medium text-sky-300/80 tracking-wide">
+          MECHANICAL SERVICES
+        </span>
       </div>
     </div>
   );
@@ -95,25 +133,27 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         {navItems
           .filter((item) => !item.ownerOnly || profile?.role === "owner")
           .map((item) => {
-          const Icon = item.icon;
-          const active = location === item.path || (item.path !== "/" && location.startsWith(item.path));
-          return (
-            <Link
-              key={item.path}
-              href={item.path}
-              onClick={onNavigate}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                active
-                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                  : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-              )}
-            >
-              <Icon size={18} strokeWidth={2} />
-              {item.label}
-            </Link>
-          );
-        })}
+            const Icon = item.icon;
+            const active =
+              location === item.path ||
+              (item.path !== "/" && location.startsWith(item.path));
+            return (
+              <Link
+                key={item.path}
+                href={item.path}
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                  active
+                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                    : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent",
+                )}
+              >
+                <Icon size={18} strokeWidth={2} />
+                {item.label}
+              </Link>
+            );
+          })}
       </nav>
 
       <div className="px-3 py-4 border-t border-sidebar-border">
@@ -159,7 +199,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile sidebar */}
       {mobileNavOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setMobileNavOpen(false)} />
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setMobileNavOpen(false)}
+          />
           <div className="absolute left-0 top-0 h-full">
             <Sidebar onNavigate={() => setMobileNavOpen(false)} />
           </div>
@@ -179,7 +222,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
           <div className="flex-1 lg:flex hidden">
             <p className="text-sm text-muted-foreground">
-              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+              {new Date().toLocaleDateString("en-US", {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              })}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -206,9 +253,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto">
-          {children}
-        </main>
+        <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
     </div>
   );
