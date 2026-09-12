@@ -547,7 +547,10 @@ export function registerCrm(app: Express) {
         .object({
           referring_customer_id: z.string().min(1).max(100),
           referred_customer_id: z.string().min(1).max(100),
-          completed_job_id: z.string().min(1).max(100),
+          completed_job_id: z
+            .union([z.string().min(1).max(100), z.null()])
+            .optional()
+            .default(null),
           expires_at: z.iso.datetime(),
           notes: z.string().max(1000).default(""),
         })
@@ -568,7 +571,7 @@ export function registerCrm(app: Express) {
         {
           company_id: c.company,
           customer_id: row.customer_id,
-          job_id: input.completed_job_id,
+          job_id: input.completed_job_id || null,
           coupon_id: row.id,
           actor_id: c.id,
         },

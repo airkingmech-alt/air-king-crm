@@ -53,7 +53,7 @@ type Referral = {
   id: string;
   referring_customer_id: string;
   referred_customer_id: string;
-  completed_job_id: string;
+  completed_job_id?: string;
   notes: string;
   created_at: string;
 };
@@ -121,7 +121,7 @@ export default function Referrals() {
       crm("crm/referrals", "POST", {
         referring_customer_id: referrer,
         referred_customer_id: referred,
-        completed_job_id: job,
+        completed_job_id: job || null,
         expires_at: new Date(expires + "T23:59:59-05:00").toISOString(),
         notes,
       }),
@@ -415,18 +415,23 @@ export default function Referrals() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Completed job</Label>
-              <Select value={job} onValueChange={setJob} disabled={!referred}>
+              <Label>Completed job (optional)</Label>
+              <Select
+                value={job || "none"}
+                onValueChange={(value) => setJob(value === "none" ? "" : value)}
+                disabled={!referred}
+              >
                 <SelectTrigger>
                   <SelectValue
                     placeholder={
                       referred
-                        ? "Select completed job"
+                        ? "No completed job selected"
                         : "Choose referred customer first"
                     }
                   />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">No completed job</SelectItem>
                   {completedJobs.map((item) => (
                     <SelectItem key={item.id} value={item.id}>
                       {item.id} — {item.description || item.type}
@@ -434,11 +439,10 @@ export default function Referrals() {
                   ))}
                 </SelectContent>
               </Select>
-              {referred && completedJobs.length === 0 && (
-                <p className="text-xs text-amber-700">
-                  This customer does not have a completed job yet.
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground">
+                Optional. Select one only when you want the reward connected to
+                a specific completed job.
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Coupon expiration</Label>
@@ -463,9 +467,7 @@ export default function Referrals() {
               Cancel
             </Button>
             <Button
-              disabled={
-                !referrer || !referred || !job || !expires || create.isPending
-              }
+              disabled={!referrer || !referred || !expires || create.isPending}
               onClick={() => create.mutate()}
             >
               <Plus size={14} className="mr-1.5" /> Create Coupon
