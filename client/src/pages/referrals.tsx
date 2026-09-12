@@ -322,7 +322,7 @@ export default function Referrals() {
                             disabled={act.isPending}
                             onClick={() =>
                               act.mutate({
-                                path: `crm/coupons/${coupon.id}/send`,
+                                path: `crm/coupons/${coupon.id}/email`,
                               })
                             }
                           >
