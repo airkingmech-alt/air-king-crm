@@ -74,6 +74,12 @@ before(async () => {
       "utf8",
     ),
   );
+  await pg.exec(
+    await readFile(
+      "supabase/migrations/20260912022517_optional_referral_job.sql",
+      "utf8",
+    ),
+  );
 });
 after(() => pg.close());
 test("staff database reads cannot expose another company's settings", async () => {
@@ -162,6 +168,25 @@ test("referral coupons require a completed job for the referred customer", async
       [company],
     ),
     /completed job/i,
+  );
+});
+test("referral coupons can be created without selecting a completed job", async () => {
+  await sql(
+    "insert into customers(id,company_id,data) values('manual-referral',$1,$2)",
+    [company, { name: "Manual Referral", leadStatus: "New" }],
+  );
+  const reward = await sql(
+    "select * from crm_issue_referral($1,'customer-test','manual-referral',null,null,now()+interval '1 year','Verbal referral')",
+    [company],
+  );
+  assert.equal(Number(reward[0].amount_cents), 2500);
+  assert.equal(reward[0].status, "active");
+  await assert.rejects(
+    sql(
+      "select * from crm_issue_referral($1,'customer-test','manual-referral',null,null,now()+interval '1 year','Duplicate')",
+      [company],
+    ),
+    /already exists/i,
   );
 });
 test("all 14 starter automations install disabled and repeated setup creates no duplicates", async () => {
