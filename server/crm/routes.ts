@@ -583,7 +583,10 @@ export function registerCrm(app: Express) {
     }),
   );
   app.post(
-    "/api/crm/coupons/:id/send",
+    // Keep this distinct from /api/crm/:kind/:id/send. Express matches routes
+    // in registration order, so a coupon /send request was being treated as a
+    // quote/invoice delivery before it could reach this handler.
+    "/api/crm/coupons/:id/email",
     wrap(async (req, res) => {
       const c = await caller(req);
       const coupon = await entity("coupons", String(req.params.id), c.company);
