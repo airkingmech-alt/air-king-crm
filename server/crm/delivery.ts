@@ -1,5 +1,7 @@
 import twilio from "twilio";
 import { Resend } from "resend";
+import { MARKETING_RELEASE_READY } from "./marketing-readiness";
+import { marketingStopReason } from "./marketing-guard";
 import {
   db,
   result,
@@ -171,6 +173,8 @@ export async function queueMessage(
   try {
     recipient =
       channel === "email" ? email(ctx.contact.email) : phone(ctx.contact.phone);
+    if (ref.campaign_id && ref.expected_recipient !== (channel === "email" ? recipient.toLowerCase() : recipient))
+      throw new Error("Customer contact changed since the campaign was reviewed.");
     if (!allowed(ctx, channel, template.category))
       throw new Error(
         "Customer communication preferences do not allow this message.",
@@ -187,9 +191,10 @@ export async function queueMessage(
   let body = merge(template.body, values);
   if (template.category === "marketing")
     body += `\n\nUnsubscribe: ${values.unsubscribe_link}`;
+  if (ref.campaign_id && channel === "email") body += `\n${process.env.MARKETING_POSTAL_ADDRESS || ""}`;
   if (channel === "sms") body += "\nReply STOP to stop texts.";
   const message = {
-    template_snapshot: { body: template.body, subject: template.subject },
+    template_snapshot: { body: template.body, subject: template.subject, ...(ref.campaign_id ? {campaign_step_id:ref.campaign_step_id} : {}) },
     merge_values: values,
     company_id: ref.company_id,
     customer_id: ref.customer_id,
@@ -197,6 +202,7 @@ export async function queueMessage(
     invoice_id: ref.invoice_id || null,
     job_id: ref.job_id || null,
     coupon_id: ref.coupon_id || null,
+    ...(ref.campaign_id ? { campaign_id: ref.campaign_id, campaign_run_id: ref.campaign_run_id } : {}),
     channel,
     category: template.category,
     recipient,
@@ -209,6 +215,7 @@ export async function queueMessage(
     actor_id: actor || null,
     status: error ? "failed" : "pending",
     error: error || null,
+    ...(ref.scheduled_at ? {scheduled_at:ref.scheduled_at} : {}),
   };
   const created = await result(
     db()
@@ -224,6 +231,7 @@ export async function queueMessage(
       invoice_id: ref.invoice_id || null,
       job_id: ref.job_id || null,
       coupon_id: ref.coupon_id || null,
+      ...(ref.campaign_id ? { campaign_id: ref.campaign_id, campaign_run_id: ref.campaign_run_id } : {}),
       channel,
       status: message.status,
     },
@@ -309,6 +317,50 @@ function couponHtml(body: string, name: string, values: Row) {
 async function stopReason(msg: Row, ctx: Awaited<ReturnType<typeof context>>) {
   if (!allowed(ctx, msg.channel, msg.category))
     return "Customer opted out or consent is missing.";
+  if (msg.campaign_id) {
+    const guard = await marketingStopReason(msg,ctx.customer);
+    if (guard) return guard;
+    const campaign = await entity(
+      "marketing_campaigns",
+      msg.campaign_id,
+      msg.company_id,
+    );
+    if (
+      !campaign.enabled ||
+      ["paused", "stopped", "archived", "failed"].includes(campaign.status)
+    )
+      return "Campaign is paused or turned off.";
+    const days = Number(campaign.settings?.frequency_days || 7);
+    const maximum = Number(campaign.settings?.max_contacts || 2);
+    const recent: Row[] = await result(
+      db()
+        .from("communications")
+        .select("id")
+        .eq("company_id", msg.company_id)
+        .eq("customer_id", msg.customer_id)
+        .eq("category", "marketing")
+        .in("status", ["sent", "delivered", "unknown"])
+        .neq("id", msg.id)
+        .gte("claimed_at", new Date(Date.now() - days * 86400000).toISOString()),
+    );
+    if (recent.length >= maximum)
+      return "Customer reached the marketing frequency limit.";
+    if (campaign.settings?.stop_on_booking) {
+      const upcoming: Row[] = await result(
+        db()
+          .from("work_orders")
+          .select("id,data")
+          .eq("company_id", msg.company_id)
+          .eq("customer_id", msg.customer_id),
+      );
+      if (
+        upcoming.some((x) =>
+          ["Scheduled", "Dispatched", "In Progress"].includes(x.data?.status),
+        )
+      )
+        return "Customer already has an upcoming job.";
+    }
+  }
   if (msg.automation_run_id) {
     const run = await entity(
       "automation_runs",
@@ -345,6 +397,12 @@ export async function deliver(
   msg: Row,
   transport?: (message: Row) => Promise<string>,
 ) {
+  // Preview and paused campaigns preserve queued work without contacting providers.
+  if (msg.campaign_id) {
+    if (!MARKETING_RELEASE_READY) return;
+    const campaign = await entity("marketing_campaigns", msg.campaign_id, msg.company_id);
+    if (campaign.status === "paused") return;
+  }
   let ctx;
   try {
     ctx = await context(msg);
@@ -411,6 +469,10 @@ export async function deliver(
     // Re-read after claiming; acceptance, payment, toggles and opt-outs win over queued messages.
     ctx = await context(msg);
     const finalStop = await stopReason(msg, ctx);
+    if (msg.campaign_id && (await entity("marketing_campaigns",msg.campaign_id,msg.company_id)).status === "paused") {
+      await result(db().from("communications").update({status:"pending",claim_token:null,claimed_at:null}).eq("id",msg.id).eq("claim_token",msg.claim_token));
+      return;
+    }
     if (finalStop || !ctx.config.sending_enabled) {
       await result(
         db()
@@ -438,6 +500,7 @@ export async function deliver(
       msg.subject = merge(msg.template_snapshot.subject || "", latestValues);
       if (msg.category === "marketing")
         msg.body += "\n\nUnsubscribe: " + latestValues.unsubscribe_link;
+      if (msg.campaign_id && msg.channel === "email") msg.body += `\n${process.env.MARKETING_POSTAL_ADDRESS || ""}`;
       if (msg.channel === "sms") msg.body += "\nReply STOP to stop texts.";
       await result(
         db()

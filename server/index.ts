@@ -2,6 +2,7 @@ import "dotenv/config";
 import express, { Response, NextFunction } from 'express';
 import type { Request } from 'express';
 import { registerCrm } from "./crm/routes";
+import { registerMarketing } from "./crm/marketing";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "node:http";
@@ -56,6 +57,7 @@ app.use((req, res, next) => {
 
 (async () => {
   registerCrm(app);
+  registerMarketing(app);
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
