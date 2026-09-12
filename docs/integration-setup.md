@@ -26,6 +26,8 @@ Add these in the existing Render service's Environment screen:
 | `RESEND_WEBHOOK_SECRET` | Email callback signature verification |
 | `COMMUNICATION_SIGNING_SECRET` | Random 32-byte or longer secret for unsubscribe capabilities; keep stable |
 | `CRM_WORKER_SECRET` | Separate random 32-byte or longer secret for scheduled worker calls |
+| `MARKETING_POSTAL_ADDRESS` | Air King's valid physical mailing address shown in promotional email |
+| `MARKETING_SENDING_ENABLED` | Independent marketing kill switch; set to `true` only after controlled testing |
 
 Do not paste credentials into chat or put them in frontend variables. The Integrations screen shows “Configured” when credentials are present, not an independently verified provider account.
 
@@ -56,9 +58,15 @@ The free Render web service is NOT itself a reliable scheduler. Invoke `POST /ap
 
 The worker processes persistent runs, messages, callbacks and date triggers. It claims work atomically, rechecks state/consent, and preserves messages outside allowed SMS hours. Ambiguous provider outcomes are marked Unknown for review, not automatically resent. Definitive rate limits have bounded retries. Turning off an automation stops its queued follow-up messages; old stopped runs do not automatically resume when re-enabled.
 
+## Marketing launch
+
+Marketing drafts, reusable audiences, editable email/text content, one-time sends, scheduled sends, multi-step sequences, recurring campaigns, pause/resume, consent history, delivery history, frequency limits, booking stops, and duplicate protection use the same audited communication outbox. Launch freezes the audience and message versions; dynamic recurring audiences are recalculated for the next run. Staff must preview the eligible count and type the campaign name to confirm.
+
+Keep `MARKETING_SENDING_ENABLED` unset or `false` during review. Before setting it to `true`, enter the physical address, confirm Resend, webhook, and worker readiness, review customer marketing permissions, and send only to a controlled internal audience first. Twilio remains optional for email-only campaigns.
+
 ## Dates and starter workflows
 
-Use Automations → Add Starter Automations once. The 14 starters are editable and all are disabled initially. Existing past events are not retroactively enrolled. Dates currently use the existing scheduledDate/scheduledTime (or scheduledAt), lastServiceAt, and equipment maintenanceDueAt/replacementFollowUpAt data fields. Appointment reminders emit at 24 and 2 hours before a scheduled job. Custom equipment date editing, configurable inactivity thresholds, and a campaign audience builder still need dedicated UI work.
+Use Automations → Add Starter Automations once. The 14 starters are editable and all are disabled initially. Existing past events are not retroactively enrolled. Dates currently use the existing scheduledDate/scheduledTime (or scheduledAt), lastServiceAt, and equipment maintenanceDueAt/replacementFollowUpAt data fields. Appointment reminders emit at 24 and 2 hours before a scheduled job. Custom equipment date editing and more advanced configurable service-date rules remain future improvements.
 
 ## Testing and release gates
 

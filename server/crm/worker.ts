@@ -11,6 +11,7 @@ import {
 } from "./core";
 import { context, queueMessage, deliver } from "./delivery";
 import { bodies } from "./catalog";
+import { processMarketingRuns } from "./marketing";
 
 async function processRun(run: Row) {
   const save = (data: Row) =>
@@ -301,6 +302,7 @@ export async function tick() {
   await processCallbacks();
   await scanDates();
   await queueReceipts();
+  const marketing = await processMarketingRuns();
   const runs: Row[] = await result(db().rpc("crm_claim_runs"));
   for (const run of runs) await processRun(run);
   const messages: Row[] = await result(
@@ -319,7 +321,7 @@ export async function tick() {
       console.error("Communication processing failed", message.id, e.message);
     }
   }
-  return { checked: messages.length, runs: runs.length };
+  return { checked: messages.length, runs: runs.length, marketing_runs: marketing.runs };
 }
 
 export function localAppointment(

@@ -113,6 +113,8 @@ export function registerCrm(app: Express) {
           email_webhook: !!process.env.RESEND_WEBHOOK_SECRET,
           worker: !!process.env.CRM_WORKER_SECRET,
           unsubscribe: !!process.env.COMMUNICATION_SIGNING_SECRET,
+          marketing: process.env.MARKETING_SENDING_ENABLED === "true",
+          marketing_address: !!process.env.MARKETING_POSTAL_ADDRESS,
           surcharge_available: false,
         },
       });
