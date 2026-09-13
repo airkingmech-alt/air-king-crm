@@ -176,6 +176,7 @@ export function publicFields(kind: string, data: Row): Row {
       paidAmount: data.paidAmount,
       status: data.status,
       dueDate: data.dueDate,
+      sentDate: data.sentDate,
       items: (data.items || []).map((x: Row) => ({
         description: x.description,
         amount: x.amount,
