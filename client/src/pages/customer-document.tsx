@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { BrandedInvoice } from "@/components/branded-invoice";
 import {
   Check,
   Crown,
@@ -117,43 +118,42 @@ export default function CustomerDocument() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-50 to-background">
       <div className="max-w-3xl mx-auto p-4 sm:p-8 space-y-6">
-        <header className="flex gap-3 items-center">
-          <div className="p-3 rounded-xl bg-sky-700 text-white">
-            <Wind />
-          </div>
-          <div>
-            <p className="font-bold">{data.company}</p>
-            <p className="text-sm text-muted-foreground">
-              Lathrop, Missouri · Licensed and insured
-            </p>
-          </div>
-        </header>
-        <Card>
-          <CardContent className="p-6 sm:p-8 space-y-6">
-            <div className="flex justify-between gap-3">
-              <div>
-                <p className="text-sm uppercase text-muted-foreground">
-                  {data.kind} {d.number}
-                </p>
-                <h1 className="text-2xl font-bold">
-                  {data.kind === "quote" ? d.title : "Your invoice"}
-                </h1>
-                <p className="text-muted-foreground">
-                  Prepared for {d.customerName}
-                </p>
-              </div>
-              <span className="text-sm font-medium">
-                {(
-                  {
-                    Won: "Accepted",
-                    Lost: "Declined",
-                    Partial: "Partially Paid",
-                  } as Record<string, string>
-                )[d.status] || d.status}
-              </span>
+        {data.kind === "quote" && (
+          <header className="flex gap-3 items-center">
+            <div className="p-3 rounded-xl bg-sky-700 text-white">
+              <Wind />
             </div>
+            <div>
+              <p className="font-bold">{data.company}</p>
+              <p className="text-sm text-muted-foreground">
+                Lathrop, Missouri · Licensed and insured
+              </p>
+            </div>
+          </header>
+        )}
+        <Card className={data.kind === "invoice" ? "overflow-hidden border-0 shadow-xl" : ""}>
+          <CardContent className={data.kind === "invoice" ? "p-0" : "p-6 sm:p-8 space-y-6"}>
             {data.kind === "quote" ? (
               <>
+                <div className="flex justify-between gap-3">
+                  <div>
+                    <p className="text-sm uppercase text-muted-foreground">
+                      {data.kind} {d.number}
+                    </p>
+                    <h1 className="text-2xl font-bold">{d.title}</h1>
+                    <p className="text-muted-foreground">
+                      Prepared for {d.customerName}
+                    </p>
+                  </div>
+                  <span className="text-sm font-medium">
+                    {(
+                      {
+                        Won: "Accepted",
+                        Lost: "Declined",
+                      } as Record<string, string>
+                    )[d.status] || d.status}
+                  </span>
+                </div>
                 <section>
                   <h2 className="font-semibold mb-2">Scope of work</h2>
                   <p className="whitespace-pre-wrap text-sm">{d.scope}</p>
@@ -401,34 +401,18 @@ export default function CustomerDocument() {
                 </section>
               </>
             ) : (
-              <>
-                <div className="divide-y">
-                  {d.items.map((x: any, i: number) => (
-                    <div key={i} className="flex justify-between py-3 gap-4">
-                      <span>{x.description}</span>
-                      <span>{money(x.amount)}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="border-t pt-4 space-y-2">
-                  <div className="flex justify-between">
-                    <span>Invoice total</span>
-                    <strong>{money(d.amount)}</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Paid</span>
-                    <span>{money(d.paidAmount)}</span>
-                  </div>
-                  <div className="flex justify-between text-xl">
-                    <strong>Remaining balance</strong>
-                    <strong>{money(due)}</strong>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Due {d.dueDate}
-                  </p>
-                </div>
+              <BrandedInvoice
+                invoiceNumber={d.number}
+                customerName={d.customerName}
+                status={d.status}
+                dueDate={d.dueDate}
+                sentDate={d.sentDate}
+                items={d.items}
+                amount={d.amount}
+                paidAmount={d.paidAmount}
+              >
                 {due > 0 && d.status !== "Void" && (
-                  <div className="space-y-3">
+                  <section className="space-y-3 rounded-xl border bg-muted/30 p-4 sm:p-5">
                     <Label htmlFor="pay-amount">
                       Pay in full or enter a partial payment
                     </Label>
@@ -440,7 +424,7 @@ export default function CustomerDocument() {
                       onChange={(e) => setAmount(e.target.value)}
                     />
                     <Button
-                      className="w-full text-lg py-6"
+                      className="w-full bg-[#b7192f] py-6 text-lg text-white hover:bg-[#951326]"
                       disabled={busy || !data.payments_enabled}
                       onClick={() => act()}
                     >
@@ -451,41 +435,47 @@ export default function CustomerDocument() {
                         ? "Secure card payment through Stripe. The invoice updates after your payment is confirmed."
                         : "Online payments are not enabled yet. Please contact Air King to arrange payment."}
                     </p>
-                  </div>
+                  </section>
                 )}
-                <section className="space-y-2">
-                  <h2 className="font-semibold">Payment history</h2>
-                  {data.payments.map((p: any, i: number) => (
-                    <div key={i} className="flex justify-between text-sm">
-                      <span>
-                        {p.source === "opening_balance"
-                          ? "Earlier payments"
-                          : p.method}{" "}
-                        ·{" "}
-                        {p.paid_at
-                          ? new Date(p.paid_at).toLocaleDateString()
-                          : ""}
-                      </span>
-                      <span>
-                        {money(p.amount_cents / 100)}{" "}
-                        {p.receipt_url && (
-                          <a
-                            className="text-sky-700 underline"
-                            href={p.receipt_url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Receipt
-                          </a>
-                        )}
-                      </span>
-                    </div>
-                  ))}
-                </section>
-              </>
+
+                {data.payments.length > 0 && (
+                  <section className="mt-5 space-y-2">
+                    <h2 className="font-semibold">Payment history</h2>
+                    {data.payments.map((payment: any, index: number) => (
+                      <div key={index} className="flex justify-between gap-4 text-sm">
+                        <span>
+                          {payment.source === "opening_balance"
+                            ? "Earlier payments"
+                            : payment.method}{" "}
+                          ·{" "}
+                          {payment.paid_at
+                            ? new Date(payment.paid_at).toLocaleDateString()
+                            : ""}
+                        </span>
+                        <span className="whitespace-nowrap">
+                          {money(payment.amount_cents / 100)}{" "}
+                          {payment.receipt_url && (
+                            <a
+                              className="text-sky-700 underline"
+                              href={payment.receipt_url}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Receipt
+                            </a>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </section>
+                )}
+              </BrandedInvoice>
             )}
             {notice && (
-              <p className="rounded-lg bg-sky-50 p-4 text-sm" role="status">
+              <p
+                className={`rounded-lg bg-sky-50 p-4 text-sm ${data.kind === "invoice" ? "mx-6 mb-6 sm:mx-8" : ""}`}
+                role="status"
+              >
                 {notice}
               </p>
             )}
