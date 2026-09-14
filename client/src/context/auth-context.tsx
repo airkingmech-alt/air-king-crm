@@ -16,6 +16,7 @@ export interface Profile {
   company_id: string;
   role: AppRole;
   full_name: string | null;
+  permissions: Record<string, boolean>;
 }
 
 interface AuthState {
@@ -37,7 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadProfile = useCallback(async (userId: string) => {
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, company_id, role, full_name")
+      .select("id, company_id, role, full_name, permissions")
       .eq("id", userId)
       .maybeSingle();
     if (error) {
