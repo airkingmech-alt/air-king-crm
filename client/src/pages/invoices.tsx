@@ -37,6 +37,7 @@ import { useData } from "@/context/data-context";
 import { fmtCurrency, type InvoiceStatus } from "@/data/mock-data";
 import { CustomerCombobox } from "@/components/customer-combobox";
 import { pricebook } from "@/data/pricebook";
+import { crm } from "@/lib/crm-api";
 
 const statusConfig: Record<InvoiceStatus, { color: string; badge: string }> = {
   Void: {
@@ -78,6 +79,8 @@ export default function Invoices() {
   );
   const [sendTarget, setSendTarget] = useState({ email: "", phone: "" });
   const [invoiceEquipment, setInvoiceEquipment] = useState<string[]>([]);
+  const [lineItems, setLineItems] = useState([{ description: "", quantity: "1", unitPrice: "" }]);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     customer: "",
     description: "",
@@ -103,46 +106,48 @@ export default function Invoices() {
     (inv) => inv.status === "Overdue",
   ).length;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent, sendNow = false) => {
     e.preventDefault();
     if (!form.customer) {
-      toast({
-        title: "Select a customer",
-        description: "Please choose a customer for this invoice.",
-        variant: "destructive",
-      });
+      toast({ title: "Select a customer", description: "Please choose a customer for this invoice.", variant: "destructive" });
       return;
     }
-    if (!form.amount || parseFloat(form.amount) <= 0) {
-      toast({
-        title: "Invalid amount",
-        description: "Please enter a valid invoice amount.",
-        variant: "destructive",
-      });
+    const cleanItems = lineItems
+      .filter((item) => item.description.trim() && Number(item.quantity) > 0)
+      .map((item) => ({ description: item.description.trim(), amount: Number(item.quantity) * Number(item.unitPrice || 0) }));
+    const amount = cleanItems.reduce((sum, item) => sum + item.amount, 0);
+    if (!cleanItems.length || amount <= 0) {
+      toast({ title: "Add an invoice item", description: "Each invoice needs a description, quantity, and price.", variant: "destructive" });
       return;
     }
-    const custName =
-      customers.find((c) => c.id === form.customer)?.name || "Customer";
-    createInvoice({
-      customerId: form.customer,
-      customerName: custName,
-      amount: parseFloat(form.amount),
-      description: form.description || "Service",
-      dueDate: form.dueDate,
-      equipmentItems: invoiceEquipment,
-    });
-    toast({
-      title: "Invoice created",
-      description: `Invoice for ${custName} — ${fmtCurrency(parseFloat(form.amount))} — due ${form.dueDate}.`,
-    });
-    setShowCreateDialog(false);
-    setForm({
-      customer: "",
-      description: "",
-      amount: "",
-      dueDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
-    });
-    setInvoiceEquipment([]);
+    setSaving(true);
+    try {
+      const custName = customers.find((customer) => customer.id === form.customer)?.name || "Customer";
+      const invoice = createInvoice({
+        customerId: form.customer,
+        customerName: custName,
+        amount,
+        description: cleanItems[0].description,
+        items: cleanItems,
+        dueDate: form.dueDate,
+        equipmentItems: invoiceEquipment,
+      });
+      if (sendNow) {
+        await crm(`crm/invoice/${invoice.id}/send`, "POST", { channels: ["email"] }, crypto.randomUUID());
+      }
+      toast({
+        title: sendNow ? "Invoice saved and queued for email" : "Invoice saved as draft",
+        description: `${custName} — ${fmtCurrency(amount)}`,
+      });
+      setShowCreateDialog(false);
+      setForm({ customer: "", description: "", amount: "", dueDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10) });
+      setLineItems([{ description: "", quantity: "1", unitPrice: "" }]);
+      setInvoiceEquipment([]);
+    } catch (error: any) {
+      toast({ title: sendNow ? "Invoice saved, but could not send" : "Could not save invoice", description: error.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -347,11 +352,11 @@ export default function Invoices() {
 
       {/* Create Invoice Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-[480px]">
+        <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create New Invoice</DialogTitle>
             <DialogDescription>
-              Generate an invoice for a customer. It will be saved as a draft.
+              Build an itemized invoice, then save it as a draft or email it immediately.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -364,50 +369,18 @@ export default function Invoices() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="inv-desc">Description</Label>
-              <Input
-                id="inv-desc"
-                placeholder="e.g. AC repair — recharge refrigerant"
-                value={form.description}
-                onChange={(e) =>
-                  setForm({ ...form, description: e.target.value })
-                }
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+              <div className="flex items-center justify-between"><Label>Invoice items *</Label><Button type="button" size="sm" variant="outline" onClick={() => setLineItems([...lineItems,{description:"",quantity:"1",unitPrice:""}])}><Plus size={14} className="mr-1"/>Add line</Button></div>
               <div className="space-y-2">
-                <Label htmlFor="inv-amount">Amount *</Label>
-                <div className="relative">
-                  <DollarSign
-                    size={16}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  />
-                  <Input
-                    id="inv-amount"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={form.amount}
-                    onChange={(e) =>
-                      setForm({ ...form, amount: e.target.value })
-                    }
-                    className="pl-9"
-                    data-testid="input-invoice-amount"
-                  />
-                </div>
+                {lineItems.map((item,index)=><div key={index} className="grid grid-cols-[1fr_76px_110px_36px] gap-2 items-end">
+                  <div><Label className="text-xs">Description / labor details</Label><Input value={item.description} onChange={e=>setLineItems(lineItems.map((x,i)=>i===index?{...x,description:e.target.value}:x))} placeholder={index===0?"Diagnostic labor, capacitor, installation…":""}/></div>
+                  <div><Label className="text-xs">Qty</Label><Input type="number" min=".001" step=".001" value={item.quantity} onChange={e=>setLineItems(lineItems.map((x,i)=>i===index?{...x,quantity:e.target.value}:x))}/></div>
+                  <div><Label className="text-xs">Unit price</Label><Input type="number" min="0" step=".01" value={item.unitPrice} onChange={e=>setLineItems(lineItems.map((x,i)=>i===index?{...x,unitPrice:e.target.value}:x))}/></div>
+                  <Button type="button" size="icon" variant="ghost" disabled={lineItems.length===1} onClick={()=>setLineItems(lineItems.filter((_,i)=>i!==index))}>×</Button>
+                </div>)}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="inv-due">Due Date</Label>
-                <Input
-                  id="inv-due"
-                  type="date"
-                  value={form.dueDate}
-                  onChange={(e) =>
-                    setForm({ ...form, dueDate: e.target.value })
-                  }
-                />
-              </div>
+              <div className="text-right font-semibold">Invoice total: {fmtCurrency(lineItems.reduce((sum,item)=>sum+Number(item.quantity||0)*Number(item.unitPrice||0),0))}</div>
             </div>
+            <div className="space-y-2"><Label htmlFor="inv-due">Due Date</Label><Input id="inv-due" type="date" value={form.dueDate} onChange={(e)=>setForm({...form,dueDate:e.target.value})}/></div>
             <div className="space-y-2">
               <Label>Equipment installed</Label>
               <p className="text-xs text-muted-foreground">
@@ -452,8 +425,11 @@ export default function Invoices() {
               >
                 Cancel
               </Button>
-              <Button type="submit" data-testid="button-submit-invoice">
-                Create Invoice
+              <Button type="submit" variant="outline" disabled={saving} data-testid="button-submit-invoice">
+                {saving ? "Saving…" : "Save Draft"}
+              </Button>
+              <Button type="button" disabled={saving} onClick={(e) => handleSubmit(e as any, true)}>
+                Save & Send
               </Button>
             </DialogFooter>
           </form>
