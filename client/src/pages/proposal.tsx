@@ -1,5 +1,5 @@
 import { DocumentActions } from "@/components/document-actions";
-import { useParams, Link } from "wouter";
+import { useLocation, useParams, Link } from "wouter";
 import { useState, useEffect } from "react";
 import {
   ArrowLeft,
@@ -47,6 +47,7 @@ import {
   getTieredEquipment,
 } from "@/data/pricebook";
 import { useData } from "@/context/data-context";
+import { crm } from "@/lib/crm-api";
 
 const addOnIcons: Record<string, typeof Wind> = {
   wind: Wind,
@@ -60,20 +61,15 @@ const addOnIcons: Record<string, typeof Wind> = {
 export default function Proposal() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
-  const {
-    createWorkOrder,
-    updateQuoteStatus,
-    updateWorkOrder,
-    createInvoice,
-    quotes,
-    invoices,
-  } = useData();
+  const { createInvoice, quotes, invoices, workOrders } = useData();
+  const [, setLocation] = useLocation();
   const quote = quotes.find((q) => q.id === id);
   const [selectedTier, setSelectedTier] = useState<string | null>(null);
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([]);
   const [accepted, setAccepted] = useState(false);
   const [showSendDialog, setShowSendDialog] = useState(false);
   const [sendTarget, setSendTarget] = useState({ email: "", phone: "" });
+  const [converting, setConverting] = useState(false);
 
   // Sync accepted state and auto-select tier when quote loads
   useEffect(() => {
@@ -134,8 +130,15 @@ export default function Proposal() {
   const invoiceForQuote = invoices.find(
     (invoice) => invoice.quoteId === quote.id,
   );
+  const workOrderForQuote = workOrders.find(
+    (workOrder) => workOrder.quoteId === quote.id,
+  );
   const createInvoiceFromQuote = () => {
-    if (invoiceForQuote || !selectedOption) return;
+    if (invoiceForQuote) {
+      setLocation(`/invoices/view/${invoiceForQuote.id}`);
+      return;
+    }
+    if (!selectedOption) return;
     const equipmentItems = quote.equipmentItems
       ? getTieredEquipment(
           quote.equipmentItems,
@@ -148,12 +151,39 @@ export default function Proposal() {
       amount: grandTotal,
       description: `${quote.title} — ${selectedOption.label} package`,
       quoteId: quote.id,
+      workOrderId: workOrderForQuote?.id,
       equipmentItems,
     });
     toast({
       title: "Invoice created",
       description: `${invoice.id} created for ${quote.customerName} — ${fmtCurrency(grandTotal)}.`,
     });
+    setLocation(`/invoices/view/${invoice.id}`);
+  };
+  const convertQuote = async () => {
+    if (!selectedOption || converting) return;
+    setConverting(true);
+    try {
+      const result = await crm(`crm/quotes/${quote.id}/convert`, "POST", {
+        option: selectedOption.tier,
+        addons: selectedAddOns,
+      });
+      setAccepted(true);
+      window.dispatchEvent(new Event("crm-refresh"));
+      toast({
+        title: "Quote accepted",
+        description: "The job is ready in the unassigned scheduling queue.",
+      });
+      setLocation(`/schedule?job=${result.job_id}`);
+    } catch (error: any) {
+      toast({
+        title: "Could not convert quote",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setConverting(false);
+    }
   };
 
   return (
@@ -181,12 +211,12 @@ export default function Proposal() {
           <div className="flex gap-2">
             {quote.status === "Won" &&
               (invoiceForQuote ? (
-                <Link href="/invoices">
+                <Link href={`/invoices/view/${invoiceForQuote.id}`}>
                   <Button
                     size="sm"
                     className="bg-emerald-600 text-white hover:bg-emerald-700"
                   >
-                    <Receipt size={14} className="mr-1.5" /> View Invoice
+                    <Receipt size={14} className="mr-1.5" /> Open Invoice
                   </Button>
                 </Link>
               ) : (
@@ -218,6 +248,49 @@ export default function Proposal() {
             </Button>
           </div>
         </div>
+
+        <Card className="mb-6 no-print">
+          <CardContent className="p-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Quote workflow
+            </p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">1 · Quote</p>
+                <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold">
+                  {quote.status === "Won" && (
+                    <Check size={14} className="text-emerald-600" />
+                  )}
+                  {quote.status === "Won" ? "Accepted" : quote.status}
+                </p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">2 · Job</p>
+                <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold">
+                  {workOrderForQuote && (
+                    <Check size={14} className="text-emerald-600" />
+                  )}
+                  {workOrderForQuote
+                    ? workOrderForQuote.status === "Unscheduled"
+                      ? "Ready to schedule"
+                      : workOrderForQuote.status
+                    : "Waiting for acceptance"}
+                </p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">3 · Invoice</p>
+                <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold">
+                  {invoiceForQuote && (
+                    <Check size={14} className="text-emerald-600" />
+                  )}
+                  {invoiceForQuote
+                    ? `${invoiceForQuote.id} · ${invoiceForQuote.status}`
+                    : "Create when ready"}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Proposal Header */}
         <div className="text-center mb-8">
@@ -481,57 +554,48 @@ export default function Proposal() {
                           Proposal Accepted
                         </p>
                         <p className="text-[10px] text-emerald-600 dark:text-emerald-500">
-                          Work order created and added to the schedule queue.
+                          {workOrderForQuote
+                            ? `Job ${workOrderForQuote.id} is ready for scheduling.`
+                            : "The accepted job is loading into scheduling."}
                         </p>
                       </div>
                     </div>
-                    <Button
-                      className="w-full"
-                      variant="outline"
-                      onClick={createInvoiceFromQuote}
-                      disabled={!!invoiceForQuote}
-                      data-testid="button-create-invoice-from-quote"
-                    >
-                      <FileText size={16} className="mr-2" />
-                      {invoiceForQuote
-                        ? `Invoice ${invoiceForQuote.id} Created`
-                        : `Create Invoice (${fmtCurrency(grandTotal)})`}
-                    </Button>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {workOrderForQuote && (
+                        <Link href={`/schedule?job=${workOrderForQuote.id}`}>
+                          <Button className="w-full" variant="outline">
+                            <Clock size={16} className="mr-2" /> Schedule Job
+                          </Button>
+                        </Link>
+                      )}
+                      <Button
+                        className="w-full"
+                        onClick={createInvoiceFromQuote}
+                        disabled={!selectedOption}
+                        data-testid="button-create-invoice-from-quote"
+                      >
+                        <FileText size={16} className="mr-2" />
+                        {invoiceForQuote ? "Open Invoice" : "Create Invoice"}
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <>
                     <Button
                       className="w-full bg-primary text-primary-foreground"
                       size="lg"
-                      onClick={() => {
-                        const wo = createWorkOrder({
-                          customerId: quote.customerId,
-                          customerName: quote.customerName,
-                          type: quote.jobType,
-                          property: "TBD",
-                          description: quote.title,
-                          quoteId: quote.id,
-                        });
-                        updateWorkOrder(wo.id, {
-                          status: "Unscheduled",
-                          scheduledDate: undefined,
-                          scheduledTime: undefined,
-                          technician: undefined,
-                        });
-                        updateQuoteStatus(quote.id, "Won");
-                        toast({
-                          title: "Proposal accepted!",
-                          description: `Proposal accepted! Work order ${wo.id} created and added to the unassigned queue on the Schedule page.`,
-                        });
-                        setAccepted(true);
-                      }}
+                      onClick={convertQuote}
+                      disabled={converting}
                     >
                       <PenTool size={16} className="mr-2" />
-                      Approve & Sign Proposal
+                      {converting
+                        ? "Creating Job…"
+                        : "Mark Accepted & Send to Scheduling"}
                     </Button>
                     <p className="text-[10px] text-center text-muted-foreground">
-                      By approving, you authorize Air King to proceed with the
-                      selected package. No deposit required.
+                      Use this when the customer approves by phone or in person.
+                      Online customer signatures remain on the secure quote
+                      link.
                     </p>
                   </>
                 )}
