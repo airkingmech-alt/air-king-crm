@@ -28,22 +28,24 @@ import Leads from "@/pages/leads";
 import NotFound from "@/pages/not-found";
 
 function InternalRouter() {
+  const { profile } = useAuth();
+  const can = (key: string) => profile?.role === "owner" || profile?.permissions?.[key] !== false;
   return (
     <AppShell>
       <Switch>
         <Route path="/" component={Dashboard} />
-        <Route path="/customers" component={Customers} />
-        <Route path="/leads" component={Leads} />
+        <Route path="/customers">{can("customers") ? <Customers /> : <AccessDenied />}</Route>
+        <Route path="/leads">{can("leads") ? <Leads /> : <AccessDenied />}</Route>
         <Route path="/customers/:id" component={CustomerDetail} />
-        <Route path="/pricebook" component={Pricebook} />
-        <Route path="/quotes" component={Quotes} />
-        <Route path="/schedule" component={Schedule} />
+        <Route path="/pricebook">{can("pricebook") ? <Pricebook /> : <AccessDenied />}</Route>
+        <Route path="/quotes">{can("quotes") ? <Quotes /> : <AccessDenied />}</Route>
+        <Route path="/schedule">{can("schedule") ? <Schedule /> : <AccessDenied />}</Route>
         <Route path="/crown-care" component={CrownCare} />
-        <Route path="/invoices" component={Invoices} />
+        <Route path="/invoices">{can("invoices") ? <Invoices /> : <AccessDenied />}</Route>
         <Route path="/referrals" component={Referrals} />
-        <Route path="/marketing" component={Marketing} />
-        <Route path="/inventory" component={Inventory} />
-        <Route path="/automations" component={Automations} />
+        <Route path="/marketing">{can("marketing") ? <Marketing /> : <AccessDenied />}</Route>
+        <Route path="/inventory">{can("inventory") ? <Inventory /> : <AccessDenied />}</Route>
+        <Route path="/automations">{can("automations") ? <Automations /> : <AccessDenied />}</Route>
         <Route path="/templates" component={Templates} />
         <Route path="/integrations" component={Integrations} />
         <Route path="/team" component={Users} />
@@ -67,6 +69,8 @@ function AppRouter() {
     </Switch>
   );
 }
+
+function AccessDenied() { return <div className="p-8"><h1 className="text-xl font-bold">Access restricted</h1><p className="text-sm text-muted-foreground mt-2">Ask the owner to enable this area in Team permissions.</p></div>; }
 
 function App() {
   return (
