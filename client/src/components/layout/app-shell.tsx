@@ -17,6 +17,7 @@ import {
   Gift,
   Megaphone,
   Package,
+  Inbox,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -38,6 +39,7 @@ const navItems: {
 }[] = [
   { path: "/", label: "Dashboard", icon: LayoutDashboard },
   { path: "/customers", label: "Customers", icon: Users },
+  { path: "/leads", label: "Leads", icon: Inbox },
   { path: "/quotes", label: "Quotes", icon: FileText },
   { path: "/pricebook", label: "Pricebook", icon: BookOpen },
   { path: "/schedule", label: "Schedule", icon: Calendar },
