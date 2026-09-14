@@ -23,6 +23,7 @@ import InvoiceView from "@/pages/invoice-view";
 import Users from "@/pages/users";
 import Referrals from "@/pages/referrals";
 import Marketing from "@/pages/marketing";
+import Inventory from "@/pages/inventory";
 import NotFound from "@/pages/not-found";
 
 function InternalRouter() {
@@ -39,6 +40,7 @@ function InternalRouter() {
         <Route path="/invoices" component={Invoices} />
         <Route path="/referrals" component={Referrals} />
         <Route path="/marketing" component={Marketing} />
+        <Route path="/inventory" component={Inventory} />
         <Route path="/automations" component={Automations} />
         <Route path="/templates" component={Templates} />
         <Route path="/integrations" component={Integrations} />

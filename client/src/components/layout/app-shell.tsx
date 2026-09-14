@@ -16,6 +16,7 @@ import {
   UserCog,
   Gift,
   Megaphone,
+  Package,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -44,6 +45,7 @@ const navItems: {
   { path: "/invoices", label: "Invoices", icon: Receipt },
   { path: "/referrals", label: "Coupons", icon: Gift },
   { path: "/marketing", label: "Marketing", icon: Megaphone },
+  { path: "/inventory", label: "Inventory", icon: Package },
   { path: "/automations", label: "Automations", icon: Calendar },
   { path: "/templates", label: "Templates", icon: FileText },
   { path: "/integrations", label: "Integrations", icon: UserCog },
