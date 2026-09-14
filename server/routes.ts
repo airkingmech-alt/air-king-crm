@@ -61,7 +61,7 @@ export async function registerRoutes(
       // Fetch company profiles (bypasses RLS via service role).
       const [profRes, usersRes] = await Promise.all([
         fetch(
-          `${SUPABASE_URL}/rest/v1/profiles?company_id=eq.${companyId}&select=id,full_name,role&order=role.asc`,
+          `${SUPABASE_URL}/rest/v1/profiles?company_id=eq.${companyId}&select=id,full_name,role,permissions&order=role.asc`,
           { headers: supabaseHeaders(SERVICE_ROLE_KEY) }
         ),
         fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, {
@@ -76,6 +76,7 @@ export async function registerRoutes(
         email: emailById.get(p.id) ?? "(unknown)",
         full_name: p.full_name ?? "",
         role: p.role,
+        permissions: p.permissions || {},
       }));
       return res.json({ users: merged });
     } catch (err: any) {
@@ -139,6 +140,36 @@ export async function registerRoutes(
       return res.json({ user: { id: created.id, email, full_name, role } });
     } catch (err: any) {
       return res.status(500).json({ error: "Failed to add user: " + err.message });
+    }
+  });
+
+  // === Admin: update role and feature permissions (owner only) ===
+  app.patch("/api/admin/users/:id/permissions", async (req: any, res: any) => {
+    if (!SERVICE_ROLE_KEY) return res.status(500).json({ error: "Server not configured for user management." });
+    const caller = await getCallerProfile(req.headers.authorization);
+    if (!caller) return res.status(401).json({ error: "Not authenticated." });
+    if (caller.profile.role !== "owner") return res.status(403).json({ error: "Only owners can manage permissions." });
+    const targetId = String(req.params.id);
+    if (targetId === caller.user.id) return res.status(400).json({ error: "Owner access cannot be restricted." });
+    const allowed = ["customers","leads","quotes","schedule","pricebook","invoices","inventory","marketing","automations","reports"];
+    const incoming = req.body?.permissions || {};
+    const permissions = Object.fromEntries(allowed.map((key) => [key, incoming[key] !== false]));
+    const role = req.body?.role;
+    if (role && !["admin","technician","dispatcher","member"].includes(role))
+      return res.status(400).json({ error: "Invalid role." });
+    const patch: any = { permissions };
+    if (role) patch.role = role;
+    try {
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(targetId)}&company_id=eq.${encodeURIComponent(caller.profile.company_id)}`,
+        { method: "PATCH", headers: supabaseHeaders(SERVICE_ROLE_KEY, { Prefer: "return=representation" }), body: JSON.stringify(patch) }
+      );
+      const body = await response.json();
+      if (!response.ok) return res.status(400).json({ error: body?.message || "Could not update permissions." });
+      if (!body.length) return res.status(404).json({ error: "User not found." });
+      return res.json({ user: body[0] });
+    } catch (err: any) {
+      return res.status(500).json({ error: "Failed to update permissions: " + err.message });
     }
   });
 
