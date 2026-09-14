@@ -24,6 +24,7 @@ import Users from "@/pages/users";
 import Referrals from "@/pages/referrals";
 import Marketing from "@/pages/marketing";
 import Inventory from "@/pages/inventory";
+import Leads from "@/pages/leads";
 import NotFound from "@/pages/not-found";
 
 function InternalRouter() {
@@ -32,6 +33,7 @@ function InternalRouter() {
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/customers" component={Customers} />
+        <Route path="/leads" component={Leads} />
         <Route path="/customers/:id" component={CustomerDetail} />
         <Route path="/pricebook" component={Pricebook} />
         <Route path="/quotes" component={Quotes} />
