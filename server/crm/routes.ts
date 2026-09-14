@@ -726,6 +726,39 @@ export function registerCrm(app: Express) {
     }),
   );
   app.post(
+    "/api/crm/quotes/:id/convert",
+    wrap(async (req, res) => {
+      const c = await caller(req);
+      const input = z
+        .object({
+          option: z.string().trim().min(1).max(30),
+          addons: z
+            .array(
+              z
+                .string()
+                .regex(/^[a-z0-9-]+$/)
+                .max(80),
+            )
+            .max(20)
+            .default([]),
+        })
+        .parse(req.body);
+      const conversion = await result(
+        db().rpc("crm_staff_convert_quote", {
+          p_company: c.company,
+          p_actor: c.id,
+          p_quote: String(req.params.id),
+          p_option: input.option,
+          p_addons: input.addons,
+        }),
+      );
+      res.json({
+        message: "Quote accepted and sent to scheduling",
+        ...conversion,
+      });
+    }),
+  );
+  app.post(
     "/api/crm/invoices/:id/void",
     wrap(async (req, res) => {
       const c = await caller(req, true);

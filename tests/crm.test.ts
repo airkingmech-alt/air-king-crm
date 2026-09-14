@@ -70,6 +70,12 @@ before(async () => {
   );
   await pg.exec(
     await readFile(
+      "supabase/migrations/20260914010724_quote_job_invoice_flow.sql",
+      "utf8",
+    ),
+  );
+  await pg.exec(
+    await readFile(
       "supabase/migrations/20260911183000_referral_coupons.sql",
       "utf8",
     ),
@@ -83,41 +89,125 @@ before(async () => {
 });
 after(() => pg.close());
 test("marketing migration applies locally and keeps campaigns disabled", async () => {
-  await pg.exec(await readFile("supabase/migrations/20260912031344_marketing_center_foundation.sql", "utf8"));
-  await pg.exec(await readFile("supabase/migrations/20260912130918_marketing_center_indexes.sql", "utf8"));
-  const [campaign] = await sql("insert into marketing_campaigns(company_id,name) values($1,'Local preview') returning *", [company]);
+  await pg.exec(
+    await readFile(
+      "supabase/migrations/20260912031344_marketing_center_foundation.sql",
+      "utf8",
+    ),
+  );
+  await pg.exec(
+    await readFile(
+      "supabase/migrations/20260912130918_marketing_center_indexes.sql",
+      "utf8",
+    ),
+  );
+  const [campaign] = await sql(
+    "insert into marketing_campaigns(company_id,name) values($1,'Local preview') returning *",
+    [company],
+  );
   assert.equal(campaign.enabled, false);
   assert.equal(campaign.status, "draft");
-  await sql("insert into marketing_campaign_runs(company_id,campaign_id) values($1,$2)", [company,campaign.id]);
-  assert.equal((await sql("select * from crm_claim_marketing_runs()")).length, 0);
-  const tables = await sql("select relname,relrowsecurity from pg_class where relname like 'marketing_%' and relkind='r'");
+  await sql(
+    "insert into marketing_campaign_runs(company_id,campaign_id) values($1,$2)",
+    [company, campaign.id],
+  );
+  assert.equal(
+    (await sql("select * from crm_claim_marketing_runs()")).length,
+    0,
+  );
+  const tables = await sql(
+    "select relname,relrowsecurity from pg_class where relname like 'marketing_%' and relkind='r'",
+  );
   assert.equal(tables.length, 6);
-  assert.ok(tables.every(t => t.relrowsecurity));
+  assert.ok(tables.every((t) => t.relrowsecurity));
 });
 test("campaign launch is atomic, idempotent, and keeps a frozen snapshot", async () => {
-  const [audience]=await sql("insert into marketing_audiences(company_id,name) values($1,'Launch audience') returning *",[company]);
-  const [campaign]=await sql("insert into marketing_campaigns(company_id,audience_id,name,revision) values($1,$2,'Fall tune-up',3) returning *",[company,audience.id]);
-  const key="22222222-2222-4222-8222-222222222222";
-  const snapshot={audience,steps:[{id:"33333333-3333-4333-8333-333333333333",action:"email"}],people:[{customer_id:"customer-test"}]};
-  const first=await sql("select crm_launch_campaign($1,$2,$3,$4,$5) as run",[company,campaign.id,key,3,snapshot]);
-  const second=await sql("select crm_launch_campaign($1,$2,$3,$4,$5) as run",[company,campaign.id,key,3,{different:true}]);
-  assert.equal(first[0].run.id,second[0].run.id);
-  assert.equal((await sql("select count(*)::int as n from marketing_campaign_runs where campaign_id=$1",[campaign.id]))[0].n,1);
-  const frozen=(await sql("select snapshot from marketing_campaign_runs where id=$1",[first[0].run.id]))[0].snapshot;
-  assert.deepEqual(frozen.people,snapshot.people);
-  assert.deepEqual(frozen.steps,snapshot.steps);
-  assert.equal(frozen.audience.id,snapshot.audience.id);
-  await assert.rejects(()=>sql("select crm_launch_campaign($1,$2,$3,$4,$5)",[company,campaign.id,"44444444-4444-4444-8444-444444444444",3,snapshot]),/already launched|changed/i);
+  const [audience] = await sql(
+    "insert into marketing_audiences(company_id,name) values($1,'Launch audience') returning *",
+    [company],
+  );
+  const [campaign] = await sql(
+    "insert into marketing_campaigns(company_id,audience_id,name,revision) values($1,$2,'Fall tune-up',3) returning *",
+    [company, audience.id],
+  );
+  const key = "22222222-2222-4222-8222-222222222222";
+  const snapshot = {
+    audience,
+    steps: [{ id: "33333333-3333-4333-8333-333333333333", action: "email" }],
+    people: [{ customer_id: "customer-test" }],
+  };
+  const first = await sql("select crm_launch_campaign($1,$2,$3,$4,$5) as run", [
+    company,
+    campaign.id,
+    key,
+    3,
+    snapshot,
+  ]);
+  const second = await sql(
+    "select crm_launch_campaign($1,$2,$3,$4,$5) as run",
+    [company, campaign.id, key, 3, { different: true }],
+  );
+  assert.equal(first[0].run.id, second[0].run.id);
+  assert.equal(
+    (
+      await sql(
+        "select count(*)::int as n from marketing_campaign_runs where campaign_id=$1",
+        [campaign.id],
+      )
+    )[0].n,
+    1,
+  );
+  const frozen = (
+    await sql("select snapshot from marketing_campaign_runs where id=$1", [
+      first[0].run.id,
+    ])
+  )[0].snapshot;
+  assert.deepEqual(frozen.people, snapshot.people);
+  assert.deepEqual(frozen.steps, snapshot.steps);
+  assert.equal(frozen.audience.id, snapshot.audience.id);
+  await assert.rejects(
+    () =>
+      sql("select crm_launch_campaign($1,$2,$3,$4,$5)", [
+        company,
+        campaign.id,
+        "44444444-4444-4444-8444-444444444444",
+        3,
+        snapshot,
+      ]),
+    /already launched|changed/i,
+  );
 });
-test("consent audit records actual changes but not unchanged saves",async()=>{
-  await sql("insert into customer_communication_preferences(customer_id,company_id,email_marketing,consent_source) values('customer-test',$1,false,'staff confirmation') on conflict(customer_id) do update set email_marketing=false,consent_source='staff confirmation'",[company]);
-  const before=(await sql("select count(*)::int n from communication_consent_events where customer_id='customer-test'"))[0].n;
-  await sql("update customer_communication_preferences set email_marketing=false where customer_id='customer-test'");
-  assert.equal((await sql("select count(*)::int n from communication_consent_events where customer_id='customer-test'"))[0].n,before);
-  await sql("update customer_communication_preferences set email_marketing=true where customer_id='customer-test'");
-  const last=(await sql("select * from communication_consent_events where customer_id='customer-test' order by occurred_at desc limit 1"))[0];
-  assert.equal(last.action,"opt_in");
-  assert.equal(last.source,"staff confirmation");
+test("consent audit records actual changes but not unchanged saves", async () => {
+  await sql(
+    "insert into customer_communication_preferences(customer_id,company_id,email_marketing,consent_source) values('customer-test',$1,false,'staff confirmation') on conflict(customer_id) do update set email_marketing=false,consent_source='staff confirmation'",
+    [company],
+  );
+  const before = (
+    await sql(
+      "select count(*)::int n from communication_consent_events where customer_id='customer-test'",
+    )
+  )[0].n;
+  await sql(
+    "update customer_communication_preferences set email_marketing=false where customer_id='customer-test'",
+  );
+  assert.equal(
+    (
+      await sql(
+        "select count(*)::int n from communication_consent_events where customer_id='customer-test'",
+      )
+    )[0].n,
+    before,
+  );
+  await sql(
+    "update customer_communication_preferences set email_marketing=true where customer_id='customer-test'",
+  );
+  const last = (
+    await sql(
+      "select * from communication_consent_events where customer_id='customer-test' order by occurred_at desc limit 1",
+    )
+  )[0];
+  assert.equal(last.action, "opt_in");
+  assert.equal(last.source, "staff confirmation");
 });
 test("staff database reads cannot expose another company's settings", async () => {
   await sql("insert into crm_settings(company_id) values('other-company')");
@@ -473,6 +563,51 @@ test("quote acceptance selects package and creates exactly one unscheduled work 
       )
     ).length,
     1,
+  );
+});
+test("staff quote conversion creates and reuses one linked unassigned job", async () => {
+  await sql(
+    "insert into quotes(id,company_id,customer_id,data) values($1,$2,$3,$4)",
+    [
+      "quote-staff",
+      company,
+      "customer-test",
+      {
+        id: "quote-staff",
+        status: "Quote Sent",
+        title: "Champion changeout",
+        customerName: "Test Customer",
+        jobType: "Installation",
+        options: [{ tier: "Better", customerPrice: 8500 }],
+      },
+    ],
+  );
+  const args = [
+    company,
+    "11111111-1111-4111-8111-111111111111",
+    "quote-staff",
+    "Better",
+    ["crown-care"],
+  ];
+  const first = await sql(
+    "select crm_staff_convert_quote($1,$2,$3,$4,$5) result",
+    args,
+  );
+  const second = await sql(
+    "select crm_staff_convert_quote($1,$2,$3,$4,$5) result",
+    args,
+  );
+  assert.equal(first[0].result.job_id, second[0].result.job_id);
+  const jobs = await sql(
+    "select data from work_orders where data->>'quoteId'='quote-staff'",
+  );
+  assert.equal(jobs.length, 1);
+  assert.equal(jobs[0].data.status, "Unscheduled");
+  assert.equal(jobs[0].data.selectedOption, "Better");
+  assert.equal(
+    (await sql("select data from quotes where id='quote-staff'"))[0].data
+      .convertedWorkOrderId,
+    first[0].result.job_id,
   );
 });
 test("decline and expired quotes do not create work orders", async () => {

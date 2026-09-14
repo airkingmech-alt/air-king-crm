@@ -1,8 +1,12 @@
-import { DocumentActions, InvoicePayments } from "@/components/document-actions";
+import {
+  DocumentActions,
+  InvoicePayments,
+} from "@/components/document-actions";
 import { BrandedInvoice } from "@/components/branded-invoice";
-import { useParams } from "wouter";
-import { Check } from "lucide-react";
+import { Link, useParams } from "wouter";
+import { ArrowLeft, Calendar, Check, FileText, User } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { useData } from "@/context/data-context";
 
 export default function InvoiceView() {
@@ -29,6 +33,34 @@ export default function InvoiceView() {
         }
       `}</style>
       <div className="mx-auto max-w-3xl space-y-6 px-4 py-8 sm:py-12 print:max-w-full print:p-0">
+        <div className="print-hide flex flex-wrap items-center justify-between gap-2">
+          <Link href="/invoices">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft size={15} className="mr-1.5" /> All Invoices
+            </Button>
+          </Link>
+          <div className="flex flex-wrap gap-2">
+            {invoice.quoteId && (
+              <Link href={`/proposals/${invoice.quoteId}`}>
+                <Button variant="outline" size="sm">
+                  <FileText size={14} className="mr-1.5" /> Open Quote
+                </Button>
+              </Link>
+            )}
+            {invoice.workOrderId && (
+              <Link href={`/schedule?job=${invoice.workOrderId}`}>
+                <Button variant="outline" size="sm">
+                  <Calendar size={14} className="mr-1.5" /> Open Job
+                </Button>
+              </Link>
+            )}
+            <Link href={`/customers/${invoice.customerId}`}>
+              <Button variant="outline" size="sm">
+                <User size={14} className="mr-1.5" /> Customer
+              </Button>
+            </Link>
+          </div>
+        </div>
         <Card className="overflow-hidden shadow-xl print:border-0 print:shadow-none">
           <BrandedInvoice
             invoiceNumber={invoice.id}

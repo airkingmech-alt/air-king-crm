@@ -11,12 +11,7 @@ import {
   TrendingUp,
   X,
 } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,7 +33,7 @@ import { useLocation } from "wouter";
 import { pricebook, addOnServices } from "@/data/pricebook";
 
 export default function Quotes() {
-  const { quotes, createQuote, customers } = useData();
+  const { quotes, createQuote, customers, workOrders, invoices } = useData();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [showBuilder, setShowBuilder] = useState(false);
@@ -46,7 +41,9 @@ export default function Quotes() {
   const [selectedEquipment, setSelectedEquipment] = useState<string[]>([]);
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([]);
   const [laborCost, setLaborCost] = useState("1200");
-  const [laborDesc, setLaborDesc] = useState("Remove old equipment, install new system, reconnect electrical and refrigerant lines");
+  const [laborDesc, setLaborDesc] = useState(
+    "Remove old equipment, install new system, reconnect electrical and refrigerant lines",
+  );
   const [materialsCost, setMaterialsCost] = useState("450");
   const [eqDropdown, setEqDropdown] = useState("");
   const [eqSearch, setEqSearch] = useState("");
@@ -54,17 +51,19 @@ export default function Quotes() {
 
   const toggleEquipment = (id: string) => {
     setSelectedEquipment((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
   };
 
   const toggleAddOn = (id: string) => {
     setSelectedAddOns((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
   };
 
-  const selectedItems = pricebook.filter((p) => selectedEquipment.includes(p.id));
+  const selectedItems = pricebook.filter((p) =>
+    selectedEquipment.includes(p.id),
+  );
   const equipmentCost = selectedItems.reduce((sum, item) => sum + item.cost, 0);
   const labor = parseFloat(laborCost) || 0;
   const materials = parseFloat(materialsCost) || 0;
@@ -74,9 +73,21 @@ export default function Quotes() {
   const grossProfit = customerPrice - totalCost;
   const margin = ((grossProfit / customerPrice) * 100).toFixed(1);
 
-  const categories = ["All", "Heat Pump", "Condenser", "Air Handler", "Evaporator Coil", "Furnace", "Heat Strip", "Accessory"];
+  const categories = [
+    "All",
+    "Heat Pump",
+    "Condenser",
+    "Air Handler",
+    "Evaporator Coil",
+    "Furnace",
+    "Heat Strip",
+    "Accessory",
+  ];
   const filteredEquipment = pricebook.filter((p) => {
-    const matchesSearch = !eqSearch || p.model.toLowerCase().includes(eqSearch.toLowerCase()) || p.description.toLowerCase().includes(eqSearch.toLowerCase());
+    const matchesSearch =
+      !eqSearch ||
+      p.model.toLowerCase().includes(eqSearch.toLowerCase()) ||
+      p.description.toLowerCase().includes(eqSearch.toLowerCase());
     const matchesFilter = eqFilter === "All" || p.category === eqFilter;
     return matchesSearch && matchesFilter;
   });
@@ -90,13 +101,17 @@ export default function Quotes() {
 
         <div>
           <h1 className="text-xl font-bold tracking-tight">New Quote</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Build a Good/Better/Best proposal</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Build a Good/Better/Best proposal
+          </p>
         </div>
 
         {/* Customer Selection */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">1. Select Customer</CardTitle>
+            <CardTitle className="text-sm font-semibold">
+              1. Select Customer
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <CustomerCombobox
@@ -110,7 +125,9 @@ export default function Quotes() {
         {/* Equipment Selection */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">2. Select Equipment</CardTitle>
+            <CardTitle className="text-sm font-semibold">
+              2. Select Equipment
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {/* Equipment Dropdown */}
@@ -125,20 +142,33 @@ export default function Quotes() {
                   setEqDropdown("");
                 }}
               >
-                <SelectTrigger className="h-9 text-sm" data-testid="select-equipment-dropdown">
+                <SelectTrigger
+                  className="h-9 text-sm"
+                  data-testid="select-equipment-dropdown"
+                >
                   <SelectValue placeholder="Browse and select equipment..." />
                 </SelectTrigger>
                 <SelectContent className="max-h-[300px]">
-                  {categories.filter(c => c !== "All").map((cat) => (
-                    <div key={cat}>
-                      <p className="text-[10px] font-bold text-muted-foreground px-2 py-1 uppercase tracking-wide">{cat}</p>
-                      {pricebook.filter(p => p.category === cat).map((item) => (
-                        <SelectItem key={item.id} value={item.id} className="text-xs">
-                          {item.model} — {fmtCurrency(item.cost)}
-                        </SelectItem>
-                      ))}
-                    </div>
-                  ))}
+                  {categories
+                    .filter((c) => c !== "All")
+                    .map((cat) => (
+                      <div key={cat}>
+                        <p className="text-[10px] font-bold text-muted-foreground px-2 py-1 uppercase tracking-wide">
+                          {cat}
+                        </p>
+                        {pricebook
+                          .filter((p) => p.category === cat)
+                          .map((item) => (
+                            <SelectItem
+                              key={item.id}
+                              value={item.id}
+                              className="text-xs"
+                            >
+                              {item.model} — {fmtCurrency(item.cost)}
+                            </SelectItem>
+                          ))}
+                      </div>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
@@ -147,9 +177,16 @@ export default function Quotes() {
             {selectedItems.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {selectedItems.map((item) => (
-                  <Badge key={item.id} variant="secondary" className="text-[10px] gap-1 pr-1">
+                  <Badge
+                    key={item.id}
+                    variant="secondary"
+                    className="text-[10px] gap-1 pr-1"
+                  >
                     {item.model}
-                    <button onClick={() => toggleEquipment(item.id)} className="hover:text-destructive">
+                    <button
+                      onClick={() => toggleEquipment(item.id)}
+                      className="hover:text-destructive"
+                    >
                       <X size={10} />
                     </button>
                   </Badge>
@@ -160,7 +197,10 @@ export default function Quotes() {
             {/* Search + filter */}
             <div className="flex items-center gap-2 flex-wrap">
               <div className="relative flex-1 min-w-[180px]">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Search
+                  size={16}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                />
                 <Input
                   placeholder="Search model or description..."
                   value={eqSearch}
@@ -174,7 +214,9 @@ export default function Quotes() {
                 </SelectTrigger>
                 <SelectContent>
                   {categories.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -189,27 +231,43 @@ export default function Quotes() {
                     key={item.id}
                     onClick={() => toggleEquipment(item.id)}
                     className={`w-full text-left p-2 rounded-md transition-colors flex items-center gap-2 ${
-                      selected ? "bg-primary/10 border border-primary/30" : "hover:bg-muted/50 border border-transparent"
+                      selected
+                        ? "bg-primary/10 border border-primary/30"
+                        : "hover:bg-muted/50 border border-transparent"
                     }`}
                   >
-                    <div className={`flex h-4 w-4 items-center justify-center rounded shrink-0 ${
-                      selected ? "bg-primary text-primary-foreground" : "border border-border"
-                    }`}>
+                    <div
+                      className={`flex h-4 w-4 items-center justify-center rounded shrink-0 ${
+                        selected
+                          ? "bg-primary text-primary-foreground"
+                          : "border border-border"
+                      }`}
+                    >
                       {selected && <Check size={12} />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold truncate">{item.model}</p>
-                      <p className="text-[10px] text-muted-foreground truncate">{item.description}</p>
+                      <p className="text-xs font-semibold truncate">
+                        {item.model}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground truncate">
+                        {item.description}
+                      </p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-xs font-medium">{fmtCurrency(item.cost)}</p>
-                      <p className="text-[9px] text-muted-foreground">{item.brand}</p>
+                      <p className="text-xs font-medium">
+                        {fmtCurrency(item.cost)}
+                      </p>
+                      <p className="text-[9px] text-muted-foreground">
+                        {item.brand}
+                      </p>
                     </div>
                   </button>
                 );
               })}
               {filteredEquipment.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-4">No equipment found.</p>
+                <p className="text-xs text-muted-foreground text-center py-4">
+                  No equipment found.
+                </p>
               )}
             </div>
           </CardContent>
@@ -218,12 +276,16 @@ export default function Quotes() {
         {/* Labor & Materials */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">3. Labor & Materials</CardTitle>
+            <CardTitle className="text-sm font-semibold">
+              3. Labor & Materials
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="labor" className="text-xs">Labor Cost</Label>
+                <Label htmlFor="labor" className="text-xs">
+                  Labor Cost
+                </Label>
                 <Input
                   id="labor"
                   type="number"
@@ -233,7 +295,9 @@ export default function Quotes() {
                 />
               </div>
               <div>
-                <Label htmlFor="materials" className="text-xs">Materials Cost</Label>
+                <Label htmlFor="materials" className="text-xs">
+                  Materials Cost
+                </Label>
                 <Input
                   id="materials"
                   type="number"
@@ -244,7 +308,9 @@ export default function Quotes() {
               </div>
             </div>
             <div className="mt-3">
-              <Label htmlFor="labor-desc" className="text-xs">Labor Description</Label>
+              <Label htmlFor="labor-desc" className="text-xs">
+                Labor Description
+              </Label>
               <Textarea
                 id="labor-desc"
                 value={laborDesc}
@@ -260,7 +326,9 @@ export default function Quotes() {
         {/* Add-ons */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">4. Customer Add-On Options</CardTitle>
+            <CardTitle className="text-sm font-semibold">
+              4. Customer Add-On Options
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -271,18 +339,28 @@ export default function Quotes() {
                     key={addon.id}
                     onClick={() => toggleAddOn(addon.id)}
                     className={`flex items-start gap-2 p-3 rounded-lg border text-left transition-colors ${
-                      selected ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
+                      selected
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:bg-muted/50"
                     }`}
                   >
-                    <div className={`flex h-5 w-5 items-center justify-center rounded border shrink-0 mt-0.5 ${
-                      selected ? "bg-primary border-primary text-primary-foreground" : "border-border"
-                    }`}>
+                    <div
+                      className={`flex h-5 w-5 items-center justify-center rounded border shrink-0 mt-0.5 ${
+                        selected
+                          ? "bg-primary border-primary text-primary-foreground"
+                          : "border-border"
+                      }`}
+                    >
                       {selected && <Check size={12} />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium">{addon.name}</p>
-                      <p className="text-[10px] text-muted-foreground">{addon.description}</p>
-                      <p className="text-xs font-semibold mt-0.5">{fmtCurrency(addon.price)}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {addon.description}
+                      </p>
+                      <p className="text-xs font-semibold mt-0.5">
+                        {fmtCurrency(addon.price)}
+                      </p>
                     </div>
                   </button>
                 );
@@ -309,7 +387,9 @@ export default function Quotes() {
               <span className="font-medium">{fmtCurrency(labor)}</span>
             </div>
             {laborDesc && (
-              <p className="text-[10px] text-muted-foreground/70 pl-2">{laborDesc}</p>
+              <p className="text-[10px] text-muted-foreground/70 pl-2">
+                {laborDesc}
+              </p>
             )}
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Materials</span>
@@ -321,13 +401,19 @@ export default function Quotes() {
               <span className="font-medium">{fmtCurrency(totalCost)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Customer Price (÷ 0.75)</span>
-              <span className="font-medium text-primary">{fmtCurrency(customerPrice)}</span>
+              <span className="text-muted-foreground">
+                Customer Price (÷ 0.75)
+              </span>
+              <span className="font-medium text-primary">
+                {fmtCurrency(customerPrice)}
+              </span>
             </div>
             <Separator className="my-2" />
             <div className="flex justify-between">
               <span className="text-sm font-semibold">Gross Profit</span>
-              <span className="font-bold text-emerald-600">{fmtCurrency(grossProfit)}</span>
+              <span className="font-bold text-emerald-600">
+                {fmtCurrency(grossProfit)}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-sm font-semibold">Margin</span>
@@ -341,16 +427,19 @@ export default function Quotes() {
         </Card>
 
         <div className="flex gap-2 justify-end">
-          <Button variant="outline" onClick={() => setShowBuilder(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => setShowBuilder(false)}>
+            Cancel
+          </Button>
           <Button
             className="bg-primary text-primary-foreground"
             disabled={!selectedCustomer || selectedEquipment.length === 0}
             onClick={() => {
               const customer = customers.find((c) => c.id === selectedCustomer);
               if (!customer) return;
-              const truncatedDesc = laborDesc.length > 60
-                ? laborDesc.substring(0, 60).replace(/\s+\S*$/, "") + "…"
-                : laborDesc;
+              const truncatedDesc =
+                laborDesc.length > 60
+                  ? laborDesc.substring(0, 60).replace(/\s+\S*$/, "") + "…"
+                  : laborDesc;
               const newQuote = createQuote({
                 customerId: customer.id,
                 customerName: customer.name,
@@ -361,7 +450,10 @@ export default function Quotes() {
                 equipmentItems: selectedEquipment,
                 laborDescription: laborDesc,
               });
-              toast({ title: "Quote created", description: `${newQuote.id} generated for ${customer.name}.` });
+              toast({
+                title: "Quote created",
+                description: `${newQuote.id} generated for ${customer.name}.`,
+              });
               setShowBuilder(false);
               setLocation(`/proposals/${newQuote.id}`);
             }}
@@ -380,56 +472,108 @@ export default function Quotes() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Quotes</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{quotes.length} quotes · {quotes.filter(q => q.status === "Quote Sent").length} pending</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {quotes.length} quotes ·{" "}
+            {quotes.filter((q) => q.status === "Quote Sent").length} pending
+          </p>
         </div>
-        <Button size="sm" className="bg-primary text-primary-foreground" onClick={() => setShowBuilder(true)}>
+        <Button
+          size="sm"
+          className="bg-primary text-primary-foreground"
+          onClick={() => setShowBuilder(true)}
+        >
           <Plus size={16} className="mr-1.5" />
           New Quote
         </Button>
       </div>
 
       <div className="grid grid-cols-1 gap-4">
-        {quotes.map((quote) => (
-          <Card key={quote.id} className="hover:shadow-md transition-shadow">
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <p className="text-sm font-semibold">{quote.id}</p>
-                    <Badge variant={quote.status === "Won" ? "default" : "secondary"} className="text-[10px]">
-                      {quote.status}
-                    </Badge>
-                    <Badge variant="outline" className="text-[10px]">{quote.jobType}</Badge>
+        {quotes.map((quote) => {
+          const linkedJob = workOrders.find((job) => job.quoteId === quote.id);
+          const linkedInvoice = invoices.find(
+            (invoice) => invoice.quoteId === quote.id,
+          );
+          return (
+            <Card key={quote.id} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <p className="text-sm font-semibold">{quote.id}</p>
+                      <Badge
+                        variant={
+                          quote.status === "Won" ? "default" : "secondary"
+                        }
+                        className="text-[10px]"
+                      >
+                        {quote.status}
+                      </Badge>
+                      <Badge variant="outline" className="text-[10px]">
+                        {quote.jobType}
+                      </Badge>
+                    </div>
+                    <p className="text-sm font-medium">{quote.customerName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {quote.title}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Created {quote.createdAt}
+                    </p>
                   </div>
-                  <p className="text-sm font-medium">{quote.customerName}</p>
-                  <p className="text-xs text-muted-foreground">{quote.title}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Created {quote.createdAt}</p>
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  <div className="flex gap-1.5">
-                    {quote.options.map((opt) => (
-                      <div key={opt.tier} className="text-center">
-                        <Badge
-                          variant={opt.isPopular ? "default" : "outline"}
-                          className="text-[10px] mb-1"
-                        >
-                          {opt.tier}
-                          {opt.isPopular && " ★"}
-                        </Badge>
-                        <p className="text-xs font-semibold">{fmtCurrency(opt.customerPrice)}</p>
-                      </div>
-                    ))}
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="flex gap-1.5">
+                      {quote.options.map((opt) => (
+                        <div key={opt.tier} className="text-center">
+                          <Badge
+                            variant={opt.isPopular ? "default" : "outline"}
+                            className="text-[10px] mb-1"
+                          >
+                            {opt.tier}
+                            {opt.isPopular && " ★"}
+                          </Badge>
+                          <p className="text-xs font-semibold">
+                            {fmtCurrency(opt.customerPrice)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {quote.status === "Won" && linkedJob && (
+                        <Link href={`/schedule?job=${linkedJob.id}`}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs"
+                          >
+                            Schedule Job
+                          </Button>
+                        </Link>
+                      )}
+                      {linkedInvoice && (
+                        <Link href={`/invoices/view/${linkedInvoice.id}`}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs"
+                          >
+                            Open Invoice
+                          </Button>
+                        </Link>
+                      )}
+                      <Link href={`/proposals/${quote.id}`}>
+                        <Button size="sm" className="text-xs">
+                          {quote.status === "Won"
+                            ? "Continue"
+                            : "View Proposal"}
+                        </Button>
+                      </Link>
+                    </div>
                   </div>
-                  <Link href={`/proposals/${quote.id}`}>
-                    <Button size="sm" variant="outline" className="text-xs">
-                      View Proposal
-                    </Button>
-                  </Link>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );
