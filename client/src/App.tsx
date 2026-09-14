@@ -36,19 +36,19 @@ function InternalRouter() {
         <Route path="/" component={Dashboard} />
         <Route path="/customers">{can("customers") ? <Customers /> : <AccessDenied />}</Route>
         <Route path="/leads">{can("leads") ? <Leads /> : <AccessDenied />}</Route>
-        <Route path="/customers/:id" component={CustomerDetail} />
+        <Route path="/customers/:id">{can("customers") ? <CustomerDetail /> : <AccessDenied />}</Route>
         <Route path="/pricebook">{can("pricebook") ? <Pricebook /> : <AccessDenied />}</Route>
         <Route path="/quotes">{can("quotes") ? <Quotes /> : <AccessDenied />}</Route>
         <Route path="/schedule">{can("schedule") ? <Schedule /> : <AccessDenied />}</Route>
-        <Route path="/crown-care" component={CrownCare} />
+        <Route path="/crown-care">{can("memberships") ? <CrownCare /> : <AccessDenied />}</Route>
         <Route path="/invoices">{can("invoices") ? <Invoices /> : <AccessDenied />}</Route>
-        <Route path="/referrals" component={Referrals} />
+        <Route path="/referrals">{can("referrals") ? <Referrals /> : <AccessDenied />}</Route>
         <Route path="/marketing">{can("marketing") ? <Marketing /> : <AccessDenied />}</Route>
         <Route path="/inventory">{can("inventory") ? <Inventory /> : <AccessDenied />}</Route>
         <Route path="/automations">{can("automations") ? <Automations /> : <AccessDenied />}</Route>
-        <Route path="/templates" component={Templates} />
-        <Route path="/integrations" component={Integrations} />
-        <Route path="/team" component={Users} />
+        <Route path="/templates">{can("communications") ? <Templates /> : <AccessDenied />}</Route>
+        <Route path="/integrations">{can("communications") ? <Integrations /> : <AccessDenied />}</Route>
+        <Route path="/team">{profile?.role === "owner" ? <Users /> : <AccessDenied />}</Route>
         <Route component={NotFound} />
       </Switch>
     </AppShell>

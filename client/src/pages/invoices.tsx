@@ -1,5 +1,5 @@
 import { DocumentActions } from "@/components/document-actions";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import {
   Search,
@@ -38,6 +38,20 @@ import { fmtCurrency, type InvoiceStatus } from "@/data/mock-data";
 import { CustomerCombobox } from "@/components/customer-combobox";
 import { pricebook } from "@/data/pricebook";
 import { crm } from "@/lib/crm-api";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/context/auth-context";
+
+type CatalogItem = {
+  id: string;
+  item_type: "equipment" | "part" | "service" | "labor";
+  name: string;
+  description: string;
+  price_cents: number;
+  active: boolean;
+  brand: string | null;
+  model: string | null;
+  category: string;
+};
 
 const statusConfig: Record<InvoiceStatus, { color: string; badge: string }> = {
   Void: {
@@ -70,6 +84,7 @@ const statusConfig: Record<InvoiceStatus, { color: string; badge: string }> = {
 
 export default function Invoices() {
   const { toast } = useToast();
+  const { profile } = useAuth();
   const { invoices, createInvoice, customers } = useData();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"All" | InvoiceStatus>("All");
@@ -81,6 +96,9 @@ export default function Invoices() {
   const [invoiceEquipment, setInvoiceEquipment] = useState<string[]>([]);
   const [lineItems, setLineItems] = useState([{ description: "", quantity: "1", unitPrice: "" }]);
   const [saving, setSaving] = useState(false);
+  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const [catalogEquipment, setCatalogEquipment] = useState<CatalogItem[]>([]);
   const [form, setForm] = useState({
     customer: "",
     description: "",
@@ -105,6 +123,41 @@ export default function Invoices() {
   const overdueCount = invoices.filter(
     (inv) => inv.status === "Overdue",
   ).length;
+
+  useEffect(() => {
+    if (!showCreateDialog || !profile) return;
+    supabase
+      .from("price_book_items")
+      .select("id,item_type,name,description,price_cents,active,brand,model,category")
+      .eq("company_id", profile.company_id)
+      .eq("active", true)
+      .order("item_type")
+      .order("name")
+      .then(({ data, error }) => {
+        if (error) {
+          toast({ title: "Could not load the Price Book", description: error.message, variant: "destructive" });
+          return;
+        }
+        setCatalogItems((data as CatalogItem[]) || []);
+      });
+  }, [profile, showCreateDialog, toast]);
+
+  const addCatalogItem = (item: CatalogItem) => {
+    if (item.item_type === "equipment") {
+      setCatalogEquipment((current) => current.some((candidate) => candidate.id === item.id) ? current : [...current, item]);
+    }
+    setLineItems((current) => {
+      const blankIndex = current.findIndex((line) => !line.description.trim() && !line.unitPrice);
+      const line = {
+        description: item.description.trim() || item.name,
+        quantity: "1",
+        unitPrice: (item.price_cents / 100).toFixed(2),
+      };
+      return blankIndex >= 0
+        ? current.map((candidate, index) => (index === blankIndex ? line : candidate))
+        : [...current, line];
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent, sendNow = false) => {
     e.preventDefault();
@@ -131,9 +184,26 @@ export default function Invoices() {
         items: cleanItems,
         dueDate: form.dueDate,
         equipmentItems: invoiceEquipment,
+        installedEquipment: catalogEquipment.map((item) => ({
+          brand: item.brand,
+          model: item.model,
+          category: item.category,
+          description: item.description || item.name,
+        })),
       });
+      // createInvoice updates the UI immediately and normally persists in the
+      // background. Await this upsert before delivery so Save & Send cannot
+      // race the server's invoice lookup.
+      const { error: persistError } = await supabase.from("invoices").upsert({
+        id: invoice.id,
+        company_id: profile?.company_id || "air-king",
+        customer_id: invoice.customerId,
+        data: invoice,
+      });
+      if (persistError) throw persistError;
       if (sendNow) {
         await crm(`crm/invoice/${invoice.id}/send`, "POST", { channels: ["email"] }, crypto.randomUUID());
+        window.dispatchEvent(new Event("crm-refresh"));
       }
       toast({
         title: sendNow ? "Invoice saved and queued for email" : "Invoice saved as draft",
@@ -143,6 +213,7 @@ export default function Invoices() {
       setForm({ customer: "", description: "", amount: "", dueDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10) });
       setLineItems([{ description: "", quantity: "1", unitPrice: "" }]);
       setInvoiceEquipment([]);
+      setCatalogEquipment([]);
     } catch (error: any) {
       toast({ title: sendNow ? "Invoice saved, but could not send" : "Could not save invoice", description: error.message, variant: "destructive" });
     } finally {
@@ -360,6 +431,30 @@ export default function Invoices() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Add from Price Book</Label>
+              <Input
+                placeholder="Search equipment, parts, services, or labor…"
+                value={catalogSearch}
+                onChange={(event) => setCatalogSearch(event.target.value)}
+              />
+              <div className="max-h-44 space-y-1 overflow-y-auto rounded-lg border p-2">
+                {catalogItems
+                  .filter((item) => [item.name, item.description, item.item_type].some((value) => value.toLowerCase().includes(catalogSearch.toLowerCase())))
+                  .map((item) => (
+                    <button
+                      type="button"
+                      key={item.id}
+                      onClick={() => addCatalogItem(item)}
+                      className="flex w-full items-center justify-between gap-3 rounded-md p-2 text-left text-xs hover:bg-muted"
+                    >
+                      <span><span className="font-semibold">{item.name}</span><span className="ml-2 capitalize text-muted-foreground">{item.item_type}</span></span>
+                      <span className="font-semibold">{fmtCurrency(item.price_cents / 100)}</span>
+                    </button>
+                  ))}
+                {!catalogItems.length && <p className="p-2 text-xs text-muted-foreground">No active Price Book items yet. You can still enter invoice lines manually.</p>}
+              </div>
+            </div>
             <div className="space-y-2">
               <Label>Customer *</Label>
               <CustomerCombobox

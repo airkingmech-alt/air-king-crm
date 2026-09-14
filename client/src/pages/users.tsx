@@ -42,7 +42,7 @@ interface TeamUser {
   permissions: Record<string, boolean>;
 }
 
-const PERMISSION_LABELS: Record<string,string> = { customers:"Customers", leads:"Leads", quotes:"Quotes", schedule:"Schedule", pricebook:"Price Book", invoices:"Invoices", inventory:"Inventory", marketing:"Marketing", automations:"Automations", reports:"Reports" };
+const PERMISSION_LABELS: Record<string,string> = { customers:"Customers", leads:"Leads", quotes:"Quotes", schedule:"Schedule", pricebook:"Price Book", invoices:"Invoices", inventory:"Inventory", memberships:"Crown Care", referrals:"Coupons", marketing:"Marketing", automations:"Automations", communications:"Templates & Integrations", reports:"Reports" };
 
 const ROLE_LABELS: Record<string, string> = {
   owner: "Owner",

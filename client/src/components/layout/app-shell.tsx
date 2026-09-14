@@ -44,14 +44,14 @@ const navItems: {
   { path: "/quotes", label: "Quotes", icon: FileText, permission: "quotes" },
   { path: "/pricebook", label: "Pricebook", icon: BookOpen, permission: "pricebook" },
   { path: "/schedule", label: "Schedule", icon: Calendar, permission: "schedule" },
-  { path: "/crown-care", label: "Crown Care", icon: Crown },
+  { path: "/crown-care", label: "Crown Care", icon: Crown, permission: "memberships" },
   { path: "/invoices", label: "Invoices", icon: Receipt, permission: "invoices" },
-  { path: "/referrals", label: "Coupons", icon: Gift },
+  { path: "/referrals", label: "Coupons", icon: Gift, permission: "referrals" },
   { path: "/marketing", label: "Marketing", icon: Megaphone, permission: "marketing" },
   { path: "/inventory", label: "Inventory", icon: Package, permission: "inventory" },
   { path: "/automations", label: "Automations", icon: Calendar, permission: "automations" },
-  { path: "/templates", label: "Templates", icon: FileText },
-  { path: "/integrations", label: "Integrations", icon: UserCog },
+  { path: "/templates", label: "Templates", icon: FileText, permission: "communications" },
+  { path: "/integrations", label: "Integrations", icon: UserCog, permission: "communications" },
   { path: "/team", label: "Team", icon: UserCog, ownerOnly: true },
 ];
 

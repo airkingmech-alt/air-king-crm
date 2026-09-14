@@ -85,6 +85,7 @@ interface DataContextValue {
     workOrderId?: string;
     quoteId?: string;
     equipmentItems?: string[];
+    installedEquipment?: { brand?: string | null; model?: string | null; category: string; description: string }[];
     dueDate?: string;
   }) => Invoice;
   createQuote: (data: {
@@ -516,6 +517,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       workOrderId?: string;
       quoteId?: string;
       equipmentItems?: string[];
+      installedEquipment?: { brand?: string | null; model?: string | null; category: string; description: string }[];
       dueDate?: string;
     }): Invoice => {
       const inv: Invoice = {
@@ -537,17 +539,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
       };
       setInvoices((prev) => [inv, ...prev]);
       persistBlob("invoices", inv.id, inv, inv.customerId);
-      if (data.equipmentItems?.length) {
+      if (data.equipmentItems?.length || data.installedEquipment?.length) {
         const customer = customersRef.current.find(
           (c) => c.id === data.customerId,
         );
         const property = customer?.properties[0];
         if (customer && property) {
-          const installed = data.equipmentItems
+          const legacyEquipment = (data.equipmentItems || [])
             .map((equipmentId) =>
               pricebook.find((item) => item.id === equipmentId),
             )
             .filter(Boolean)
+            .map((item) => ({
+              brand: item!.brand,
+              model: item!.model,
+              category: item!.category,
+              description: item!.description,
+            }));
+          const equipment = [...legacyEquipment, ...(data.installedEquipment || [])]
             .filter((item) =>
               [
                 "Condenser",
@@ -555,40 +564,38 @@ export function DataProvider({ children }: { children: ReactNode }) {
                 "Air Handler",
                 "Furnace",
                 "Heat Pump",
-              ].includes(item!.category),
+              ].includes(item.category),
             )
             .filter(
               (item) =>
-                !property.systems.some(
-                  (system) => system.model === item!.model,
-                ),
-            )
-            .map((item) => {
+                !!item.model && !property.systems.some((system) => system.model === item.model),
+            );
+          const installed = equipment.map((item) => {
               const installedAt = new Date().toISOString().slice(0, 10);
               const warranty = new Date();
               warranty.setFullYear(warranty.getFullYear() + 10);
               const type =
-                item!.category === "Condenser"
+                item.category === "Condenser"
                   ? "AC"
-                  : item!.category === "Evaporator Coil"
+                  : item.category === "Evaporator Coil"
                     ? "Coil"
-                    : item!.category === "Air Handler"
+                    : item.category === "Air Handler"
                       ? "Air Handler"
-                      : item!.category === "Furnace"
+                      : item.category === "Furnace"
                         ? "Furnace"
-                        : item!.category === "Heat Pump"
+                        : item.category === "Heat Pump"
                           ? "Heat Pump"
                           : "Package Unit";
               return {
                 id: uid("sys-"),
                 type: type as import("@/data/mock-data").HVACSystem["type"],
-                brand: item!.brand,
-                model: item!.model,
+                brand: item.brand || "Unknown",
+                model: item.model || "Not recorded",
                 serial: "Not recorded",
                 installDate: installedAt,
                 warrantyExp: warranty.toISOString().slice(0, 10),
                 status: "Warranty" as const,
-                notes: `${item!.description} · Added from invoice ${inv.id}`,
+                notes: `${item.description} · Added from invoice ${inv.id}`,
               };
             });
           if (installed.length) {

@@ -91,6 +91,83 @@ function limit(req: Request, res: Response, next: () => void) {
 export function registerCrm(app: Express) {
   app.use("/api/public", limit);
   app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
+  app.options("/api/public/leads/:source", (_req, res) => {
+    res.set({
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Lead-Token",
+    });
+    res.sendStatus(204);
+  });
+  app.post(
+    "/api/public/leads/:source",
+    wrap(async (req, res) => {
+      res.set("Access-Control-Allow-Origin", "*");
+      const source = z.string().min(1).max(80).regex(/^[a-z0-9_-]+$/).parse(req.params.source);
+      const leadSources: Row[] = await result(
+        db()
+          .from("lead_sources")
+          .select("id,company_id,source_key,secret,enabled")
+          .eq("source_key", source)
+          .eq("enabled", true),
+      );
+      const provided = String(
+        req.headers["x-lead-token"] || req.headers.authorization?.replace(/^Bearer /i, "") || "",
+      );
+      const leadSource = leadSources.find((candidate) => {
+        const expected = String(candidate.secret || "");
+        return provided.length === expected.length && timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+      });
+      if (!leadSource) throw Object.assign(new Error("Invalid lead intake token."), { status: 401 });
+      const payload = z.object({
+        name: z.string().trim().min(1).max(160),
+        email: z.union([z.email(), z.literal("")]).optional(),
+        phone: z.string().trim().max(40).optional(),
+        address: z.string().trim().max(240).optional(),
+        city: z.string().trim().max(100).optional(),
+        state: z.string().trim().max(40).optional(),
+        postal_code: z.string().trim().max(20).optional(),
+        service_type: z.string().trim().max(120).optional(),
+        message: z.string().trim().max(5000).optional(),
+        source_ref: z.string().trim().max(200).optional(),
+        website: z.string().max(0).optional(),
+        metadata: z.record(z.string(), z.unknown()).optional(),
+      }).parse(req.body);
+      const { website: _honeypot, ...lead } = payload;
+      const inserted = await db()
+        .from("leads")
+        .insert({
+          ...lead,
+          email: lead.email || null,
+          source_ref: lead.source_ref || null,
+          company_id: leadSource.company_id,
+          source: source,
+          status: "new",
+        })
+        .select("id")
+        .single();
+      if (inserted.error && inserted.error.code !== "23505") throw new Error(inserted.error.message);
+      const row = inserted.data;
+      res.status(row ? 201 : 200).json({ accepted: true, duplicate: !row, lead_id: row?.id || null });
+    }),
+  );
+  app.get(
+    "/api/crm/lead-sources",
+    wrap(async (req, res) => {
+      const c = await caller(req, true);
+      const rows = await result(
+        db()
+          .from("lead_sources")
+          .select("id,name,source_key,enabled,secret")
+          .eq("company_id", c.company)
+          .order("name"),
+      );
+      res.json(rows.map((row: Row) => ({
+        ...row,
+        endpoint: `${origin()}/api/public/leads/${row.source_key}`,
+      })));
+    }),
+  );
   app.get(
     "/api/crm/config",
     wrap(async (req, res) => {
@@ -502,6 +579,22 @@ export function registerCrm(app: Express) {
             "document_delivery",
             c.id,
           ),
+        );
+      }
+      if (kind === "invoice" && row.data?.status === "Draft") {
+        await result(
+          db()
+            .from("invoices")
+            .update({
+              data: {
+                ...row.data,
+                status: "Sent",
+                sentDate: new Date().toISOString().slice(0, 10),
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", row.id)
+            .eq("company_id", c.company),
         );
       }
       res.json({
