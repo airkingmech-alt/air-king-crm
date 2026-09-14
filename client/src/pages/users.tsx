@@ -30,7 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { UserPlus } from "lucide-react";
+import { Settings, UserPlus } from "lucide-react";
 
 const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
 
@@ -39,7 +39,10 @@ interface TeamUser {
   email: string;
   full_name: string;
   role: AppRole;
+  permissions: Record<string, boolean>;
 }
+
+const PERMISSION_LABELS: Record<string,string> = { customers:"Customers", leads:"Leads", quotes:"Quotes", schedule:"Schedule", pricebook:"Price Book", invoices:"Invoices", inventory:"Inventory", marketing:"Marketing", automations:"Automations", reports:"Reports" };
 
 const ROLE_LABELS: Record<string, string> = {
   owner: "Owner",
@@ -59,6 +62,8 @@ export default function Users() {
     password: "",
   });
   const [error, setError] = useState<string | null>(null);
+  const [permissionUser, setPermissionUser] = useState<TeamUser | null>(null);
+  const [permissionDraft, setPermissionDraft] = useState<Record<string,boolean>>({});
 
   const token = session?.access_token;
 
@@ -97,6 +102,20 @@ export default function Users() {
       setOpen(false);
     },
     onError: (e: Error) => setError(e.message),
+  });
+
+  const permissionMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`${API_BASE}/api/admin/users/${permissionUser!.id}/permissions`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ permissions: permissionDraft }),
+      });
+      if (!res.ok) { const body=await res.json().catch(()=>({})); throw new Error(body.error || "Could not update permissions."); }
+      return res.json();
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/admin/users"] }); setPermissionUser(null); },
+    onError: (e:Error) => setError(e.message),
   });
 
   const users = data?.users ?? [];
@@ -235,6 +254,7 @@ export default function Users() {
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
+                  <TableHead className="text-right">Access</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -251,12 +271,18 @@ export default function Users() {
                         {ROLE_LABELS[u.role] ?? u.role}
                       </Badge>
                     </TableCell>
+                    <TableCell className="text-right">
+                      {u.role === "owner" ? <span className="text-xs text-muted-foreground">Full access</span> :
+                      <Button size="sm" variant="outline" onClick={()=>{setError(null);setPermissionUser(u);setPermissionDraft(Object.fromEntries(Object.keys(PERMISSION_LABELS).map(k=>[k,u.permissions?.[k]!==false])))}}>
+                        <Settings className="mr-2 h-4 w-4"/>Permissions
+                      </Button>}
+                    </TableCell>
                   </TableRow>
                 ))}
                 {users.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={3}
+                      colSpan={4}
                       className="text-center text-muted-foreground"
                     >
                       No users found.
@@ -268,6 +294,19 @@ export default function Users() {
           )}
         </CardContent>
       </Card>
+      <Dialog open={!!permissionUser} onOpenChange={(value)=>!value&&setPermissionUser(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Access for {permissionUser?.full_name}</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Turn off any CRM area this team member should not be able to view or change.</p>
+          <div className="grid grid-cols-2 gap-3">
+            {Object.entries(PERMISSION_LABELS).map(([key,label])=><label key={key} className="flex items-center gap-3 rounded-md border p-3 text-sm">
+              <input type="checkbox" className="h-4 w-4" checked={permissionDraft[key]!==false} onChange={e=>setPermissionDraft({...permissionDraft,[key]:e.target.checked})}/>{label}
+            </label>)}
+          </div>
+          {error&&<Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+          <div className="flex justify-end gap-2"><Button variant="outline" onClick={()=>setPermissionUser(null)}>Cancel</Button><Button disabled={permissionMutation.isPending} onClick={()=>permissionMutation.mutate()}>{permissionMutation.isPending?"Saving…":"Save permissions"}</Button></div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
