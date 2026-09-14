@@ -67,6 +67,14 @@ const jobTypes = [
   "Emergency Repair",
 ];
 
+function getSelectedAddOnIds(workOrder: unknown): string[] {
+  const selectedAddOns = (workOrder as { selectedAddOns?: unknown })
+    .selectedAddOns;
+  return Array.isArray(selectedAddOns)
+    ? selectedAddOns.filter((id): id is string => typeof id === "string")
+    : [];
+}
+
 function getWeekStart(date: Date): Date {
   const d = new Date(date);
   const day = d.getDay();
@@ -262,8 +270,11 @@ export default function Schedule() {
     const option = quote?.options.find(
       (item) => item.tier === quote.selectedOption,
     );
+    const selectedAddOnIds = getSelectedAddOnIds(wo).length
+      ? getSelectedAddOnIds(wo)
+      : quote?.selectedAddOns || [];
     const addons = addOnServices.filter((item) =>
-      (quote?.selectedAddOns || []).includes(item.id),
+      selectedAddOnIds.includes(item.id),
     );
     const amount =
       (option?.customerPrice || 0) +
@@ -281,6 +292,18 @@ export default function Schedule() {
       description: quote
         ? `${quote.title} — ${option?.label || quote.selectedOption || "Approved"} package`
         : `${wo.type} — ${wo.description}`,
+      items: quote
+        ? [
+            {
+              description: `${option?.label || quote.selectedOption || "Approved"} package — ${quote.title}`,
+              amount: option?.customerPrice || 0,
+            },
+            ...addons.map((addOn) => ({
+              description: `Add-on — ${addOn.name}`,
+              amount: addOn.price,
+            })),
+          ]
+        : undefined,
       workOrderId: wo.id,
       quoteId: quote?.id,
       equipmentItems,
@@ -500,6 +523,17 @@ export default function Schedule() {
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {wo.description}
                     </p>
+                    {!!getSelectedAddOnIds(wo).length && (
+                      <p className="text-xs text-foreground mt-1">
+                        <span className="font-medium">Add-ons:</span>{" "}
+                        {addOnServices
+                          .filter((addOn) =>
+                            getSelectedAddOnIds(wo).includes(addOn.id),
+                          )
+                          .map((addOn) => addOn.name)
+                          .join(", ")}
+                      </p>
+                    )}
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     {wo.technician ? (
@@ -577,6 +611,17 @@ export default function Schedule() {
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {wo.description}
                   </p>
+                  {!!getSelectedAddOnIds(wo).length && (
+                    <p className="text-xs text-foreground mt-1">
+                      <span className="font-medium">Add-ons:</span>{" "}
+                      {addOnServices
+                        .filter((addOn) =>
+                          getSelectedAddOnIds(wo).includes(addOn.id),
+                        )
+                        .map((addOn) => addOn.name)
+                        .join(", ")}
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-wrap justify-end gap-2">
                   {wo.quoteId && (
