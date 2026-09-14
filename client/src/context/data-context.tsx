@@ -81,6 +81,7 @@ interface DataContextValue {
     customerName: string;
     amount: number;
     description: string;
+    items?: { description: string; amount: number }[];
     workOrderId?: string;
     quoteId?: string;
     equipmentItems?: string[];
@@ -511,6 +512,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       customerName: string;
       amount: number;
       description: string;
+      items?: { description: string; amount: number }[];
       workOrderId?: string;
       quoteId?: string;
       equipmentItems?: string[];
@@ -529,7 +531,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         dueDate:
           data.dueDate ||
           new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
-        items: [{ description: data.description, amount: data.amount }],
+        items: data.items?.length
+          ? data.items
+          : [{ description: data.description, amount: data.amount }],
       };
       setInvoices((prev) => [inv, ...prev]);
       persistBlob("invoices", inv.id, inv, inv.customerId);

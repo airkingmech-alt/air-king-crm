@@ -126,6 +126,9 @@ export default function Proposal() {
       0,
     );
   const grandTotal = (selectedOption?.customerPrice || 0) + addOnTotal;
+  const selectedAddOnDetails = addOnServices.filter((addOn) =>
+    selectedAddOns.includes(addOn.id),
+  );
   const monthlyEstimate = Math.round(grandTotal / 60); // ~5 year financing estimate
   const invoiceForQuote = invoices.find(
     (invoice) => invoice.quoteId === quote.id,
@@ -150,6 +153,16 @@ export default function Proposal() {
       customerName: quote.customerName,
       amount: grandTotal,
       description: `${quote.title} — ${selectedOption.label} package`,
+      items: [
+        {
+          description: `${selectedOption.label} package — ${quote.title}`,
+          amount: selectedOption.customerPrice,
+        },
+        ...selectedAddOnDetails.map((addOn) => ({
+          description: `Add-on — ${addOn.name}`,
+          amount: addOn.price,
+        })),
+      ],
       quoteId: quote.id,
       workOrderId: workOrderForQuote?.id,
       equipmentItems,
