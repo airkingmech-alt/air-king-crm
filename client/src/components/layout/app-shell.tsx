@@ -36,19 +36,20 @@ const navItems: {
   label: string;
   icon: any;
   ownerOnly?: boolean;
+  permission?: string;
 }[] = [
   { path: "/", label: "Dashboard", icon: LayoutDashboard },
-  { path: "/customers", label: "Customers", icon: Users },
-  { path: "/leads", label: "Leads", icon: Inbox },
-  { path: "/quotes", label: "Quotes", icon: FileText },
-  { path: "/pricebook", label: "Pricebook", icon: BookOpen },
-  { path: "/schedule", label: "Schedule", icon: Calendar },
+  { path: "/customers", label: "Customers", icon: Users, permission: "customers" },
+  { path: "/leads", label: "Leads", icon: Inbox, permission: "leads" },
+  { path: "/quotes", label: "Quotes", icon: FileText, permission: "quotes" },
+  { path: "/pricebook", label: "Pricebook", icon: BookOpen, permission: "pricebook" },
+  { path: "/schedule", label: "Schedule", icon: Calendar, permission: "schedule" },
   { path: "/crown-care", label: "Crown Care", icon: Crown },
-  { path: "/invoices", label: "Invoices", icon: Receipt },
+  { path: "/invoices", label: "Invoices", icon: Receipt, permission: "invoices" },
   { path: "/referrals", label: "Coupons", icon: Gift },
-  { path: "/marketing", label: "Marketing", icon: Megaphone },
-  { path: "/inventory", label: "Inventory", icon: Package },
-  { path: "/automations", label: "Automations", icon: Calendar },
+  { path: "/marketing", label: "Marketing", icon: Megaphone, permission: "marketing" },
+  { path: "/inventory", label: "Inventory", icon: Package, permission: "inventory" },
+  { path: "/automations", label: "Automations", icon: Calendar, permission: "automations" },
   { path: "/templates", label: "Templates", icon: FileText },
   { path: "/integrations", label: "Integrations", icon: UserCog },
   { path: "/team", label: "Team", icon: UserCog, ownerOnly: true },
@@ -137,7 +138,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {navItems
-          .filter((item) => !item.ownerOnly || profile?.role === "owner")
+          .filter((item) => (!item.ownerOnly || profile?.role === "owner") && (profile?.role === "owner" || !item.permission || profile?.permissions?.[item.permission] !== false))
           .map((item) => {
             const Icon = item.icon;
             const active =
