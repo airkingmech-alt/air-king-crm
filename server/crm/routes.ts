@@ -32,6 +32,7 @@ import {
   bodies,
 } from "./catalog";
 import { tick } from "./worker";
+import { mapMetaLead, secureEqual, verifyMetaSignature } from "./meta-leads";
 import {
   smsConfigured,
   requireSmsForChannels,
@@ -91,6 +92,61 @@ function limit(req: Request, res: Response, next: () => void) {
 export function registerCrm(app: Express) {
   app.use("/api/public", limit);
   app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
+  app.get("/api/webhooks/meta/leadgen", (req, res) => {
+    const mode = String(req.query["hub.mode"] || "");
+    const token = String(req.query["hub.verify_token"] || "");
+    const challenge = String(req.query["hub.challenge"] || "");
+    const expected = process.env.META_VERIFY_TOKEN || "";
+    if (mode === "subscribe" && expected && secureEqual(token, expected)) {
+      res.type("text/plain").send(challenge);
+      return;
+    }
+    res.sendStatus(403);
+  });
+  app.post(
+    "/api/webhooks/meta/leadgen",
+    wrap(async (req, res) => {
+      const appSecret = process.env.META_APP_SECRET || "";
+      const pageToken = process.env.META_PAGE_ACCESS_TOKEN || "";
+      const signature = String(req.headers["x-hub-signature-256"] || "");
+      if (!appSecret || !pageToken)
+        throw Object.assign(new Error("Meta lead ads are not connected."), { status: 503 });
+      if (!Buffer.isBuffer(req.rawBody) || !verifyMetaSignature(req.rawBody, signature, appSecret))
+        throw Object.assign(new Error("Invalid Meta webhook signature."), { status: 401 });
+
+      const changes = (Array.isArray(req.body?.entry) ? req.body.entry : []).flatMap((entry: Row) =>
+        (Array.isArray(entry.changes) ? entry.changes : [])
+          .filter((change: Row) => change.field === "leadgen" && change.value?.leadgen_id)
+          .map((change: Row) => ({ page_id: entry.id, ...change.value })),
+      );
+      const source = await result(
+        db().from("lead_sources").select("company_id,enabled").eq("source_key", "meta").eq("enabled", true).maybeSingle(),
+      );
+      if (!source) throw Object.assign(new Error("Meta lead intake is disabled."), { status: 503 });
+
+      for (const change of changes) {
+        const leadId = encodeURIComponent(String(change.leadgen_id));
+        const params = new URLSearchParams({
+          fields: "id,created_time,ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,form_id,field_data",
+          access_token: pageToken,
+        });
+        const response = await fetch(`https://graph.facebook.com/v24.0/${leadId}?${params}`, {
+          signal: AbortSignal.timeout(15000),
+        });
+        const lead = await response.json() as Row;
+        if (!response.ok) throw new Error(`Meta could not provide lead ${leadId}: ${String(lead?.error?.message || response.status).slice(0, 160)}`);
+        const mapped = mapMetaLead(lead, change);
+        const inserted = await db().from("leads").insert({
+          ...mapped,
+          company_id: source.company_id,
+          source: "meta",
+          status: "new",
+        });
+        if (inserted.error && inserted.error.code !== "23505") throw new Error(inserted.error.message);
+      }
+      res.status(200).json({ received: true });
+    }),
+  );
   app.options("/api/public/leads/:source", (_req, res) => {
     res.set({
       "Access-Control-Allow-Origin": "*",
@@ -192,6 +248,8 @@ export function registerCrm(app: Express) {
           unsubscribe: !!process.env.COMMUNICATION_SIGNING_SECRET,
           marketing: process.env.MARKETING_SENDING_ENABLED === "true",
           marketing_address: !!process.env.MARKETING_POSTAL_ADDRESS,
+          meta: !!process.env.META_APP_SECRET && !!process.env.META_PAGE_ACCESS_TOKEN && !!process.env.META_VERIFY_TOKEN,
+          meta_webhook: `${origin()}/api/webhooks/meta/leadgen`,
           surcharge_available: false,
         },
       });
