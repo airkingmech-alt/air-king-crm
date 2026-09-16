@@ -20,6 +20,7 @@ import Schedule from "@/pages/schedule";
 import CrownCare from "@/pages/crown-care";
 import Invoices from "@/pages/invoices";
 import InvoiceView from "@/pages/invoice-view";
+import TimeClock from "@/pages/time-clock";
 import Users from "@/pages/users";
 import Referrals from "@/pages/referrals";
 import Marketing from "@/pages/marketing";
@@ -39,6 +40,7 @@ function InternalRouter() {
         <Route path="/customers/:id">{can("customers") ? <CustomerDetail /> : <AccessDenied />}</Route>
         <Route path="/pricebook">{can("pricebook") ? <Pricebook /> : <AccessDenied />}</Route>
         <Route path="/quotes">{can("quotes") ? <Quotes /> : <AccessDenied />}</Route>
+        <Route path="/time-clock">{can("time_clock") ? <TimeClock /> : <AccessDenied />}</Route>
         <Route path="/schedule">{can("schedule") ? <Schedule /> : <AccessDenied />}</Route>
         <Route path="/crown-care">{can("memberships") ? <CrownCare /> : <AccessDenied />}</Route>
         <Route path="/invoices">{can("invoices") ? <Invoices /> : <AccessDenied />}</Route>

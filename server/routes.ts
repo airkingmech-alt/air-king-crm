@@ -151,7 +151,7 @@ export async function registerRoutes(
     if (caller.profile.role !== "owner") return res.status(403).json({ error: "Only owners can manage permissions." });
     const targetId = String(req.params.id);
     if (targetId === caller.user.id) return res.status(400).json({ error: "Owner access cannot be restricted." });
-    const allowed = ["customers","leads","quotes","schedule","pricebook","invoices","inventory","memberships","referrals","marketing","automations","communications","reports"];
+    const allowed = ["customers","leads","quotes","schedule","pricebook","invoices","inventory","memberships","referrals","marketing","automations","communications","reports","time_clock","time_clock_edit_own"];
     const incoming = req.body?.permissions || {};
     const permissions = Object.fromEntries(allowed.map((key) => [key, incoming[key] !== false]));
     const role = req.body?.role;
