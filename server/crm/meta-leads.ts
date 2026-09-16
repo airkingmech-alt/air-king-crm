@@ -16,7 +16,7 @@ export function verifyMetaSignature(rawBody: Buffer, signature: string, appSecre
 
 function values(fields: MetaField[]) {
   const entries = fields.flatMap((field) =>
-    (field.values || []).map((value) => [String(field.name || ""), String(value ?? "")] as const),
+    (field.values || []).map((value) => [String(field.name || "").trim().toLowerCase(), String(value ?? "")] as const),
   );
   return Object.fromEntries(entries);
 }

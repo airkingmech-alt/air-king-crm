@@ -3,6 +3,19 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { mapMetaLead, verifyMetaSignature } from "../server/crm/meta-leads";
 
+test("Meta uppercase contact fields populate contact columns", () => {
+  const mapped = mapMetaLead({ id: "uppercase-test", field_data: [
+    { name: "FULL_NAME", values: ["Test Customer"] },
+    { name: "EMAIL", values: ["test@example.com"] },
+    { name: "PHONE", values: ["8165550100"] },
+    { name: "PREFERRED_TIME", values: ["Morning"] },
+  ] });
+  assert.equal(mapped.name, "Test Customer");
+  assert.equal(mapped.email, "test@example.com");
+  assert.equal(mapped.phone, "8165550100");
+  assert.equal(mapped.message, "preferred time: Morning");
+});
+
 test("Meta signature validation rejects changed payloads", () => {
   const body = Buffer.from('{"object":"page"}');
   const signature = `sha256=${createHmac("sha256", "secret").update(body).digest("hex")}`;
