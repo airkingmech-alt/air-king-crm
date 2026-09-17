@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppShell } from "@/components/layout/app-shell";
 import { AuthProvider, useAuth } from "@/context/auth-context";
+import { canAccess, staffRoles } from "../../shared/access";
 import { DataProvider } from "@/context/data-context";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
@@ -30,7 +31,7 @@ import NotFound from "@/pages/not-found";
 
 function InternalRouter() {
   const { profile } = useAuth();
-  const can = (key: string) => profile?.role === "owner" || profile?.permissions?.[key] !== false;
+  const can = (key: string) => canAccess(profile, key);
   return (
     <AppShell>
       <Switch>
@@ -61,10 +62,11 @@ function InternalRouter() {
 // no admin nav, no access to other customer data. These are the
 // pages linked to customers via the Send dialog.
 function AppRouter() {
+  const { profile } = useAuth();
   return (
     <Switch>
-      <Route path="/proposals/:id" component={Proposal} />
-      <Route path="/invoices/view/:id" component={InvoiceView} />
+      <Route path="/proposals/:id">{canAccess(profile,"quotes") ? <Proposal/> : <AccessDenied/>}</Route>
+      <Route path="/invoices/view/:id">{canAccess(profile,"invoices") ? <InvoiceView/> : <AccessDenied/>}</Route>
       <Route>
         <InternalRouter />
       </Route>
@@ -96,7 +98,7 @@ function App() {
 }
 
 function Gate() {
-  const { session, loading } = useAuth();
+  const { session, profile, loading } = useAuth();
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
@@ -105,6 +107,7 @@ function Gate() {
     );
   }
   if (!session) return <Login />;
+  if (!profile || !staffRoles.includes(profile.role)) return <AccessDenied/>;
   return (
     <DataProvider>
       <Router hook={useHashLocation}>

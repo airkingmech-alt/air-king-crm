@@ -1,58 +1,67 @@
-# Air King CRM — owner launch checklist
+# Air King CRM — launch repair checklist
 
-**Updated owner direction:** Twilio is deferred. Follow [the Stripe-first rollout](deploy-stripe-first.md); the Twilio steps below are for later and are not a prerequisite for preparing Stripe payments.
+Updated September 17, 2026. This supersedes the old PR #1 rollout checklist. The CRM is already deployed; this release repairs the existing application. Checked items describe the evidence below, not certification of every workflow.
 
-The implementation is on `feature/payments-communications`, draft pull request #1. It is not deployed. Production accounts, passwords, customers and balances are unchanged. Do not merge the pull request or enable customer sending yet.
+## Implemented in this repair release
 
-## First decision: a separate test environment
+- [x] Enforce existing team feature toggles in server requests, direct database access, internal quote/invoice routes, and central data loading. Owners retain access and company isolation remains enforced.
+- [x] Add restrictive feature policies to 29 existing tables. Combined history/campaign views require access to the related customer, quote, invoice and schedule data.
+- [x] Replace fire-and-forget customer, quote, invoice, job, legacy membership and note saves with confirmed saves and visible errors. Forms await confirmation; repeated clicks during pending saves are suppressed.
+- [x] Reject conflicting whole-record edits in the shared save path. Save new invoices and their customer equipment changes in one transaction.
+- [x] Convert leads to customers atomically. Retrying returns the linked customer instead of creating another.
+- [x] Reject another invoice for an already-linked quote/job in the new save path.
+- [x] Remove sample business records as production loading fallbacks. Show empty lists and visible read failures honestly.
+- [x] Stop inserting fake phone/email details for new customers. Use the signed-in employee as the note/activity author.
+- [x] Calculate monthly receipts from payment dates in America/Chicago, excluding historical opening balances. Derive membership totals and unbooked visits from saved memberships.
+- [x] Resolve ordering equipment from the editable catalog, retaining legacy lookup for older quotes and keeping unresolved IDs visible for review.
+- [x] Replace Crown Care's sample technician list with saved staff. Initial appointment fields save together with the job.
+- [x] Preserve selected add-ons when creating quotes; separate cost and selling price in the customer-profile quote flow.
+- [x] Remove unnecessary elevated privileges from the company-lookup helper after checking the profile policy and testing company isolation.
 
-Only one Supabase project and the production Render app are currently connected. Before testing real provider connections, approve a separate **Air King CRM Staging** app and database. Use synthetic customers only, not a copy of production customer data. Any paid resources or plan upgrades need your approval first. A Stripe sandbox alone does not isolate CRM data: the database must also be separate.
+Neither migration rewrites or deletes customer data. No new environment variables are required. These repairs did not send customer messages, charge cards, change passwords, enable automations, or purchase hosting.
 
-After approval, the implementation work includes preparing the test database, applying the migration there, connecting the feature branch, and checking the existing staff workflows. Do not point a staging app at the production Supabase database.
+## Verification completed
 
-## What you handle
+- [x] TypeScript check and production build.
+- [x] Automated payment, quote, add-on, scheduling, Crown Care, inventory, time-clock, messaging and automation regression tests. Provider calls are mocked where appropriate.
+- [x] New tests for feature denial, owner override, caller-scoped lookup, stale edits, rollback, duplicate invoice retry, atomic lead conversion, and dashboard date boundaries.
+- [x] Safe migrations applied. New RPCs are security-invoker and unavailable anonymously. All public ordinary tables have RLS enabled.
+- [x] Production invoice balances match the payment ledger in the post-migration check.
+- [x] Scheduler inspection: 120 runs, zero failed runs in the sampled hour. This is not proof of delivery for every message.
+- [x] Security advisors rerun. Server-only tables intentionally retain RLS without browser policies.
 
-### 1. Stripe: payment account
+Render live status, recent logs and side-effect-free public smoke tests must also be checked after deployment; the release handoff records their result.
 
-- Sign in to [Stripe Dashboard](https://dashboard.stripe.com/) or create Air King's business account.
-- Complete any business identity and bank-account setup Stripe requests yourself.
-- Create/select a sandbox for testing. Keep live mode off during acceptance tests.
-- When the staging app is ready, save its sandbox server key in the staging Render service as `STRIPE_SECRET_KEY`; save the endpoint's separate signing secret as `STRIPE_WEBHOOK_SECRET`.
-- Do not send either value in chat or put it in GitHub. We do not need your bank login or a real card for testing.
+## Not completed / what is needed
 
-Stripe's [API-key guide](https://docs.stripe.com/keys) and [test-payment guide](https://docs.stripe.com/testing) explain the separation between sandbox and real payments. The current implementation expects a standard `sk_test_`/`sk_live_` server key; restricted-key mode detection and permissions must be validated before using a restricted key.
+| Priority | Item | Blocker or next step |
+|---|---|---|
+| Launch gate | Signed-in desktop/phone walkthrough | No authenticated staff browser session available. Test owner, dispatcher and technician permissions, failed saves, simultaneous edits, and lead → quote with add-ons → acceptance → unassigned job → schedule → invoice. Do not share passwords in chat. |
+| Card collection gate | Actual Stripe sandbox checkout and receipts | Requires an isolated staging app/database and test configuration. Full, partial, second, failed payment and duplicate callback tests must run through Stripe. Production has no recorded Stripe events; local ledger tests are not live acceptance. |
+| Card collection gate | Refund/dispute/reversal reconciliation | Automatic synchronization is not implemented. Establish an owner-reviewed Stripe/CRM reconciliation process with the bookkeeper or implement/test reversals before taking cards. Do not change a paid flag to simulate a refund. |
+| Launch gate | Production hosting and automatic deployment | Render uses free compute; a paid plan is an owner decision. Earlier logs show GitHub integration access trouble. Reconnect it and confirm a later push actually triggers a deployment. |
+| Launch gate | Backup restore, rollback drill and outage alerts | No isolated restore environment or verified retention setup available. Verify backups and restore into a separate database; test rollback and worker/provider failure alerts. Never restore over production as a test. |
+| Before texting | Twilio delivery and STOP | Owner/provider setup and an authorized controlled destination needed. Texting was not enabled by this repair. |
+| Before relying on intake | Website/Meta live submission | Actual provider/browser access needed to submit a controlled lead and verify account permissions, subscriptions and token lifetime. Mapping/signature tests passed. |
+| Before marketing | Failed delivery, consent and automation review | Review the known provider-failed email. Three earlier failures were preference blocks and must not be bypassed. Most automations remain disabled. Test delivery, bounce and opt-out using controlled destinations before activating sequences. |
+| Before equipment campaigns | Historical dates and placeholder contacts | Air King must review the placeholder-contact record and missing service dates. New completion transitions already record last service; historical dates/identities were not guessed. |
+| Before quoting | Pricing consistency | Legacy quote builders divide cost by 0.75; catalog pricing uses 0.80. Confirm the intended rule before changing customer prices. Existing quotes were not recalculated. |
+| Before subscriptions | Crown Care billing/agreement lifecycle | Tracking and custom equipment/filter/pricing configuration exist. Recurring collection, signed enrollment/cancellation and failed-payment handling remain incomplete. Use manual billing until separately implemented and tested. |
+| Security follow-up | Leaked-password protection | Supabase reports it disabled. Owner must enable the supported account/plan setting. Existing passwords remain unchanged. |
+| Workflow follow-up | Other editors and initial appointment validation | Shared blob saves now reject conflicts, but price-book, lead-status and template edits still need a concurrency review. Calendar moves have conflict checks; legacy initial job/Crown Care creation needs equivalent staff/date/conflict validation and membership-visit linkage. |
+| Hands-on acceptance | Equipment AI, inventory, clock and calendar | Actual AI-provider accuracy, employee phones, clock corrections, drag/resize gestures and physical stock workflows still require operational testing. Automated rules/database tests are not a substitute. |
 
-### 2. Twilio: business texting
+## Audit correction
 
-- Sign in to [Twilio Console](https://console.twilio.com/) or create an Air King account.
-- Choose an SMS-capable business number and Messaging Service. Confirm any number purchase and usage costs yourself.
-- Complete the registration/verification required for your chosen number. For a US local number, follow [Twilio's A2P 10DLC process](https://www.twilio.com/docs/messaging/compliance/a2p-10dlc). Do not assume your existing business phone can send through Twilio without number setup.
-- Save `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_MESSAGING_SERVICE_SID` directly in the staging Render environment when it is ready.
-- Choose a phone you control for test messages and explicitly approve using it. No existing customer numbers will be used.
+Public `/api/public` routes already have an in-memory IP rate limiter (120 requests/minute). The original audit's statement that no general limiter was found was too broad. No duplicate limiter was added. Distributed/edge abuse protection is still a separate review if the service scales.
 
-### 3. Email: sender domain
+## Release and recovery
 
-- Sign in to [Resend](https://resend.com/) or create an account.
-- Choose the domain and sender address Air King will use. Example only: `office@your-owned-domain`; do not use a Gmail address as a domain you own.
-- Add the exact DNS records Resend supplies and wait for verification. Do not replace unrelated website or existing email records. See [domain verification](https://resend.com/docs/dashboard/domains/introduction).
-- Save `RESEND_API_KEY` and the callback signing secret `RESEND_WEBHOOK_SECRET` directly in staging Render.
-- Choose an email inbox you control for test deliveries and approve its use.
+Migrations:
 
-## What the implementation work handles next
+- `20260917225457_launch_permissions_and_confirmed_saves.sql`: existing permission helper, restrictive policies, atomic saves and lead conversion.
+- `20260917231306_company_lookup_invoker.sql`: existing company helper obeys caller permissions.
 
-1. Isolated staging database and app preparation after resource/cost approval.
-2. Safe migration application, RLS verification and Supabase security advisors.
-3. Separate generated worker/unsubscribe secrets, without changing account passwords.
-4. Exact staging webhook addresses, secure scheduler installation and execution checks.
-5. Controlled Stripe full/partial/second/failed payments, duplicate webhook and receipt tests.
-6. Controlled email/SMS delivery, opt-out, quiet-hours and automation stop-condition checks.
-7. Staff-screen regression checks, migration backup/recovery readiness, then production release through GitHub → Render.
-8. Production logs and safe smoke tests; all starter automations remain disabled until reviewed individually.
+Pre-repair application release: `b75b8ff9ff7a3cfe2e0e8b39a24737032348cf55`. For an application regression, redeploy that commit through Render and inspect logs. Additive save functions may remain. Do not remove access policies or restore the database blindly to undo a UI problem. No restore drill is claimed.
 
-The detailed environment names and callback paths are in [integration-setup.md](integration-setup.md). Staging callback URLs must use the staging app's actual URL, not the production URL listed there. Save credentials only on the intended service; do not replace the whole environment-variable list.
-
-## Current limits
-
-Card surcharge charging remains unavailable pending a validated credit-card eligibility/compliance implementation. No live payment, SMS/email delivery, browser-regression, or installed-scheduler tests have been completed. The 51-test automated suite now includes actual database role restrictions and 14-starter installation checks, but these are not substitutes for provider end-to-end tests. Release review also updated two transitive dependencies (`nanoid` and `qs`) to remediate the production-dependency audit findings.
-
-The production security advisor also reports the pre-existing public company-lookup function and disabled leaked-password protection. The proposed migration removes anonymous execution of the helper. Staff execution remains necessary for current company-scoped RLS and needs review, not a blanket revoke. Review [Supabase password protection](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection) separately; no existing passwords were changed.
+Proceed with a controlled owner/staff pilot after the access/save walkthrough. Hold live card collection and automatic subscriptions until their separate gates pass. Optional new features are not required for the pilot.

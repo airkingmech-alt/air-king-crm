@@ -7,14 +7,12 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { apiRequest } from "@/lib/queryClient";
+import { toast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/auth-context";
+import { canAccess } from "../../../shared/access";
+import { saveRecords, type RecordWrite } from "@/lib/confirmed-save";
 import { supabase, extractEntities } from "@/lib/supabase";
 import {
-  customers as seedCustomers,
-  workOrders as seedWorkOrders,
-  invoices as seedInvoices,
-  quotes as seedQuotes,
-  memberships as seedMemberships,
   type Customer,
   type WorkOrder,
   type Invoice,
@@ -62,10 +60,11 @@ interface DataContextValue {
   notes: CustomerNote[];
   photos: CustomerPhoto[];
   loading: boolean;
+  loadError: string | null;
 
-  addCustomer: (data: NewCustomerData) => Customer;
+  addCustomer: (data: NewCustomerData, leadId?: string) => Promise<Customer>;
   getNotes: (customerId: string) => CustomerNote[];
-  addNote: (customerId: string, text: string) => void;
+  addNote: (customerId: string, text: string) => Promise<void>;
   getPhotos: (customerId: string) => CustomerPhoto[];
   addPhoto: (customerId: string, file: File) => Promise<void>;
   createWorkOrder: (data: {
@@ -75,7 +74,8 @@ interface DataContextValue {
     property: string;
     description: string;
     quoteId?: string;
-  }) => WorkOrder;
+    scheduledDate?:string; scheduledTime?:string; technician?:string; priority?:WorkOrder["priority"];
+  }) => Promise<WorkOrder>;
   createInvoice: (data: {
     customerId: string;
     customerName: string;
@@ -87,7 +87,7 @@ interface DataContextValue {
     equipmentItems?: string[];
     installedEquipment?: { brand?: string | null; model?: string | null; category: string; description: string }[];
     dueDate?: string;
-  }) => Invoice;
+  }) => Promise<Invoice>;
   createQuote: (data: {
     customerId: string;
     customerName: string;
@@ -97,9 +97,10 @@ interface DataContextValue {
     customerPrice: number;
     equipmentItems?: string[];
     laborDescription?: string;
-  }) => Quote;
-  updateQuoteStatus: (quoteId: string, status: string) => void;
-  updateWorkOrder: (workOrderId: string, updates: Partial<WorkOrder>) => void;
+    selectedAddOns?:string[];
+  }) => Promise<Quote>;
+  updateQuoteStatus: (quoteId: string, status: string) => Promise<void>;
+  updateWorkOrder: (workOrderId: string, updates: Partial<WorkOrder>) => Promise<void>;
   memberships: CrownCareMembership[];
   enrollMembership: (data: {
     customerId: string;
@@ -107,43 +108,32 @@ interface DataContextValue {
     propertyAddress: string;
     systemDescription: string;
     billingFrequency: "Annual" | "Monthly";
-  }) => CrownCareMembership;
+  }) => Promise<CrownCareMembership>;
 }
 
 // Collision-safe ID generator: prefix + 8 hex chars from a UUID.
 const uid = (prefix: string) => `${prefix}${crypto.randomUUID().slice(0, 8)}`;
 
-// Fire-and-forget Supabase insert/update for a jsonb-blob table.
-// `customerId` is optional because the `customers` table has no customer_id column.
-// Returns the error (if any) so callers can surface it to the UI.
-const persistBlob = async (
-  table: string,
-  id: string,
-  data: unknown,
-  customerId?: string,
-): Promise<string | null> => {
-  const row: Record<string, unknown> = { id, company_id: "air-king", data };
-  if (customerId) row.customer_id = customerId;
-  const { error } = await supabase.from(table).upsert(row);
-  if (error) {
-    console.error(`Failed to persist ${table} ${id}:`, error.message);
-    return error.message;
-  }
-  return null;
-};
-
 const DataContext = createContext<DataContextValue | null>(null);
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const [customers, setCustomers] = useState<Customer[]>(seedCustomers);
-  const [workOrders, setWorkOrders] = useState<WorkOrder[]>(seedWorkOrders);
-  const [invoices, setInvoices] = useState<Invoice[]>(seedInvoices);
-  const [quotes, setQuotes] = useState<Quote[]>(seedQuotes);
+  const { profile } = useAuth();
+  const [loadError,setLoadError]=useState<string|null>(null);
+  const actor=profile?.full_name || "Staff member";
+  const pendingCreates=useRef(new Map<string,string>());
+  const createId=(prefix:string,input:unknown)=>{const key=prefix+JSON.stringify(input);let id=pendingCreates.current.get(key);if(!id){id=uid(prefix);pendingCreates.current.set(key,id);}return id;};
+  const finishCreate=(prefix:string,input:unknown)=>pendingCreates.current.delete(prefix+JSON.stringify(input));
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [quotes, setQuotes] = useState<Quote[]>([]);
   const [memberships, setMemberships] =
-    useState<CrownCareMembership[]>(seedMemberships);
+    useState<CrownCareMembership[]>([]);
   const [notes, setNotes] = useState<CustomerNote[]>([]);
   const [photos, setPhotos] = useState<CustomerPhoto[]>([]);
   const [loading, setLoading] = useState(true);
+  const loadedNotes=useRef(new Set<string>());
+  const loadedPhotos=useRef(new Set<string>());
 
   // Refs mirror latest state so update handlers can read the full entity
   // to persist (jsonb blobs are replaced wholesale).
@@ -160,68 +150,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
     customersRef.current = customers;
   }, [customers]);
 
-  // Load all data from Supabase on mount; fall back to seed data if empty
+  // Empty means empty; a failed read must never show sample business records.
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
+    let cancelled=false;
+    const load=async()=>{
+      const specs=[['customers','customers',setCustomers],['work_orders','schedule',setWorkOrders],['invoices','invoices',setInvoices],['quotes','quotes',setQuotes],['memberships','memberships',setMemberships]] as const;
       try {
-        const [custRes, woRes, invRes, quoteRes, memRes] = await Promise.all([
-          supabase.from("customers").select("data"),
-          supabase.from("work_orders").select("data"),
-          supabase.from("invoices").select("data"),
-          supabase.from("quotes").select("data"),
-          supabase.from("memberships").select("data"),
-        ]);
-        if (cancelled) return;
-        const custData = extractEntities<Customer>(custRes.data);
-        const woData = extractEntities<WorkOrder>(woRes.data);
-        const invData = extractEntities<Invoice>(invRes.data);
-        const quoteData = extractEntities<Quote>(quoteRes.data);
-        const memData = extractEntities<CrownCareMembership>(memRes.data);
-        if (custData.length > 0) setCustomers(custData);
-        if (woData.length > 0) setWorkOrders(woData);
-        if (invData.length > 0) setInvoices(invData);
-        if (quoteData.length > 0) setQuotes(quoteData);
-        if (memData.length > 0) setMemberships(memData);
-      } catch (err) {
-        console.error(
-          "Failed to load data from Supabase, using seed data:",
-          err,
-        );
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
+        for(const [table,feature,setter] of specs){
+          if(!canAccess(profile,feature)){if(!cancelled)(setter as any)([]);continue;}
+          const rows:any[]=[];
+          for(let start=0;;start+=500){const {data,error}=await supabase.from(table).select('data').order('id').range(start,start+499);if(error)throw error;rows.push(...(data || []));if(!data || data.length<500)break;}
+          if(!cancelled)(setter as any)(extractEntities(rows));
+        }
+        if(!cancelled)setLoadError(null);
+      }catch(e:any){if(!cancelled)setLoadError('Some records could not be refreshed. Reconnect and refresh before editing. '+e.message);}
+      finally{if(!cancelled)setLoading(false);}
     };
-  }, []);
-
-  useEffect(() => {
-    const refresh = async () => {
-      const [inv, quotes, jobs, memberships] = await Promise.all([
-        supabase.from("invoices").select("data"),
-        supabase.from("quotes").select("data"),
-        supabase.from("work_orders").select("data"),
-        supabase.from("memberships").select("data"),
-      ]);
-      if (!memberships.error && memberships.data) setMemberships(extractEntities<CrownCareMembership>(memberships.data));
-      if (!inv.error && inv.data)
-        setInvoices(extractEntities<Invoice>(inv.data));
-      if (!quotes.error && quotes.data)
-        setQuotes(extractEntities<Quote>(quotes.data));
-      if (!jobs.error && jobs.data)
-        setWorkOrders(extractEntities<WorkOrder>(jobs.data));
-    };
-    const timer = setInterval(refresh, 30000);
-    window.addEventListener("crm-refresh", refresh);
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener("crm-refresh", refresh);
-    };
-  }, []);
+    void load();const timer=setInterval(load,30000);window.addEventListener('crm-refresh',load);
+    return()=>{cancelled=true;clearInterval(timer);window.removeEventListener('crm-refresh',load);};
+  },[profile?.id,profile?.role,JSON.stringify(profile?.permissions)]);
 
   const loadNotes = useCallback(async (customerId: string) => {
+    loadedNotes.current.add(customerId);
     try {
       const { data, error } = await supabase
         .from("customer_notes")
@@ -242,11 +192,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
         });
       }
     } catch (err) {
-      console.error("Failed to load notes:", err);
+      toast({title:"Could not load customer notes",description:"Refresh the page to retry.",variant:"destructive"});
     }
   }, []);
 
   const loadPhotos = useCallback(async (customerId: string) => {
+    loadedPhotos.current.add(customerId);
     try {
       const { data, error } = await supabase
         .from("customer_photos")
@@ -268,12 +219,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
         });
       }
     } catch (err) {
-      console.error("Failed to load photos:", err);
+      toast({title:"Could not load customer photos",description:"Refresh the page to retry.",variant:"destructive"});
     }
   }, []);
 
-  const addCustomer = useCallback((data: NewCustomerData): Customer => {
-    const id = uid("cust-");
+  const addCustomer = useCallback(async (data: NewCustomerData, leadId?: string): Promise<Customer> => {
+    const id = createId("cust-",data);
     const newCustomer: Customer = {
       id,
       type: data.type,
@@ -281,18 +232,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
       contacts: [
         {
           name: data.name,
-          phone: data.phone || "(816) 555-0000",
-          email: data.email || "noreply@email.com",
+          phone: data.phone || "",
+          email: data.email || "",
           role: "Primary",
         },
       ],
       properties: [
         {
-          id: `prop-${crypto.randomUUID().slice(0, 8)}`,
+          id: `prop-${id}`,
           address: data.address || "TBD",
           city: data.city,
           state: data.state,
-          zip: data.zip || "64000",
+          zip: data.zip || "",
           systems: [],
           accessNotes: "",
           gateCode: "",
@@ -304,56 +255,47 @@ export function DataProvider({ children }: { children: ReactNode }) {
       tags: [],
       activity: [
         {
-          id: `act-${crypto.randomUUID().slice(0, 8)}`,
+          id: `act-${id}`,
           type: "note",
           title: "Customer created",
           description: `Added via CRM — lead source: ${data.leadSource}`,
           date: new Date().toISOString().slice(0, 10),
-          user: "Colton Nichols",
+          user: actor,
         },
       ],
     };
-    setCustomers((prev) => [newCustomer, ...prev]);
-    persistBlob("customers", id, newCustomer);
-    return newCustomer;
-  }, []);
+    let saved:Customer;
+    if(leadId){
+      const {data:linked,error}=await supabase.rpc("crm_convert_lead",{p_lead_id:leadId,p_customer:newCustomer});
+      if(error)throw new Error(error.message);
+      saved=linked as Customer;
+    }else saved=(await saveRecords([{table:"customers",id,data:newCustomer}]))[0];
+    finishCreate("cust-",data);
+    setCustomers((prev) => [saved, ...prev.filter(c=>c.id!==saved.id)]);
+    return saved;
+  }, [actor]);
 
   const getNotes = useCallback(
     (customerId: string): CustomerNote[] => {
-      const hasLoaded = notes.some((n) => n.customerId === customerId);
+      const hasLoaded = loadedNotes.current.has(customerId);
       if (!hasLoaded) loadNotes(customerId);
       return notes.filter((n) => n.customerId === customerId);
     },
     [notes, loadNotes],
   );
 
-  const addNote = useCallback((customerId: string, text: string) => {
-    const note: CustomerNote = {
-      id: uid("note-"),
-      customerId,
-      text,
-      author: "Colton Nichols",
-      date: new Date().toISOString().slice(0, 10),
-    };
-    setNotes((prev) => [note, ...prev]);
-    supabase
-      .from("customer_notes")
-      .insert({
-        id: note.id,
-        company_id: "air-king",
-        customer_id: customerId,
-        text,
-        author: note.author,
-        date: note.date,
-      })
-      .then(({ error }) => {
-        if (error) console.error("Failed to persist note:", error.message);
-      });
-  }, []);
+  const addNote = useCallback(async (customerId: string, text: string) => {
+    const id=createId('note-',{customerId,text});
+    const note:CustomerNote={id,customerId,text,author:actor,date:new Date().toISOString().slice(0,10)};
+    const {error}=await supabase.from('customer_notes').upsert({id,company_id:profile?.company_id,customer_id:customerId,text,author:actor,date:note.date},{onConflict:'id',ignoreDuplicates:true});
+    if(error)throw new Error(error.message);
+    finishCreate('note-',{customerId,text});
+    setNotes(prev=>[note,...prev.filter(n=>n.id!==id)]);
+  }, [actor,profile?.company_id]);
 
   const getPhotos = useCallback(
     (customerId: string): CustomerPhoto[] => {
-      const hasLoaded = photos.some((p) => p.customerId === customerId);
+      const hasLoaded = loadedPhotos.current.has(customerId);
       if (!hasLoaded) loadPhotos(customerId);
       return photos.filter((p) => p.customerId === customerId);
     },
@@ -407,7 +349,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       .from("customer_photos")
       .insert({
         id: photoId,
-        company_id: "air-king",
+        company_id: profile?.company_id,
         customer_id: customerId,
         data_url: dataUrl,
         file_name: file.name,
@@ -418,42 +360,45 @@ export function DataProvider({ children }: { children: ReactNode }) {
       throw new Error("The photo could not be saved. Please try again.");
     }
     setPhotos(prev => prev.map(p => p.id === photoId ? {...p, analyzing:false} : p));
-  }, []);
+  }, [profile?.company_id]);
 
   const createWorkOrder = useCallback(
-    (data: {
+    async (data: {
       customerId: string;
       customerName: string;
       type: string;
       property: string;
       description: string;
       quoteId?: string;
-    }): WorkOrder => {
+      scheduledDate?:string; scheduledTime?:string; technician?:string; priority?:WorkOrder["priority"];
+    }): Promise<WorkOrder> => {
       const wo: WorkOrder = {
-        id: uid("WO-"),
+        id: createId("WO-",data),
         customerId: data.customerId,
         customerName: data.customerName,
         property: data.property,
         type: data.type,
-        status: "Scheduled",
-        scheduledDate: new Date(Date.now() + 7 * 86400000)
+        status: data.technician ? "Scheduled" : "Unscheduled",
+        scheduledDate: data.scheduledDate || new Date(Date.now() + 7 * 86400000)
           .toISOString()
           .slice(0, 10),
-        scheduledTime: "09:00",
-        technician: "James Nichols",
-        priority: "Normal",
+        scheduledTime: data.scheduledTime || "09:00",
+        technician: data.technician,
+        priority: data.priority || "Normal",
         description: data.description,
         quoteId: data.quoteId,
       };
-      setWorkOrders((prev) => [wo, ...prev]);
-      persistBlob("work_orders", wo.id, wo, wo.customerId);
+      await saveRecords([{table:"work_orders",id:wo.id,data:wo}]);
+      finishCreate("WO-",data);
+      workOrdersRef.current=[wo,...workOrdersRef.current.filter(w=>w.id!==wo.id)];
+      setWorkOrders(workOrdersRef.current);
       return wo;
     },
     [],
   );
 
   const createInvoice = useCallback(
-    (data: {
+    async (data: {
       customerId: string;
       customerName: string;
       amount: number;
@@ -464,9 +409,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       equipmentItems?: string[];
       installedEquipment?: { brand?: string | null; model?: string | null; category: string; description: string }[];
       dueDate?: string;
-    }): Invoice => {
+    }): Promise<Invoice> => {
+      if(!Number.isFinite(data.amount) || data.amount<0)throw new Error("Enter a valid invoice amount.");
       const inv: Invoice = {
-        id: uid("INV-"),
+        id: createId("INV-",data),
         customerId: data.customerId,
         customerName: data.customerName,
         workOrderId: data.workOrderId,
@@ -482,8 +428,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           ? data.items
           : [{ description: data.description, amount: data.amount }],
       };
-      setInvoices((prev) => [inv, ...prev]);
-      persistBlob("invoices", inv.id, inv, inv.customerId);
+      const writes:RecordWrite[]=[{table:"invoices",id:inv.id,data:inv}];
+      let changedCustomer:Customer|undefined;
       if (data.equipmentItems?.length || data.installedEquipment?.length) {
         const customer = customersRef.current.find(
           (c) => c.id === data.customerId,
@@ -515,7 +461,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
               (item) =>
                 !!item.model && !property.systems.some((system) => system.model === item.model),
             );
-          const installed = equipment.map((item) => {
+          const installed = equipment.map((item,index) => {
               const installedAt = new Date().toISOString().slice(0, 10);
               const warranty = new Date();
               warranty.setFullYear(warranty.getFullYear() + 10);
@@ -532,7 +478,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
                           ? "Heat Pump"
                           : "Package Unit";
               return {
-                id: uid("sys-"),
+                id: `sys-${inv.id}-${index}`,
                 type: type as import("@/data/mock-data").HVACSystem["type"],
                 brand: item.brand || "Unknown",
                 model: item.model || "Not recorded",
@@ -555,22 +501,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
                   : candidate,
               ),
             };
-            setCustomers((current) =>
-              current.map((candidate) =>
-                candidate.id === updated.id ? updated : candidate,
-              ),
-            );
-            persistBlob("customers", updated.id, updated);
+            changedCustomer=updated;
+            writes.push({table:'customers',id:updated.id,data:updated,previous:customer});
           }
         }
       }
-      return inv;
+      const [savedInvoice,savedCustomer]=await saveRecords(writes);
+      if(savedCustomer)changedCustomer=savedCustomer;
+      finishCreate("INV-",data);
+      setInvoices(prev=>[savedInvoice,...prev.filter(i=>i.id!==inv.id)]);
+      if(changedCustomer)setCustomers(prev=>prev.map(c=>c.id===changedCustomer!.id?changedCustomer!:c));
+      return savedInvoice as Invoice;
     },
     [],
   );
 
   const createQuote = useCallback(
-    (data: {
+    async (data: {
       customerId: string;
       customerName: string;
       jobType: string;
@@ -579,9 +526,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       customerPrice: number;
       equipmentItems?: string[];
       laborDescription?: string;
-    }): Quote => {
+    selectedAddOns?:string[];
+    }): Promise<Quote> => {
       const q: Quote = {
-        id: uid("Q-"),
+        id: createId("Q-",data),
         customerId: data.customerId,
         customerName: data.customerName,
         jobType: data.jobType as Quote["jobType"],
@@ -627,52 +575,53 @@ export function DataProvider({ children }: { children: ReactNode }) {
             customerPrice: Math.round(data.customerPrice * 1.25),
           },
         ],
-        selectedAddOns: [],
+        selectedAddOns: data.selectedAddOns || [],
         laborCost: 0,
         materialsCost: 0,
         taxRate: 0,
       };
-      setQuotes((prev) => [q, ...prev]);
-      persistBlob("quotes", q.id, q, q.customerId);
+      await saveRecords([{table:"quotes",id:q.id,data:q}]);
+      finishCreate("Q-",data);
+      setQuotes((prev) => [q, ...prev.filter(x=>x.id!==q.id)]);
       return q;
     },
     [],
   );
 
-  const updateQuoteStatus = useCallback((quoteId: string, status: string) => {
+  const updateQuoteStatus = useCallback(async (quoteId: string, status: string) => {
     const current = quotesRef.current.find((q) => q.id === quoteId);
-    if (!current) return;
+    if (!current) throw new Error("Record unavailable. Refresh and try again.");
     const updated: Quote = { ...current, status: status as Quote["status"] };
-    setQuotes((prev) => prev.map((q) => (q.id === quoteId ? updated : q)));
-    persistBlob("quotes", quoteId, updated, updated.customerId);
+    const [saved]=await saveRecords([{table:"quotes",id:quoteId,data:updated,previous:current}]);
+    quotesRef.current=quotesRef.current.map(q=>q.id===quoteId?saved:q);
+    setQuotes(quotesRef.current);
   }, []);
 
   const updateWorkOrder = useCallback(
-    (workOrderId: string, updates: Partial<WorkOrder>) => {
+    async (workOrderId: string, updates: Partial<WorkOrder>) => {
       const current = workOrdersRef.current.find((wo) => wo.id === workOrderId);
-      if (!current) return;
+      if (!current) throw new Error("Record unavailable. Refresh and try again.");
       const updated: WorkOrder = { ...current, ...updates };
-      setWorkOrders((prev) =>
-        prev.map((wo) => (wo.id === workOrderId ? updated : wo)),
-      );
-      persistBlob("work_orders", workOrderId, updated, updated.customerId);
+      const [saved]=await saveRecords([{table:"work_orders",id:workOrderId,data:updated,previous:current}]);
+      workOrdersRef.current=workOrdersRef.current.map(wo=>wo.id===workOrderId?saved:wo);
+      setWorkOrders(workOrdersRef.current);
     },
     [],
   );
 
   const enrollMembership = useCallback(
-    (data: {
+    async (data: {
       customerId: string;
       customerName: string;
       propertyAddress: string;
       systemDescription: string;
       billingFrequency: "Annual" | "Monthly";
-    }): CrownCareMembership => {
+    }): Promise<CrownCareMembership> => {
       const today = new Date();
       const renewal = new Date(today);
       renewal.setFullYear(renewal.getFullYear() + 1);
       const m: CrownCareMembership = {
-        id: uid("CC-"),
+        id: createId("CC-",data),
         customerId: data.customerId,
         customerName: data.customerName,
         propertyAddress: data.propertyAddress,
@@ -689,8 +638,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         fallVisit: { status: "Unscheduled" },
         status: "Active",
       };
-      setMemberships((prev) => [m, ...prev]);
-      persistBlob("memberships", m.id, m, m.customerId);
+      await saveRecords([{table:"memberships",id:m.id,data:m}]);
+      finishCreate("CC-",data);
+      setMemberships((prev) => [m, ...prev.filter(x=>x.id!==m.id)]);
       return m;
     },
     [],
@@ -704,6 +654,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     notes,
     photos,
     loading,
+    loadError,
     addCustomer,
     getNotes,
     addNote,
@@ -718,7 +669,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     enrollMembership,
   };
 
-  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
+  return <DataContext.Provider value={value}>{loadError && <div role="alert" className="p-4 bg-amber-50 text-amber-950"><p>{loadError}</p><button className="underline mt-2" onClick={()=>window.dispatchEvent(new Event("crm-refresh"))}>Retry loading records</button></div>}{loading ? <div className="p-6">Loading CRM records…</div> : children}</DataContext.Provider>;
 }
 
 export function useData() {

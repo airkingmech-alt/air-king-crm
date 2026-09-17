@@ -1,3 +1,4 @@
+import { guardSave } from "@/lib/confirmed-save";
 import { useState } from "react";
 import { Link } from "wouter";
 import {
@@ -82,7 +83,7 @@ export default function Customers() {
     return matchesSearch && matchesFilter;
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = guardSave("pages/customers.tsx:handleSubmit", async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) {
       toast({
@@ -92,7 +93,7 @@ export default function Customers() {
       });
       return;
     }
-    addCustomer(form);
+    await addCustomer(form);
     toast({
       title: "Customer added",
       description: `${form.name} has been added as a ${form.type.toLowerCase()} customer.`,
@@ -109,7 +110,7 @@ export default function Customers() {
       zip: "",
       leadSource: "Google Ads",
     });
-  };
+  });
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4">

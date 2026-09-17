@@ -10,6 +10,7 @@ const originalFetch = globalThis.fetch;
 let role = "owner";
 let company: string | null = "test-company";
 let authFails = false;
+let permissions: Record<string,boolean> = {};
 let requests = 0;
 const request = (token?: string) =>
   ({ headers: token ? { authorization: `Bearer ${token}` } : {} }) as Request;
@@ -38,7 +39,7 @@ globalThis.fetch = async (input: any) => {
     });
   }
   if (url.pathname === "/rest/v1/profiles")
-    return json({ role, company_id: company });
+    return json({ role, company_id: company, permissions });
   assert.equal(url.pathname, "/rest/v1/invoices");
   assert.equal(url.searchParams.get("company_id"), "eq.test-company");
   return json(null);
@@ -93,4 +94,15 @@ test("owner access remains company scoped", async () => {
   await assert.rejects(entity("invoices", "other-company-invoice", c.company), {
     status: 404,
   });
+});
+test("feature denial applies to direct APIs and sends, with owner override", async () => {
+  const req=Object.assign(request("test"),{originalUrl:"/api/crm/invoice/example/send",method:"POST"});
+  try {
+    role="technician";permissions={invoices:false};
+    await assert.rejects(caller(req),{status:403});
+    permissions={communications:false};
+    await assert.rejects(caller(req),{status:403});
+    role="owner";
+    assert.equal((await caller(req)).company,"test-company");
+  } finally {role="owner";permissions={};}
 });

@@ -1,3 +1,4 @@
+import { guardSave } from "@/lib/confirmed-save";
 import { QuoteHeader, QuoteGuide, QuoteFooter } from "@/components/branded-quote";
 import { DocumentActions } from "@/components/document-actions";
 import { useLocation, useParams, Link } from "wouter";
@@ -74,6 +75,7 @@ export default function Proposal() {
 
   // Sync accepted state and auto-select tier when quote loads
   useEffect(() => {
+    setSelectedAddOns(quote?.selectedAddOns || []);
     if (quote?.status === "Won") {
       setAccepted(true);
       // Auto-select Better tier if none selected
@@ -85,7 +87,7 @@ export default function Proposal() {
       );
       setSelectedAddOns(quote.selectedAddOns || []);
     }
-  }, [quote?.status]);
+  }, [quote?.id,quote?.status]);
 
   if (!quote) {
     return (
@@ -137,7 +139,7 @@ export default function Proposal() {
   const workOrderForQuote = workOrders.find(
     (workOrder) => workOrder.quoteId === quote.id,
   );
-  const createInvoiceFromQuote = () => {
+  const createInvoiceFromQuote = guardSave("pages/proposal.tsx:createInvoiceFromQuote", async () => {
     if (invoiceForQuote) {
       setLocation(`/invoices/view/${invoiceForQuote.id}`);
       return;
@@ -149,7 +151,7 @@ export default function Proposal() {
           selectedOption.tier as "Good" | "Better" | "Best",
         ).map((item) => item.id)
       : [];
-    const invoice = createInvoice({
+    const invoice = await createInvoice({
       customerId: quote.customerId,
       customerName: quote.customerName,
       amount: grandTotal,
@@ -173,7 +175,7 @@ export default function Proposal() {
       description: `${invoice.id} created for ${quote.customerName} — ${fmtCurrency(grandTotal)}.`,
     });
     setLocation(`/invoices/view/${invoice.id}`);
-  };
+  });
   const convertQuote = async () => {
     if (!selectedOption || converting) return;
     setConverting(true);

@@ -1,4 +1,8 @@
+import { guardSave } from "@/lib/confirmed-save";
 import { useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/context/auth-context";
+import { canAccess } from "../../../shared/access";
 import { crm } from "@/lib/crm-api";
 import { CrownConfigurationFields, crownMoney } from "@/components/crown-configuration";
 import { configurationFor, membershipPriceCents, serviceDetails, type CrownConfiguration } from "../../../shared/crown-care";
@@ -59,13 +63,15 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useData } from "@/context/data-context";
 import {
-  teamMembers,
   fmtCurrency,
 } from "@/data/mock-data";
 
 export default function CrownCare() {
   const { toast } = useToast();
   const { customers, memberships, addCustomer, createWorkOrder, updateWorkOrder } = useData();
+  const {profile}=useAuth();
+  const {data:staff}=useQuery({queryKey:["crown-care-team",profile?.id],queryFn:()=>crm("scheduling"),enabled:canAccess(profile,"schedule")});
+  const teamMembers: {name:string}[]=(staff?.people || []).filter((p:any)=>p.full_name).map((p:any)=>({name:p.full_name}));
   const [showEnrollDialog, setShowEnrollDialog] = useState(false);
   const [configuration,setConfiguration]=useState<CrownConfiguration>(()=>({...configurationFor({}),coveredEquipment:[]}));
   const [editing,setEditing]=useState<any>(null);
@@ -152,14 +158,14 @@ export default function CrownCare() {
     setShowNewCustomerForm(false);
   };
 
-  const handleAddNewCustomer = (e: React.SyntheticEvent) => {
+  const handleAddNewCustomer = guardSave("pages/crown-care.tsx:handleAddNewCustomer", async (e: React.SyntheticEvent) => {
     e.preventDefault();
     const name = newCustomer.name.trim() || customerSearch.trim();
     if (!name) {
       toast({ title: "Missing name", description: "Please enter a customer name.", variant: "destructive" });
       return;
     }
-    const created = addCustomer({
+    const created = await addCustomer({
       name,
       type: newCustomer.type,
       phone: newCustomer.phone,
@@ -176,7 +182,7 @@ export default function CrownCare() {
     setShowNewCustomerForm(false);
     setNewCustomer({ name: "", type: "Residential", phone: "", email: "", address: "", city: "Kansas City", state: "MO", zip: "", leadSource: "Google Ads" });
     toast({ title: "Customer added", description: `${created.name} has been added and selected for enrollment.` });
-  };
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -196,30 +202,27 @@ export default function CrownCare() {
     finally{saveLock.current=false;setSaving(false);}
   };
 
-  const handleScheduleVisit = (e: React.FormEvent) => {
+  const handleScheduleVisit = guardSave("pages/crown-care.tsx:handleScheduleVisit", async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.customer) return;
     const propertyAddress = savedMembership?.propertyAddress || selectedCustomer?.properties?.[0]?.address || "TBD";
-    const wo = createWorkOrder({
+    const wo = await createWorkOrder({
       customerId: form.customer,
       customerName: enrolledCustomerName,
       type: scheduleForm.visitType,
       property: propertyAddress,
       description: `Crown Care ${scheduleForm.visitType.toLowerCase()} — precision tune-up\nMembership: ${enrolledMembershipId}\n\n${serviceDetails(savedMembership || {})}`,
-    });
-    updateWorkOrder(wo.id, {
       scheduledDate: scheduleForm.date,
       scheduledTime: scheduleForm.time,
       technician: scheduleForm.technician || undefined,
       priority: scheduleForm.priority as any,
-      status: scheduleForm.technician ? "Scheduled" : "Unscheduled",
     });
     toast({
       title: "Visit scheduled",
       description: `${scheduleForm.visitType} for ${enrolledCustomerName} on ${scheduleForm.date} at ${scheduleForm.time}${scheduleForm.technician ? ` with ${scheduleForm.technician}` : ""}.`,
     });
     closeEnrollDialog();
-  };
+  });
 
   const closeEnrollDialog = () => {
     if(saving)return;

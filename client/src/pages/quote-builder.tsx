@@ -1,3 +1,4 @@
+import { guardSave } from "@/lib/confirmed-save";
 import { useState } from "react";
 import { Link } from "wouter";
 import {
@@ -433,14 +434,14 @@ export default function Quotes() {
           <Button
             className="bg-primary text-primary-foreground"
             disabled={!selectedCustomer || selectedEquipment.length === 0}
-            onClick={() => {
+            onClick={guardSave("create-quote", async () => {
               const customer = customers.find((c) => c.id === selectedCustomer);
               if (!customer) return;
               const truncatedDesc =
                 laborDesc.length > 60
                   ? laborDesc.substring(0, 60).replace(/\s+\S*$/, "") + "…"
                   : laborDesc;
-              const newQuote = createQuote({
+              const newQuote = await createQuote({
                 customerId: customer.id,
                 customerName: customer.name,
                 jobType: "Changeout",
@@ -449,6 +450,7 @@ export default function Quotes() {
                 customerPrice,
                 equipmentItems: selectedEquipment,
                 laborDescription: laborDesc,
+      selectedAddOns,
               });
               toast({
                 title: "Quote created",
@@ -456,7 +458,7 @@ export default function Quotes() {
               });
               setShowBuilder(false);
               setLocation(`/proposals/${newQuote.id}`);
-            }}
+            })}
             data-testid="button-generate-quote"
           >
             <FileText size={16} className="mr-1.5" />
