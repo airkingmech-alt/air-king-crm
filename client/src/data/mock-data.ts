@@ -38,6 +38,9 @@ export interface HVACSystem {
   installDate: string;
   warrantyExp?: string;
   refrigerant?: string;
+  manufactureYear?: number | null;
+  capacity?: string;
+  efficiency?: string;
   filterSize?: string;
   status: "Active" | "Inactive" | "Warranty";
   notes?: string;

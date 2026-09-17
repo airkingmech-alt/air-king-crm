@@ -1,0 +1,6 @@
+.dispatch-calendar .fc { --fc-border-color: hsl(var(--border)); --fc-page-bg-color: hsl(var(--background)); --fc-neutral-bg-color: hsl(var(--muted)); font-size: 13px; }
+.dispatch-calendar .fc-event { cursor: pointer; }
+.dispatch-calendar .fc-toolbar-title { font-size: 1.2rem; }
+.dispatch-calendar .fc-button-primary { background: hsl(var(--primary)); border-color: hsl(var(--primary)); }
+.dispatch-calendar .fc-daygrid-event { white-space: normal; }
+@media(max-width:640px) { .dispatch-calendar .fc-header-toolbar { flex-wrap: wrap; gap: 10px; } .dispatch-calendar .fc-toolbar-title { font-size: 1rem; } }

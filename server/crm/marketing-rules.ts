@@ -1,9 +1,18 @@
 import { z } from "zod";
 import { email, phone, type Row } from "./core";
 
+export function normalizeRefrigerant(value: unknown) { return String(value || "").toUpperCase().replace(/[\s-]/g, ""); }
+export function equipmentAge(system: Row, now: number): number | null {
+  const year = Number(system.manufactureYear);
+  const currentYear = new Date(now).getUTCFullYear();
+  if (Number.isInteger(year) && year >= 1900 && year <= currentYear) return currentYear - year;
+  const value = system.installDate ? (now - Date.parse(system.installDate)) / 31557600000 : system.age === undefined ? NaN : Number(system.age);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
 export const conditionSchema = z.object({
-  field: z.enum(["customer_type", "lead_source", "lead_status", "city", "zip", "tag", "has_email", "has_phone", "last_service_months", "equipment_type", "equipment_brand", "equipment_age", "quote_status", "invoice_status", "membership_status", "has_upcoming_job", "lifetime_revenue"]),
-  op: z.enum(["eq", "neq", "contains", "gt", "lt", "exists"]),
+  field: z.enum(["customer_type", "lead_source", "lead_status", "city", "zip", "tag", "has_email", "has_phone", "last_service_months", "equipment_type", "equipment_brand", "equipment_age", "equipment_refrigerant", "quote_status", "invoice_status", "membership_status", "has_upcoming_job", "lifetime_revenue"]),
+  op: z.enum(["eq", "neq", "contains", "gt", "gte", "lt", "lte", "exists"]),
   value: z.union([z.string(), z.number().finite(), z.boolean()]).optional(),
 }).refine(c => c.op === "exists" || c.value !== undefined, "A condition value is required.");
 
@@ -20,10 +29,10 @@ export function match(actual: unknown, c: Row): boolean {
   const present = actual !== undefined && actual !== null && actual !== "" && (!Array.isArray(actual) || actual.length > 0);
   if (c.op === "exists") return present === (c.value !== false);
   if (!present) return false; // Unknown age/service history is not zero or a negative match.
-  if (c.op === "gt" || c.op === "lt") {
+  if (["gt","gte","lt","lte"].includes(c.op)) {
     if (typeof actual === "boolean" || Array.isArray(actual) || c.value === "") return false;
     const a = Number(actual), b = Number(c.value);
-    return Number.isFinite(a) && Number.isFinite(b) && (c.op === "gt" ? a > b : a < b);
+    return Number.isFinite(a) && Number.isFinite(b) && (c.op === "gt" ? a > b : c.op === "gte" ? a >= b : c.op === "lte" ? a <= b : a < b);
   }
   const values = (Array.isArray(actual) ? actual : [actual]).map(x => String(x).toLowerCase());
   const expected = String(c.value ?? "").toLowerCase();
@@ -35,7 +44,7 @@ export function valueFor(field: string, customer: Row, related: Row, now = Date.
   const data = customer.data || {}, contact = contacts(customer);
   const equipment: Row[] = (data.properties || []).flatMap((p: Row) => p.systems || []);
   const latest = (rows: Row[] = []) => [...rows].sort((a,b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
-  const ages = equipment.map(x => x.installDate ? (now - Date.parse(x.installDate)) / 31557600000 : x.age === undefined ? NaN : Number(x.age)).filter(x => Number.isFinite(x) && x >= 0);
+  const ages = equipment.map(x => equipmentAge(x, now)).filter((x): x is number => x !== null);
   const serviceDates = [data.lastServiceAt, ...(related.jobs || []).filter((x:Row) => x.data?.status === "Completed").map((x:Row) => x.data.completedAt || x.data.completedDate || x.data.scheduledDate)].map(x => Date.parse(x)).filter(x => Number.isFinite(x) && x <= now);
   switch (field) {
     case "customer_type": return data.type;
@@ -49,6 +58,7 @@ export function valueFor(field: string, customer: Row, related: Row, now = Date.
     case "last_service_months": return serviceDates.length ? (now - Math.max(...serviceDates)) / 2629800000 : null;
     case "equipment_type": return equipment.map(x => x.type || x.systemType || x.name).filter(Boolean);
     case "equipment_brand": return equipment.map(x => x.brand).filter(Boolean);
+    case "equipment_refrigerant": return equipment.map(x => normalizeRefrigerant(x.refrigerant)).filter(Boolean);
     case "equipment_age": return ages.length ? Math.max(...ages) : null;
     case "quote_status": return latest(related.quotes)?.data?.status;
     case "invoice_status": return latest(related.invoices)?.data?.status;
@@ -58,6 +68,13 @@ export function valueFor(field: string, customer: Row, related: Row, now = Date.
   }
 }
 export function matchesAudience(customer: Row, related: Row, audience: Row) {
-  return (audience.filters || []).every((c:Row) => match(valueFor(c.field, customer, related), c)) &&
+  const filters: Row[] = audience.filters || [];
+  const equipmentFilters = filters.filter(c => c.field.startsWith("equipment_"));
+  const systems: Row[] = (customer.data?.properties || []).flatMap((p:Row) => p.systems || []).filter((s:Row) => s.status !== "Inactive");
+  const sameEquipment = !equipmentFilters.length || systems.some(system => equipmentFilters.every(c => {
+    const single = {...customer, data:{...customer.data, properties:[{systems:[system]}]}};
+    return match(valueFor(c.field, single, related), c.field === "equipment_refrigerant" ? {...c,value:normalizeRefrigerant(c.value)} : c);
+  }));
+  return sameEquipment && filters.filter(c => !c.field.startsWith("equipment_")).every((c:Row) => match(valueFor(c.field, customer, related), c)) &&
     !(audience.exclusions || []).some((c:Row) => match(valueFor(c.field, customer, related), c));
 }

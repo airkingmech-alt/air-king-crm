@@ -1,4 +1,13 @@
 import { CustomerCommunications } from "@/pages/communications";
+import { EquipmentScanner } from "@/components/equipment-scanner";
+
+function photoAnalysisText(value: string) {
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed.kind === "equipment_draft") return `Nameplate reading — review required: ${parsed.analysis.note}`;
+  } catch { /* Older photos store plain text. */ }
+  return value;
+}
 import { useEffect, useState, useRef } from "react";
 import { useParams, Link } from "wouter";
 import {
@@ -283,11 +292,12 @@ export default function CustomerDetail() {
     if (!files || files.length === 0) return;
     toast({
       title: "Photo uploading",
-      description: "Uploading and analyzing photo with AI...",
+      description: "Saving photos to the customer profile…",
     });
-    for (const file of Array.from(files)) {
-      await addPhoto(id || "", file);
-    }
+    try {
+      for (const file of Array.from(files)) await addPhoto(id || "", file);
+      toast({title:"Photos saved",description:"Use Scan Equipment Nameplate in Properties & Equipment for reviewed AI readings."});
+    } catch(error:any) { toast({title:"Photo upload failed",description:error.message,variant:"destructive"}); }
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -542,7 +552,7 @@ export default function CustomerDetail() {
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground text-center py-4">
-                  No notes yet. Add a note or upload a photo for AI analysis.
+                  No notes yet. Add a note or scan a nameplate in Properties & Equipment.
                 </p>
               )}
             </CardContent>
@@ -551,6 +561,7 @@ export default function CustomerDetail() {
 
         {/* Properties & Equipment Tab */}
         <TabsContent value="properties" className="space-y-4">
+          <EquipmentScanner customer={customer} />
           {customer.properties.map((prop) => (
             <Card key={prop.id}>
               <CardHeader className="pb-3">
@@ -591,6 +602,9 @@ export default function CustomerDetail() {
                         </p>
                         <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5 text-xs text-muted-foreground">
                           <span>Installed: {sys.installDate}</span>
+                          {sys.manufactureYear && <span>Manufactured: {sys.manufactureYear} · Approx. {Math.max(0,new Date().getFullYear()-sys.manufactureYear)} years old</span>}
+                          {sys.capacity && <span>Capacity: {sys.capacity}</span>}
+                          {sys.efficiency && <span>Efficiency: {sys.efficiency}</span>}
                           {sys.warrantyExp && (
                             <span>Warranty: {sys.warrantyExp}</span>
                           )}
@@ -797,15 +811,14 @@ export default function CustomerDetail() {
                     </p>
                     {photo.analyzing ? (
                       <div className="flex items-center gap-1.5 mt-2 text-xs text-sky-600">
-                        <Loader2 size={12} className="animate-spin" /> AI
-                        analyzing photo...
+                        <Loader2 size={12} className="animate-spin" /> Saving photo...
                       </div>
                     ) : photo.analysis ? (
                       <div className="mt-2 p-2 rounded-md bg-sky-50 dark:bg-sky-950/20 text-[11px] text-muted-foreground">
                         <p className="flex items-center gap-1 font-medium text-sky-700 dark:text-sky-400 mb-0.5">
                           <Sparkles size={11} /> AI Analysis
                         </p>
-                        {photo.analysis}
+                        {photoAnalysisText(photo.analysis)}
                       </div>
                     ) : null}
                   </CardContent>
@@ -824,7 +837,7 @@ export default function CustomerDetail() {
                 </p>
                 <p className="text-xs text-muted-foreground mb-3">
                   Upload photos of equipment, job sites, or property conditions.
-                  AI will automatically analyze and create notes.
+                  To read a nameplate, use Scan Equipment Nameplate in Properties & Equipment.
                 </p>
                 <Button
                   size="sm"
