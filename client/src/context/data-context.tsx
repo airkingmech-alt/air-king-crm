@@ -411,68 +411,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         file_name: file.name,
         uploaded_at: uploadedAt,
       });
-    if (insErr) console.error("Failed to persist photo:", insErr.message);
-
-    // AI analysis via Express proxy (needs secret key server-side)
-    try {
-      const resp = await apiRequest("POST", "/api/analyze-photo", {
-        image: dataUrl,
-        fileName: file.name,
-      });
-      const result = await resp.json();
-      setPhotos((prev) =>
-        prev.map((p) =>
-          p.id === photoId
-            ? { ...p, analysis: result.note, analyzing: false }
-            : p,
-        ),
-      );
-      await supabase
-        .from("customer_photos")
-        .update({ analysis: result.note })
-        .eq("id", photoId);
-
-      const aiNote: CustomerNote = {
-        id: uid("note-"),
-        customerId,
-        text: `📸 Photo Analysis (${file.name}): ${result.note}`,
-        author: "AI Assistant",
-        date: uploadedAt,
-      };
-      setNotes((prev) => [aiNote, ...prev]);
-      await supabase
-        .from("customer_notes")
-        .insert({
-          id: aiNote.id,
-          company_id: "air-king",
-          customer_id: customerId,
-          text: aiNote.text,
-          author: aiNote.author,
-          date: aiNote.date,
-        });
-    } catch (err) {
-      setPhotos((prev) =>
-        prev.map((p) => (p.id === photoId ? { ...p, analyzing: false } : p)),
-      );
-      const fallbackNote: CustomerNote = {
-        id: uid("note-"),
-        customerId,
-        text: `📸 Photo uploaded: ${file.name}. AI analysis unavailable in this environment.`,
-        author: "System",
-        date: uploadedAt,
-      };
-      setNotes((prev) => [fallbackNote, ...prev]);
-      await supabase
-        .from("customer_notes")
-        .insert({
-          id: fallbackNote.id,
-          company_id: "air-king",
-          customer_id: customerId,
-          text: fallbackNote.text,
-          author: fallbackNote.author,
-          date: fallbackNote.date,
-        });
+    if (insErr) {
+      setPhotos(prev => prev.filter(p => p.id !== photoId));
+      throw new Error("The photo could not be saved. Please try again.");
     }
+    setPhotos(prev => prev.map(p => p.id === photoId ? {...p, analyzing:false} : p));
   }, []);
 
   const createWorkOrder = useCallback(

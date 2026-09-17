@@ -18,6 +18,7 @@ const fields = [
   ["customer_type","Customer type"],["lead_source","Lead source"],["lead_status","Lead status"],
   ["city","City"],["zip","ZIP code"],["tag","Customer tag"],["last_service_months","Months since last service"],
   ["equipment_type","Equipment type"],["equipment_brand","Equipment brand"],["equipment_age","Equipment age (years)"],
+  ["equipment_refrigerant","Equipment refrigerant"],
   ["quote_status","Quote status"],["invoice_status","Invoice status"],["membership_status","Membership status"],
   ["has_upcoming_job","Has upcoming job"],["lifetime_revenue","Lifetime revenue"],["has_email","Has email"],["has_phone","Has phone"],
 ];
@@ -37,7 +38,7 @@ function ConditionRows({value,onChange}:{value:any[];onChange:(v:any[])=>void}) 
   return <div className="space-y-2">
     {value.map((c,i)=><div key={i} className="grid gap-2 sm:grid-cols-[1.5fr_1fr_1.3fr_auto]">
       <select className={selectClass} value={c.field} onChange={e=>onChange(value.map((x,j)=>j===i?{...x,field:e.target.value}:x))}>{fields.map(([v,l])=><option value={v} key={v}>{l}</option>)}</select>
-      <select className={selectClass} value={c.op} onChange={e=>onChange(value.map((x,j)=>j===i?{...x,op:e.target.value}:x))}><option value="eq">is</option><option value="neq">is not</option><option value="contains">contains</option><option value="gt">greater than</option><option value="lt">less than</option><option value="exists">is present</option></select>
+      <select className={selectClass} value={c.op} onChange={e=>onChange(value.map((x,j)=>j===i?{...x,op:e.target.value}:x))}><option value="eq">is</option><option value="neq">is not</option><option value="contains">contains</option><option value="gt">greater than</option><option value="gte">at least</option><option value="lte">at most</option><option value="lt">less than</option><option value="exists">is present</option></select>
       {c.op === "exists" ? <select className={selectClass} value={String(c.value)} onChange={e=>onChange(value.map((x,j)=>j===i?{...x,value:e.target.value==="true"}:x))}><option value="true">Yes</option><option value="false">No</option></select> : <Input value={c.value ?? ""} placeholder="Value" onChange={e=>onChange(value.map((x,j)=>j===i?{...x,value:e.target.value}:x))}/>} 
       <Button variant="ghost" onClick={()=>onChange(value.filter((_,j)=>j!==i))}>Remove</Button>
     </div>)}

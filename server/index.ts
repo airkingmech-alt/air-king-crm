@@ -4,6 +4,8 @@ import type { Request } from 'express';
 import { registerCrm } from "./crm/routes";
 import { registerMarketing } from "./crm/marketing";
 import { registerTimeClock } from "./crm/time-clock";
+import { registerScheduling } from "./crm/scheduling";
+import { registerEquipmentAnalysis } from "./crm/equipment-analysis";
 import { registerInventory } from "./crm/inventory";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
@@ -62,6 +64,8 @@ app.use((req, res, next) => {
   registerMarketing(app);
   registerInventory(app);
   registerTimeClock(app);
+  registerScheduling(app);
+  registerEquipmentAnalysis(app);
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

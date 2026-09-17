@@ -102,8 +102,8 @@ export function DocumentActions({
     </div>
   );
 }
-export function InvoicePayments({ id }: { id: string }) {
-  const { data = [], refetch } = useQuery({
+export function InvoicePayments({ id, total, status }: { id: string; total: number; status: string }) {
+  const { data = [], refetch, isPending, isError } = useQuery({
     queryKey: ["invoice-payments", id],
     queryFn: () => crm(`crm/invoices/${id}/payments`),
   });
@@ -113,13 +113,19 @@ export function InvoicePayments({ id }: { id: string }) {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const key = useRef(crypto.randomUUID());
-  const save = async () => {
+  const remainingCents = Math.max(0, Math.round(total * 100) - data.reduce((sum: number, p: any) => sum + p.amount_cents, 0));
+  const canPay = !isPending && !isError && remainingCents > 0 && status !== "Void";
+  const save = async (full = false) => {
+    if (busy || !canPay) return;
+    const paymentAmount = full ? (remainingCents / 100).toFixed(2) : amount;
+    if (full && !window.confirm(`Confirm you already received $${paymentAmount} by ${method}? This records a manual payment; it does not charge a card.`)) return;
     setBusy(true);
+    setNotice("");
     try {
       await crm(
         `crm/invoices/${id}/payments`,
         "POST",
-        { amount, method, reference },
+        { amount: paymentAmount, method, reference },
         key.current,
       );
       key.current = crypto.randomUUID();
@@ -148,6 +154,10 @@ export function InvoicePayments({ id }: { id: string }) {
         </div>
       ))}
       <h3 className="font-medium">Record a payment</h3>
+      {isError ? <p role="alert">Payment history could not be loaded. Refresh before recording a payment.</p> : (
+        <p className="text-sm text-muted-foreground">{isPending ? "Loading balance…" : `Remaining balance: $${(remainingCents / 100).toFixed(2)}`}</p>
+      )}
+      <p className="text-xs text-muted-foreground">For money already received. Choose how the customer paid. This will not charge their card.</p>
       <div className="flex flex-wrap gap-2">
         <Input
           className="w-32"
@@ -171,8 +181,11 @@ export function InvoicePayments({ id }: { id: string }) {
           value={reference}
           onChange={(e) => setReference(e.target.value)}
         />
-        <Button disabled={busy || !amount} onClick={save}>
+        <Button disabled={busy || !canPay || !amount} onClick={() => save()}>
           Record Payment
+        </Button>
+        <Button disabled={busy || !canPay} variant="outline" onClick={() => save(true)}>
+          {busy ? "Saving…" : "Mark Paid in Full"}
         </Button>
       </div>
       <Button

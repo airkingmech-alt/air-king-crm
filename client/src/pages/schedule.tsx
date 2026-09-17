@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { DispatchCalendar } from "@/components/dispatch-calendar";
+import { useQuery } from "@tanstack/react-query";
+import { crm } from "@/lib/crm-api";
 import { Link, useLocation } from "wouter";
 import {
   ChevronLeft,
@@ -32,7 +35,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useData } from "@/context/data-context";
-import { teamMembers, type WorkOrderStatus } from "@/data/mock-data";
+import { type WorkOrderStatus } from "@/data/mock-data";
 import { CustomerCombobox } from "@/components/customer-combobox";
 import { addOnServices, getTieredEquipment } from "@/data/pricebook";
 
@@ -106,6 +109,8 @@ function buildWeekDays(weekStart: Date) {
 }
 
 export default function Schedule() {
+  const { data: scheduling } = useQuery({ queryKey:["dispatch-calendar"], queryFn:()=>crm("scheduling") });
+  const teamMembers: {name:string;role:string;initials:string;color:string}[] = (scheduling?.people || []).filter((person:any)=>person.full_name).map((person:any)=>({name:person.full_name,role:person.role,initials:person.full_name.split(" ").map((part:string)=>part[0]).join("").slice(0,2),color:"bg-sky-700"}));
   const { toast } = useToast();
   const {
     workOrders,
@@ -354,7 +359,7 @@ export default function Schedule() {
           <h1 className="text-xl font-bold tracking-tight">
             Schedule & Dispatch
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{weekLabel}</p>
+          <p className="text-sm text-muted-foreground mt-0.5">Appointments, team assignments, and ready-to-schedule jobs</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -362,7 +367,7 @@ export default function Schedule() {
             size="sm"
             onClick={() => setView(view === "week" ? "list" : "week")}
           >
-            {view === "week" ? "List View" : "Week View"}
+            {view === "week" ? "List View" : "Calendar View"}
           </Button>
           <Button
             size="sm"
@@ -376,7 +381,7 @@ export default function Schedule() {
       </div>
 
       {/* Week navigation */}
-      <div className="flex items-center justify-between">
+      <div className="hidden">
         <Button variant="ghost" size="sm" onClick={handlePrevWeek}>
           <ChevronLeft size={16} /> Prev
         </Button>
@@ -393,80 +398,7 @@ export default function Schedule() {
       </div>
 
       {view === "week" ? (
-        /* Week View */
-        <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
-          {weekDays.map((day) => {
-            const dayJobs = workOrders.filter(
-              (wo) =>
-                wo.scheduledDate === day.full &&
-                wo.status !== "Cancelled" &&
-                wo.status !== "Unscheduled",
-            );
-            const isToday = day.full === todayStr;
-            return (
-              <div
-                key={day.full}
-                className={`rounded-lg border min-h-[200px] ${isToday ? "border-primary bg-primary/5" : "border-border"}`}
-              >
-                <div
-                  className={`px-3 py-2 border-b ${isToday ? "border-primary/30 bg-primary/10" : "border-border"}`}
-                >
-                  <p className="text-xs font-semibold">{day.day}</p>
-                  <p
-                    className={`text-lg font-bold ${isToday ? "text-primary" : ""}`}
-                  >
-                    {day.date}
-                  </p>
-                </div>
-                <div className="p-2 space-y-2">
-                  {dayJobs.map((wo) => (
-                    <Link key={wo.id} href={`/customers/${wo.customerId}`}>
-                      <div className="p-2 rounded-lg bg-card border border-border hover:shadow-sm cursor-pointer transition-shadow">
-                        <div className="flex items-center gap-1 mb-1">
-                          <Clock size={10} className="text-muted-foreground" />
-                          <span className="text-[10px] font-semibold">
-                            {wo.scheduledTime}
-                          </span>
-                          <span
-                            className={`text-[10px] font-medium ml-auto ${priorityColors[wo.priority]}`}
-                          >
-                            {wo.priority}
-                          </span>
-                        </div>
-                        <p className="text-[11px] font-medium leading-tight truncate">
-                          {wo.customerName}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground truncate">
-                          {wo.type}
-                        </p>
-                        <div className="flex items-center gap-1 mt-1">
-                          <span
-                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium ${statusColors[wo.status]}`}
-                          >
-                            {wo.status}
-                          </span>
-                        </div>
-                        {wo.technician && (
-                          <p className="text-[9px] text-muted-foreground mt-1 truncate">
-                            {wo.technician}
-                          </p>
-                        )}
-                      </div>
-                    </Link>
-                  ))}
-                  {dayJobs.length === 0 && (
-                    <div className="text-center py-4">
-                      <CalendarIcon
-                        size={20}
-                        className="mx-auto text-muted-foreground/30"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <DispatchCalendar />
       ) : (
         /* List View */
         <div className="space-y-3">
@@ -682,7 +614,7 @@ export default function Schedule() {
               <div className="flex items-center gap-1">
                 <div className="h-2 w-2 rounded-full bg-emerald-500" />
                 <span className="text-[10px] text-muted-foreground">
-                  Available
+                  Team member
                 </span>
               </div>
             </CardContent>
