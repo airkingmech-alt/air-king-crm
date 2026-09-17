@@ -199,11 +199,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const refresh = async () => {
-      const [inv, quotes, jobs] = await Promise.all([
+      const [inv, quotes, jobs, memberships] = await Promise.all([
         supabase.from("invoices").select("data"),
         supabase.from("quotes").select("data"),
         supabase.from("work_orders").select("data"),
+        supabase.from("memberships").select("data"),
       ]);
+      if (!memberships.error && memberships.data) setMemberships(extractEntities<CrownCareMembership>(memberships.data));
       if (!inv.error && inv.data)
         setInvoices(extractEntities<Invoice>(inv.data));
       if (!quotes.error && quotes.data)

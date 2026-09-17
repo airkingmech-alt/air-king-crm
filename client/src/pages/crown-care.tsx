@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { crm } from "@/lib/crm-api";
+import { CrownConfigurationFields, crownMoney } from "@/components/crown-configuration";
+import { configurationFor, membershipPriceCents, serviceDetails, type CrownConfiguration } from "../../../shared/crown-care";
 import { Link } from "wouter";
 import {
   Crown,
@@ -62,8 +65,25 @@ import {
 
 export default function CrownCare() {
   const { toast } = useToast();
-  const { customers, memberships, enrollMembership, addCustomer, createWorkOrder, updateWorkOrder } = useData();
+  const { customers, memberships, addCustomer, createWorkOrder, updateWorkOrder } = useData();
   const [showEnrollDialog, setShowEnrollDialog] = useState(false);
+  const [configuration,setConfiguration]=useState<CrownConfiguration>(()=>({...configurationFor({}),coveredEquipment:[]}));
+  const [editing,setEditing]=useState<any>(null);
+  const [saving,setSaving]=useState(false);
+  const saveLock=useRef(false);
+  const requestKey=useRef(crypto.randomUUID());
+  const [memberSearch,setMemberSearch]=useState("");
+  const [savedMembership,setSavedMembership]=useState<any>(null);
+  async function openEdit(id:string){
+    try{const data=await crm(`crm/memberships/${encodeURIComponent(id)}`);requestKey.current=crypto.randomUUID();setEditing({...data,configuration:configurationFor(data.membership)});}
+    catch(e:any){toast({title:"Could not open membership",description:e.message,variant:"destructive"});}
+  }
+  async function saveEdit(e:React.FormEvent){
+    e.preventDefault();if(saveLock.current)return;saveLock.current=true;setSaving(true);
+    try{await crm(`crm/memberships/${encodeURIComponent(editing.membership.id)}`,"PATCH",{version:editing.version,configuration:editing.configuration},requestKey.current);window.dispatchEvent(new Event("crm-refresh"));setEditing(null);toast({title:"Crown Care saved",description:"Equipment, filter details, notes, and price have been saved."});}
+    catch(error:any){toast({title:"Could not save membership",description:error.message,variant:"destructive"});}
+    finally{saveLock.current=false;setSaving(false);}
+  }
   const [form, setForm] = useState({
     customer: "",
     billingFrequency: "Annual",
@@ -100,7 +120,7 @@ export default function CrownCare() {
 
   const activeMemberships = memberships.filter((m) => m.status === "Active");
   const pendingRenewals = memberships.filter((m) => m.paymentStatus === "Pending" || m.paymentStatus === "Overdue");
-  const totalARR = activeMemberships.length * 189;
+  const totalARR = activeMemberships.reduce((sum,m)=>sum+membershipPriceCents(m)*(m.billingFrequency==="Monthly"?12:1),0)/100;
   const upcomingRenewals = memberships.filter((m) => {
     if (m.status !== "Active") return false;
     const today = new Date();
@@ -126,6 +146,7 @@ export default function CrownCare() {
   const handleSelectCustomer = (customerId: string) => {
     const c = customers.find((x) => x.id === customerId);
     setForm({ ...form, customer: customerId });
+    setConfiguration({...configurationFor({}),coveredEquipment:[]});
     setCustomerSearch(c?.name || "");
     setComboboxOpen(false);
     setShowNewCustomerForm(false);
@@ -150,59 +171,41 @@ export default function CrownCare() {
       leadSource: newCustomer.leadSource,
     });
     setForm({ ...form, customer: created.id });
+    setConfiguration({...configurationFor({}),coveredEquipment:[]});
     setCustomerSearch(created.name);
     setShowNewCustomerForm(false);
     setNewCustomer({ name: "", type: "Residential", phone: "", email: "", address: "", city: "Kansas City", state: "MO", zip: "", leadSource: "Google Ads" });
     toast({ title: "Customer added", description: `${created.name} has been added and selected for enrollment.` });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.customer) {
       toast({ title: "Select a customer", description: "Please choose or create a customer to enroll.", variant: "destructive" });
       return;
     }
+    if(saveLock.current)return;saveLock.current=true;setSaving(true);
     const custName = selectedCustomer?.name || "Customer";
-    const selectedProperty = selectedCustomer?.properties?.[0];
-    const selectedAddress = selectedProperty ? `${selectedProperty.address}, ${selectedProperty.city}, ${selectedProperty.state} ${selectedProperty.zip}` : "TBD";
-    const selectedSystemRecord = selectedProperty?.systems?.[0];
-    const selectedSystem = selectedSystemRecord ? `${selectedSystemRecord.brand} ${selectedSystemRecord.type}` : "HVAC System";
-    const price = form.billingFrequency === "Annual" ? "$189/year" : "$15.75/month";
-
-    const membership = enrollMembership({
-      customerId: form.customer,
-      customerName: custName,
-      propertyAddress: selectedAddress,
-      systemDescription: selectedSystem,
-      billingFrequency: form.billingFrequency as "Annual" | "Monthly",
-    });
-
-    toast({
-      title: "Crown Care enrollment complete",
-      description: `${custName} enrolled in Crown Care (${form.billingFrequency} billing — ${price}). Schedule the first visit below.`,
-    });
-    // Switch to schedule step
-    setEnrolledMembershipId(membership.id);
-    setEnrolledCustomerName(custName);
-    setScheduleForm({
-      date: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
-      time: "09:00",
-      technician: "",
-      priority: "Normal",
-      visitType: "Spring Tune-Up (Cooling)",
-    });
+    try {
+      const {membership}=await crm("crm/memberships","POST",{customerId:form.customer,startDate:form.startDate,autoRenew:form.autoRenew==="Yes",configuration},requestKey.current);
+      setSavedMembership(membership);
+      window.dispatchEvent(new Event("crm-refresh"));
+      toast({title:"Crown Care membership saved",description:`${custName} — ${crownMoney(membershipPriceCents(membership))} / ${membership.billingFrequency.toLowerCase()}. No payment was charged.`});
+      setEnrolledMembershipId(membership.id);setEnrolledCustomerName(custName);
+    } catch(error:any) {toast({title:"Enrollment could not be saved",description:error.message,variant:"destructive"});}
+    finally{saveLock.current=false;setSaving(false);}
   };
 
   const handleScheduleVisit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.customer) return;
-    const propertyAddress = selectedCustomer?.properties?.[0]?.address || "TBD";
+    const propertyAddress = savedMembership?.propertyAddress || selectedCustomer?.properties?.[0]?.address || "TBD";
     const wo = createWorkOrder({
       customerId: form.customer,
       customerName: enrolledCustomerName,
       type: scheduleForm.visitType,
       property: propertyAddress,
-      description: `Crown Care ${scheduleForm.visitType.toLowerCase()} — precision tune-up`,
+      description: `Crown Care ${scheduleForm.visitType.toLowerCase()} — precision tune-up\nMembership: ${enrolledMembershipId}\n\n${serviceDetails(savedMembership || {})}`,
     });
     updateWorkOrder(wo.id, {
       scheduledDate: scheduleForm.date,
@@ -219,6 +222,8 @@ export default function CrownCare() {
   };
 
   const closeEnrollDialog = () => {
+    if(saving)return;
+    setConfiguration({...configurationFor({}),coveredEquipment:[]});setSavedMembership(null);requestKey.current=crypto.randomUUID();
     setShowEnrollDialog(false);
     setEnrolledMembershipId(null);
     setEnrolledCustomerName("");
@@ -294,15 +299,15 @@ export default function CrownCare() {
             <div className="flex-1 min-w-0">
               <h2 className="text-sm font-bold">Crown Care Membership</h2>
               <p className="text-xs text-muted-foreground mt-1">
-                Two seasonal precision tune-ups per year · Automatic spring/fall reminders · Priority service · Annual renewal
+                Default starting plan: two seasonal precision tune-ups per year and priority service. Customize equipment, visit allowance, and price for each customer.
               </p>
               <div className="flex gap-4 mt-3">
                 <div>
                   <p className="text-lg font-bold">{fmtCurrency(189)}</p>
-                  <p className="text-[10px] text-muted-foreground">Annual (2 visits)</p>
+                  <p className="text-[10px] text-muted-foreground">Starting annual price (2 visits)</p>
                 </div>
                 <div>
-                  <p className="text-lg font-bold">{fmtCurrency(16)}</p>
+                  <p className="text-lg font-bold">{crownMoney(1575)}</p>
                   <p className="text-[10px] text-muted-foreground">Monthly equivalent</p>
                 </div>
               </div>
@@ -314,10 +319,11 @@ export default function CrownCare() {
       {/* Memberships List */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold">Active Memberships</CardTitle>
+          <CardTitle className="text-sm font-semibold">Memberships</CardTitle>
+          <Input aria-label="Search Crown Care" placeholder="Search customer, equipment, filter size, or notes…" value={memberSearch} onChange={e=>setMemberSearch(e.target.value)}/>
         </CardHeader>
         <CardContent className="space-y-3">
-          {memberships.map((m) => (
+          {memberships.filter(m=>[m.customerName,m.systemDescription,m.notes,serviceDetails(m)].join(" ").toLowerCase().includes(memberSearch.toLowerCase())).map((m) => (
             <div key={m.id} className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-yellow-100 dark:bg-yellow-950/30 text-yellow-600 shrink-0">
                 <Crown size={18} />
@@ -328,6 +334,12 @@ export default function CrownCare() {
                 </Link>
                 <p className="text-xs text-muted-foreground">{m.propertyAddress}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{m.systemDescription}</p>
+                <p className="text-sm font-semibold mt-1">{crownMoney(membershipPriceCents(m))} / {m.billingFrequency==="Monthly"?"month":"year"} · {m.visitsIncluded} visits/year</p>
+                {!m.pricing&&<p className="text-xs text-muted-foreground">Legacy standard price — review when editing</p>}
+                {m.coveredEquipment?.map(e=><p key={e.id} className="text-xs mt-1 whitespace-pre-wrap">{e.type}{e.filterSize?` · Filter: ${e.filterSize} (${e.filterQuantity})`:""}{e.filterNotes?` · ${e.filterNotes}`:""}{e.notes?` · ${e.notes}`:""}</p>)}
+                {m.notes&&<p className="text-xs mt-2 whitespace-pre-wrap">Notes: {m.notes}</p>}
+                {m.pricing?.adjustmentReason&&<p className="text-xs text-muted-foreground mt-1">Price adjustment: {crownMoney(m.pricing.adjustmentCents)} — {m.pricing.adjustmentReason}</p>}
+                <Button size="sm" variant="outline" className="mt-2" disabled={saving} onClick={()=>openEdit(m.id)}>Edit Coverage & Price</Button>
 
                 {/* Visit status */}
                 <div className="flex gap-2 mt-2 flex-wrap">
@@ -440,9 +452,19 @@ export default function CrownCare() {
         </Card>
       )}
 
+      <Dialog open={!!editing} onOpenChange={open=>!open&&!saving&&setEditing(null)}>
+        <DialogContent className="sm:max-w-[760px] max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>Edit Crown Care — {editing?.membership.customerName}</DialogTitle><DialogDescription>Update coverage and the agreed price while preserving payment status and completed visits.</DialogDescription></DialogHeader>
+          {editing&&<form onSubmit={saveEdit} className="space-y-4"><fieldset disabled={saving} className="space-y-4">
+            <CrownConfigurationFields key={editing.membership.id} customer={customers.find(c=>c.id===editing.membership.customerId)} value={editing.configuration} onChange={configuration=>setEditing({...editing,configuration})}/>
+            {(editing.membership.configurationHistory || []).length>0&&<details className="text-xs"><summary className="cursor-pointer">Change history</summary><div className="space-y-2 mt-2">{[...(editing.membership.configurationHistory || [])].reverse().map((h:any,i:number)=><p key={i}>{new Date(h.at).toLocaleString()} · {h.before?"Updated":"Created"} · {h.after?.pricing?.totalAmountCents!==undefined?crownMoney(h.after.pricing.totalAmountCents):""} / {h.after?.billingFrequency?.toLowerCase()}</p>)}</div></details>}
+            <DialogFooter><Button type="button" variant="outline" onClick={()=>setEditing(null)}>Cancel</Button><Button type="submit">{saving?"Saving…":"Save Changes"}</Button></DialogFooter>
+          </fieldset></form>}
+        </DialogContent>
+      </Dialog>
+
       {/* Enroll Customer Dialog */}
       <Dialog open={showEnrollDialog} onOpenChange={(open) => { if (!open) closeEnrollDialog(); else setShowEnrollDialog(true); }}>
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent className="sm:max-w-[760px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Crown size={18} className="text-yellow-600" />
@@ -451,13 +473,13 @@ export default function CrownCare() {
             <DialogDescription>
               {enrolledMembershipId
                 ? `${enrolledCustomerName} is enrolled. Schedule the first precision tune-up below — or skip and do it later from the Schedule page.`
-                : "$189/year (2 visits) or $15.75/month. Includes spring and fall precision tune-ups, priority service, and automatic reminders."}
+                : "Choose covered equipment, record service requirements, and set this customer's membership price."}
             </DialogDescription>
           </DialogHeader>
 
           {/* STEP 1: Enroll */}
           {!enrolledMembershipId && (
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4"><fieldset disabled={saving} className="space-y-4">
               <div className="space-y-2">
                 <Label>Customer *</Label>
                 <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
@@ -606,18 +628,7 @@ export default function CrownCare() {
               )}
 
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>Billing Frequency</Label>
-                  <Select value={form.billingFrequency} onValueChange={(v) => setForm({ ...form, billingFrequency: v })}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Annual">Annual — $189/yr</SelectItem>
-                      <SelectItem value="Monthly">Monthly — $15.75/mo</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                <p className="text-xs text-muted-foreground">Renewal preference is recorded here. Automatic card billing is not activated by saving.</p>
                 <div className="space-y-2">
                   <Label>Auto-Renew</Label>
                   <Select value={form.autoRenew} onValueChange={(v) => setForm({ ...form, autoRenew: v })}>
@@ -643,21 +654,21 @@ export default function CrownCare() {
               <div className="rounded-lg bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-900/30 p-3 text-xs text-muted-foreground">
                 <p className="flex items-center gap-1.5 font-medium text-yellow-700 dark:text-yellow-400">
                   <CheckCircle2 size={14} />
-                  What's included:
+                  Starting plan benefits — customize coverage below:
                 </p>
                 <ul className="mt-1.5 space-y-0.5 ml-5 list-disc">
-                  <li>Spring precision tune-up (AC/cooling)</li>
-                  <li>Fall precision tune-up (furnace/heating)</li>
+                  <li>{configuration.visitsIncluded} maintenance visits per year for the selected equipment</li>
                   <li>Priority service scheduling</li>
                   <li>15% discount on repairs</li>
-                  <li>Automatic seasonal reminders</li>
+                  <li>Record seasonal service preferences in membership notes</li>
                 </ul>
               </div>
+              <CrownConfigurationFields key={form.customer} customer={selectedCustomer} value={configuration} onChange={setConfiguration}/>
               <DialogFooter className="gap-2">
                 <Button type="button" variant="outline" onClick={closeEnrollDialog}>Cancel</Button>
-                <Button type="submit" data-testid="button-submit-enroll">Enroll Customer</Button>
+                <Button type="submit" disabled={saving} data-testid="button-submit-enroll">{saving?"Saving…":"Save Membership"}</Button>
               </DialogFooter>
-            </form>
+            </fieldset></form>
           )}
 
           {/* STEP 2: Schedule first visit */}
