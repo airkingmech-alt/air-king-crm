@@ -1,0 +1,16 @@
+/* Shared quote styling. Intentionally scoped so invoices and CRM screens do not change. */
+.quote-surface { --primary: 352 75% 41%; --primary-foreground: 0 0% 100%; --ring: 352 75% 41%; }
+.quote-surface .quote-option { border-radius: 14px; box-shadow: 0 3px 12px rgb(15 23 42 / 4%); height: 100%; }
+.quote-surface .quote-option-content { display: flex; flex-direction: column; height: 100%; }
+.quote-surface .quote-option-content > button { margin-top: auto; }
+.quote-surface .quote-options { align-items: stretch; }
+.quote-surface .quote-summary { border-left: 4px solid #b7192f; }
+.quote-surface a:focus-visible, .quote-surface button:focus-visible { outline: 2px solid #b7192f; outline-offset: 3px; }
+@media print {
+  .quote-surface { background: white !important; color: #13243a !important; --card: 0 0% 100%; --card-foreground: 222 47% 11%; --foreground: 222 47% 11%; --muted-foreground: 215 16% 35%; --muted: 210 40% 96%; }
+  .quote-surface .no-print, .quote-surface .quote-guide { display: none !important; }
+  .quote-surface .quote-page { padding: 0 !important; max-width: 100% !important; }
+  .quote-surface .quote-header, .quote-surface .quote-option, .quote-surface .quote-summary, .quote-surface .quote-footer { break-inside: avoid; box-shadow: none !important; }
+  .quote-surface .quote-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .quote-surface * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+}
