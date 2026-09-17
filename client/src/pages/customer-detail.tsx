@@ -1,3 +1,4 @@
+import { guardSave } from "@/lib/confirmed-save";
 import { CustomerCommunications } from "@/pages/communications";
 import { EquipmentScanner } from "@/components/equipment-scanner";
 
@@ -214,7 +215,7 @@ export default function CustomerDetail() {
     setEqDropdown("");
   };
 
-  const handleCreateQuote = () => {
+  const handleCreateQuote = guardSave("pages/customer-detail.tsx:handleCreateQuote", async () => {
     if (selectedEquipment.length === 0) {
       toast({
         title: "No equipment selected",
@@ -227,15 +228,16 @@ export default function CustomerDetail() {
       laborDesc.length > 50
         ? laborDesc.substring(0, 50).replace(/\s+\S*$/, "") + "…"
         : laborDesc;
-    const newQuote = createQuote({
+    const newQuote = await createQuote({
       customerId: customer?.id || "",
       customerName: customer?.name || "",
       jobType: jobType,
       title: `${jobType} — ${selectedEquipment.length} item(s) · ${truncatedDesc}`,
-      totalCost: grandTotal,
-      customerPrice: grandTotal,
+      totalCost,
+      customerPrice,
       equipmentItems: selectedEquipment,
       laborDescription: laborDesc,
+      selectedAddOns,
     });
     toast({
       title: "Quote created",
@@ -243,9 +245,9 @@ export default function CustomerDetail() {
     });
     setShowQuoteDialog(false);
     resetQuoteForm();
-  };
+  });
 
-  const handleAddNote = () => {
+  const handleAddNote = guardSave("pages/customer-detail.tsx:handleAddNote", async () => {
     if (!noteText.trim()) {
       toast({
         title: "Empty note",
@@ -254,23 +256,23 @@ export default function CustomerDetail() {
       });
       return;
     }
-    addNote(id || "", noteText.trim());
+    await addNote(id || "", noteText.trim());
     toast({
       title: "Note added",
       description: "Note has been added to the customer timeline.",
     });
     setNoteText("");
     setShowNoteDialog(false);
-  };
+  });
 
-  const handleInvoiceSubmit = (event: React.FormEvent) => {
+  const handleInvoiceSubmit = guardSave("pages/customer-detail.tsx:handleInvoiceSubmit", async (event: React.FormEvent) => {
     event.preventDefault();
     const amount = Number(invoiceAmount);
     if (!customer || !Number.isFinite(amount) || amount <= 0) {
       toast({ title: "Enter an invoice amount", variant: "destructive" });
       return;
     }
-    const invoice = createInvoice({
+    const invoice = await createInvoice({
       customerId: customer.id,
       customerName: customer.name,
       amount,
@@ -285,7 +287,7 @@ export default function CustomerDetail() {
     setInvoiceDescription("");
     setInvoiceAmount("");
     setInvoiceEquipment([]);
-  };
+  });
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;

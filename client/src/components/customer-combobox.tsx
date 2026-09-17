@@ -1,3 +1,4 @@
+import { guardSave } from "@/lib/confirmed-save";
 import { useState } from "react";
 import { ChevronDown, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -76,14 +77,14 @@ export function CustomerCombobox({
     setShowNewForm(false);
   };
 
-  const handleAddNew = (e: React.SyntheticEvent) => {
+  const handleAddNew = guardSave("components/customer-combobox.tsx:handleAddNew", async (e: React.SyntheticEvent) => {
     e.preventDefault();
     const name = newCustomer.name.trim() || search.trim();
     if (!name) {
       toast({ title: "Missing name", description: "Please enter a customer name.", variant: "destructive" });
       return;
     }
-    const created = addCustomer({
+    const created = await addCustomer({
       name,
       type: newCustomer.type,
       phone: newCustomer.phone,
@@ -100,7 +101,7 @@ export function CustomerCombobox({
     setNewCustomer({ name: "", type: "Residential", phone: "", email: "", address: "", city: "Kansas City", state: "MO", zip: "", leadSource: "Google Ads" });
     setOpen(false);
     toast({ title: "Customer added", description: `${created.name} has been added and selected.` });
-  };
+  });
 
   return (
     <div className="space-y-2">

@@ -1,3 +1,4 @@
+import { guardSave } from "@/lib/confirmed-save";
 import { DocumentActions } from "@/components/document-actions";
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
@@ -159,7 +160,7 @@ export default function Invoices() {
     });
   };
 
-  const handleSubmit = async (e: React.FormEvent, sendNow = false) => {
+  const handleSubmit = guardSave("invoice-form", async (e: React.FormEvent, sendNow = false) => {
     e.preventDefault();
     if (!form.customer) {
       toast({ title: "Select a customer", description: "Please choose a customer for this invoice.", variant: "destructive" });
@@ -176,7 +177,7 @@ export default function Invoices() {
     setSaving(true);
     try {
       const custName = customers.find((customer) => customer.id === form.customer)?.name || "Customer";
-      const invoice = createInvoice({
+      const invoice = await createInvoice({
         customerId: form.customer,
         customerName: custName,
         amount,
@@ -191,16 +192,7 @@ export default function Invoices() {
           description: item.description || item.name,
         })),
       });
-      // createInvoice updates the UI immediately and normally persists in the
-      // background. Await this upsert before delivery so Save & Send cannot
-      // race the server's invoice lookup.
-      const { error: persistError } = await supabase.from("invoices").upsert({
-        id: invoice.id,
-        company_id: profile?.company_id || "air-king",
-        customer_id: invoice.customerId,
-        data: invoice,
-      });
-      if (persistError) throw persistError;
+      setShowCreateDialog(false);
       if (sendNow) {
         await crm(`crm/invoice/${invoice.id}/send`, "POST", { channels: ["email"] }, crypto.randomUUID());
         window.dispatchEvent(new Event("crm-refresh"));
@@ -215,11 +207,11 @@ export default function Invoices() {
       setInvoiceEquipment([]);
       setCatalogEquipment([]);
     } catch (error: any) {
-      toast({ title: sendNow ? "Invoice saved, but could not send" : "Could not save invoice", description: error.message, variant: "destructive" });
+      toast({ title: "Could not finish saving or sending", description: error.message, variant: "destructive" });
     } finally {
       setSaving(false);
     }
-  };
+  });
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4">

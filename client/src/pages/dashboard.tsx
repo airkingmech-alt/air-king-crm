@@ -1,3 +1,10 @@
+import { guardSave } from "@/lib/confirmed-save";
+import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/context/auth-context";
+import { crm } from "@/lib/crm-api";
+import { supabase } from "@/lib/supabase";
+import { canAccess } from "../../../shared/access";
+import { businessDay, membershipSummary } from "../../../shared/dashboard";
 import { Link } from "wouter";
 import {
   Calendar,
@@ -23,7 +30,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  dashboardMetrics,
   fmtCurrency,
 } from "@/data/mock-data";
 import { pricebook, formatEquipmentDescription } from "@/data/pricebook";
@@ -33,7 +39,12 @@ import { useToast } from "@/hooks/use-toast";
 export default function Dashboard() {
   const { toast } = useToast();
   const { customers, quotes, workOrders, invoices, memberships, updateWorkOrder } = useData();
-  const today = new Date().toISOString().slice(0, 10);
+  const {profile}=useAuth();
+  const reportsAllowed=canAccess(profile,"reports") && canAccess(profile,"invoices");
+  const receipts=useQuery({queryKey:["receipt-summary",profile?.id],queryFn:()=>crm("crm/reports/receipts"),enabled:reportsAllowed,refetchInterval:30000});
+  const catalog=useQuery({queryKey:["dashboard-catalog",profile?.id],enabled:canAccess(profile,"pricebook"),queryFn:async()=>{const {data,error}=await supabase.from("price_book_items").select("id,brand,model,category,description,cost_cents");if(error)throw error;return data || [];}});
+  const membershipMetrics=membershipSummary(memberships);
+  const today = businessDay(new Date());
   const todaySchedule = workOrders.filter(
     (wo) => wo.scheduledDate === today && wo.status !== "Cancelled"
   );
@@ -56,11 +67,11 @@ export default function Dashboard() {
   // Group equipment by work order
   const equipmentByJob = unassignedWorkOrders.map((wo) => {
     const quote = quotes.find((q) => q.id === wo.quoteId);
-    const items = (quote?.equipmentItems || []).map((id) => pricebook.find((p) => p.id === id)).filter(Boolean);
+    const items = (quote?.equipmentItems || []).map((id) => {const saved=catalog.data?.find(p=>p.id===id);return saved?{...saved,cost:saved.cost_cents/100}:pricebook.find(p=>p.id===id) || {id,brand:"",model:id,category:"Equipment",description:"Review saved quote for equipment details",cost:0};});
     return { workOrder: wo, quote, items };
   }).filter((job) => job.items.length > 0);
 
-  const cashCollected = invoices.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
+  const cashCollected = receipts.data?.monthToDateCents / 100;
 
   const stats = [
     {
@@ -93,7 +104,7 @@ export default function Dashboard() {
     },
     {
       label: "Cash Collected (MTD)",
-      value: fmtCurrency(cashCollected),
+      value: !reportsAllowed ? "Restricted" : receipts.isError ? "Unavailable" : receipts.isPending ? "…" : fmtCurrency(cashCollected),
       icon: TrendingUp,
       color: "text-emerald-500",
       bg: "bg-emerald-50 dark:bg-emerald-950/30",
@@ -163,7 +174,7 @@ export default function Dashboard() {
                   {job.items.map((item) => (
                     <div key={item!.id} className="flex items-center gap-2 text-xs">
                       <Package size={12} className="text-muted-foreground shrink-0" />
-                      <span className="font-medium">{formatEquipmentDescription(item!)}</span>
+                      <span className="font-medium">{item!.description || [item!.brand,item!.model,item!.category].filter(Boolean).join(" ")}</span>
                       <span className="text-muted-foreground ml-auto text-[10px]">{item!.model}</span>
                     </div>
                   ))}
@@ -172,13 +183,13 @@ export default function Dashboard() {
                   size="sm"
                   variant="outline"
                   className="w-full text-xs"
-                  onClick={() => {
-                    updateWorkOrder(job.workOrder.id, { ordered: true } as any);
+                  onClick={guardSave("mark-ordered", async () => {
+                    await updateWorkOrder(job.workOrder.id, { ordered: true } as any);
                     toast({
                       title: "Equipment ordered",
                       description: `Equipment for ${job.workOrder.customerName} (${job.workOrder.id}) marked as ordered.`,
                     });
-                  }}
+                  })}
                   data-testid={`button-mark-ordered-${job.workOrder.id}`}
                 >
                   <CheckCircle2 size={14} className="mr-1.5" />
@@ -260,7 +271,7 @@ export default function Dashboard() {
                 <p className="text-xs text-muted-foreground">Active Members</p>
               </div>
               <div>
-                <p className="text-2xl font-bold">{fmtCurrency(dashboardMetrics.annualRecurringValue)}</p>
+                <p className="text-2xl font-bold">{fmtCurrency(membershipMetrics.annualCents/100)}</p>
                 <p className="text-xs text-muted-foreground">Annual Recurring</p>
               </div>
             </div>
@@ -277,7 +288,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 p-2 rounded-lg bg-yellow-50 dark:bg-yellow-950/20">
               <AlertCircle size={14} className="text-yellow-600 shrink-0" />
               <p className="text-xs text-yellow-700 dark:text-yellow-500">
-                {dashboardMetrics.unbookedVisits} unbooked seasonal visit(s)
+                {membershipMetrics.unbooked} unbooked seasonal visit(s)
               </p>
             </div>
           </CardContent>

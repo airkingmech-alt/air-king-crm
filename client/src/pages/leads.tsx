@@ -1,3 +1,4 @@
+import { guardSave } from "@/lib/confirmed-save";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Copy, Inbox, Plus, RefreshCw, UserCheck } from "lucide-react";
@@ -31,7 +32,12 @@ export default function Leads(){
  const {data:config}=useQuery({queryKey:["crm-config"],enabled:!!profile,queryFn:()=>crm("crm/config") as Promise<CrmConfig>});
  const save=useMutation({mutationFn:async()=>{if(!form.name.trim())throw new Error("Lead name is required.");const {error}=await supabase.from("leads").insert({...form,company_id:profile!.company_id,status:"new"});if(error)throw error;},onSuccess:()=>{qc.invalidateQueries({queryKey:key});setOpen(false);setForm(blank);toast({title:"Lead added to inbox"});},onError:(e:Error)=>toast({title:"Could not add lead",description:e.message,variant:"destructive"})});
  const update=async(id:string,status:LeadStatus)=>{const {error}=await supabase.from("leads").update({status,last_contact_at:status==="contacted"?new Date().toISOString():undefined}).eq("id",id);if(error)toast({title:"Could not update lead",description:error.message,variant:"destructive"});else qc.invalidateQueries({queryKey:key});};
- const convert=async(l:Lead)=>{if(l.customer_id)return;const c=addCustomer({name:l.name,type:"Residential",phone:l.phone||"",email:l.email||"",address:l.address||"",city:l.city||"",state:l.state||"MO",zip:l.postal_code||"",leadSource:l.source});const {error}=await supabase.from("leads").update({customer_id:c.id,status:"qualified",converted_at:new Date().toISOString()}).eq("id",l.id);if(error)toast({title:"Customer created; lead link needs retry",description:error.message,variant:"destructive"});else{qc.invalidateQueries({queryKey:key});toast({title:"Customer created",description:`${l.name} is now in Customers.`});}};
+ const convert=guardSave("convert-lead",async(l:Lead)=>{
+  if(l.customer_id)return;
+  await addCustomer({name:l.name,type:"Residential",phone:l.phone||"",email:l.email||"",address:l.address||"",city:l.city||"",state:l.state||"MO",zip:l.postal_code||"",leadSource:l.source},l.id);
+  qc.invalidateQueries({queryKey:key});
+  toast({title:"Customer created",description:`${l.name} is now in Customers.`});
+ });
  const shown=leads.filter(l=>filter==="open"?!["won","lost","spam"].includes(l.status):l.status===filter);
  return <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4">
   <div className="flex justify-between items-start gap-3"><div><h1 className="text-xl font-bold">Leads Inbox</h1><p className="text-sm text-muted-foreground">New website, Google, social, phone, and manually entered opportunities in one queue.</p></div><div className="flex gap-2"><Button variant="outline" size="icon" onClick={()=>qc.invalidateQueries({queryKey:key})}><RefreshCw size={16}/></Button><Button onClick={()=>setOpen(true)}><Plus size={16} className="mr-2"/>Add lead</Button></div></div>

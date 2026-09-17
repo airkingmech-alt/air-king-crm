@@ -1,3 +1,4 @@
+import { guardSave } from "@/lib/confirmed-save";
 import { useEffect, useRef, useState } from "react";
 import { DispatchCalendar } from "@/components/dispatch-calendar";
 import { useQuery } from "@tanstack/react-query";
@@ -161,7 +162,7 @@ export default function Schedule() {
     setWeekStart(d);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = guardSave("pages/schedule.tsx:handleSubmit", async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.customer) {
       toast({
@@ -174,20 +175,16 @@ export default function Schedule() {
     const selectedCustomer = customers.find((c) => c.id === form.customer);
     const custName = selectedCustomer?.name || "Customer";
     const propertyAddress = selectedCustomer?.properties?.[0]?.address || "TBD";
-    const wo = createWorkOrder({
+    const wo = await createWorkOrder({
       customerId: form.customer,
       customerName: custName,
       type: form.jobType,
       property: propertyAddress,
       description: form.description,
-    });
-    // Update with date, time, technician, priority
-    updateWorkOrder(wo.id, {
       scheduledDate: form.date,
       scheduledTime: form.time,
       technician: form.technician || undefined,
       priority: form.priority as any,
-      status: form.technician ? "Scheduled" : "Unscheduled",
     });
     toast({
       title: "Job scheduled",
@@ -203,9 +200,9 @@ export default function Schedule() {
       priority: "Normal",
       description: "",
     });
-  };
+  });
 
-  const handleAssign = (e: React.FormEvent) => {
+  const handleAssign = guardSave("pages/schedule.tsx:handleAssign", async (e: React.FormEvent) => {
     e.preventDefault();
     if (!assignTarget) return;
     if (!assignForm.technician) {
@@ -216,7 +213,7 @@ export default function Schedule() {
       });
       return;
     }
-    updateWorkOrder(assignTarget, {
+    await updateWorkOrder(assignTarget, {
       technician: assignForm.technician,
       scheduledDate: assignForm.date,
       scheduledTime: assignForm.time,
@@ -236,7 +233,7 @@ export default function Schedule() {
       time: "09:00",
       priority: "Normal",
     });
-  };
+  });
 
   const openAssignDialog = (woId: string) => {
     const wo = workOrders.find((w) => w.id === woId);
@@ -261,7 +258,7 @@ export default function Schedule() {
     }
   }, [workOrders]);
 
-  const openOrCreateInvoice = (wo: (typeof workOrders)[number]) => {
+  const openOrCreateInvoice = guardSave("schedule-invoice", async (wo: (typeof workOrders)[number]) => {
     const existing = invoices.find(
       (invoice) =>
         invoice.workOrderId === wo.id ||
@@ -290,7 +287,7 @@ export default function Schedule() {
             (item) => item.id,
           )
         : [];
-    const invoice = createInvoice({
+    const invoice = await createInvoice({
       customerId: wo.customerId,
       customerName: wo.customerName,
       amount,
@@ -318,7 +315,7 @@ export default function Schedule() {
       description: `${invoice.id} is linked to ${wo.id} and ready to review.`,
     });
     setLocation(`/invoices/view/${invoice.id}`);
-  };
+  });
 
   const unassignedJobs = workOrders.filter(
     (wo) => wo.status === "Unscheduled" || wo.status === "Needs Follow-up",

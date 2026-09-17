@@ -6,6 +6,7 @@ import {
 import { createHash, randomBytes } from "node:crypto";
 import WebSocket from "ws";
 import type { Request } from "express";
+import { canAccess, requestFeatures } from "../../shared/access";
 export type Row = Record<string, any>;
 let client: SupabaseClient | undefined;
 export function db() {
@@ -54,6 +55,9 @@ export async function caller(req: Request, admin = false) {
     throw Object.assign(new Error("Administrator access required."), {
       status: 403,
     });
+  for (const feature of requestFeatures(req.originalUrl || req.path || "", req.method)) {
+    if (!canAccess(profile, feature)) throw Object.assign(new Error(`Access to ${feature} is disabled. Ask the owner.`), { status: 403 });
+  }
   return { id: data.user.id, company: profile.company_id, role: profile.role };
 }
 export async function entity(
