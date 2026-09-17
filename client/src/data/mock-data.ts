@@ -169,6 +169,10 @@ export interface Invoice {
 }
 
 export interface CrownCareMembership {
+  coveredEquipment?: import("../../../shared/crown-care").CoveredEquipment[];
+  notes?: string;
+  pricing?: {baseAmountCents:number;adjustmentCents:number;adjustmentReason:string;totalAmountCents:number;currency:string};
+  configurationHistory?: {at:string;actorId:string;before:any;after:any}[];
   id: string;
   customerId: string;
   customerName: string;

@@ -6,6 +6,7 @@ import { registerMarketing } from "./crm/marketing";
 import { registerTimeClock } from "./crm/time-clock";
 import { registerScheduling } from "./crm/scheduling";
 import { registerEquipmentAnalysis } from "./crm/equipment-analysis";
+import { registerCrownCare } from "./crm/crown-care";
 import { registerInventory } from "./crm/inventory";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
@@ -66,6 +67,7 @@ app.use((req, res, next) => {
   registerTimeClock(app);
   registerScheduling(app);
   registerEquipmentAnalysis(app);
+  registerCrownCare(app);
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
