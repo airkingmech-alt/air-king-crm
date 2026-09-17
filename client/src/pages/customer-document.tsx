@@ -1,3 +1,4 @@
+import { QuoteHeader, QuoteGuide, QuoteFooter } from "@/components/branded-quote";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "wouter";
@@ -11,6 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { BrandedInvoice } from "@/components/branded-invoice";
 import {
   Check,
+  Printer,
   Crown,
   Droplet,
   Filter,
@@ -107,56 +109,28 @@ export default function CustomerDocument() {
     ) ||
     (d.expiresAt && Date.parse(d.expiresAt) < Date.now());
   const due = Math.max(0, d.amount - d.paidAmount);
-  const chosenTier = option || d.selectedOption;
+  const chosenTier = closed ? d.selectedOption : (option || d.selectedOption);
   const selectedQuoteOption = d.options?.find(
     (o: any) => o.tier === chosenTier,
   );
+  const displayedAddOns: string[] = closed ? (d.selectedAddOns || []) : selectedAddOns;
   const addOnTotal = addOnServices
-    .filter((a) => selectedAddOns.includes(a.id))
+    .filter((a) => displayedAddOns.includes(a.id))
     .reduce((sum, a) => sum + a.price, 0);
   const proposalTotal = (selectedQuoteOption?.customerPrice || 0) + addOnTotal;
   return (
-    <div className="min-h-screen bg-gradient-to-b from-sky-50 to-background">
-      <div className="max-w-3xl mx-auto p-4 sm:p-8 space-y-6">
-        {data.kind === "quote" && (
-          <header className="flex gap-3 items-center">
-            <div className="p-3 rounded-xl bg-sky-700 text-white">
-              <Wind />
-            </div>
-            <div>
-              <p className="font-bold">{data.company}</p>
-              <p className="text-sm text-muted-foreground">
-                Lathrop, Missouri · Licensed and insured
-              </p>
-            </div>
-          </header>
-        )}
+    <div className={data.kind === "quote" ? "quote-surface min-h-screen bg-slate-50 dark:bg-slate-950" : "min-h-screen bg-gradient-to-b from-sky-50 to-background"}>
+      <div className={`${data.kind === "quote" ? "quote-page max-w-5xl" : "max-w-3xl"} mx-auto p-4 sm:p-8 space-y-6`}>
+        {data.kind === "quote" && <div className="flex justify-end no-print"><Button variant="outline" size="sm" onClick={() => window.print()}><Printer size={14} className="mr-2" />Print / Save PDF</Button></div>}
         <Card className={data.kind === "invoice" ? "overflow-hidden border-0 shadow-xl" : ""}>
           <CardContent className={data.kind === "invoice" ? "p-0" : "p-6 sm:p-8 space-y-6"}>
             {data.kind === "quote" ? (
               <>
-                <div className="flex justify-between gap-3">
-                  <div>
-                    <p className="text-sm uppercase text-muted-foreground">
-                      {data.kind} {d.number}
-                    </p>
-                    <h1 className="text-2xl font-bold">{d.title}</h1>
-                    <p className="text-muted-foreground">
-                      Prepared for {d.customerName}
-                    </p>
-                  </div>
-                  <span className="text-sm font-medium">
-                    {(
-                      {
-                        Won: "Accepted",
-                        Lost: "Declined",
-                      } as Record<string, string>
-                    )[d.status] || d.status}
-                  </span>
-                </div>
-                <section>
-                  <h2 className="font-semibold mb-2">Scope of work</h2>
-                  <p className="whitespace-pre-wrap text-sm">{d.scope}</p>
+                <QuoteHeader number={d.number} title={d.title} customerName={d.customerName} status={d.status} createdAt={d.createdAt} />
+                {!closed && <QuoteGuide />}
+                <section className="rounded-xl border bg-muted/20 p-5 sm:p-6">
+                  <h2 className="font-bold text-sm mb-2">Scope of work</h2>
+                  <p className="whitespace-pre-wrap text-sm text-muted-foreground leading-7">{d.scope}</p>
                 </section>
                 {d.equipmentItems?.length > 0 && (
                   <section className="rounded-xl border p-5 space-y-3">
@@ -189,19 +163,19 @@ export default function CustomerDocument() {
                     ))}
                   </section>
                 )}
-                <div className="grid md:grid-cols-3 gap-4 pt-2">
+                <div className="quote-options grid md:grid-cols-3 gap-5 pt-3">
                   {d.options.map((o: any) => (
                     <Card
                       key={o.tier}
                       onClick={() => !closed && setOption(o.tier)}
-                      className={`relative cursor-pointer transition-all ${chosenTier === o.tier ? "ring-2 ring-primary shadow-lg" : "hover:shadow-md"} ${o.isPopular ? "md:scale-105" : ""}`}
+                      className={`quote-option relative cursor-pointer transition-all ${chosenTier === o.tier ? "ring-2 ring-primary shadow-lg" : "hover:shadow-md"} `}
                     >
                       {o.isPopular && (
                         <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap">
                           <Star size={10} className="mr-1" /> Most Popular
                         </Badge>
                       )}
-                      <CardContent className="p-5 space-y-4">
+                      <CardContent className="quote-option-content p-5 space-y-4">
                         <div className="text-center">
                           <p className="text-xs font-semibold uppercase text-muted-foreground">
                             {o.tier}
@@ -255,7 +229,7 @@ export default function CustomerDocument() {
                   </p>
                   <div className="grid sm:grid-cols-2 gap-3">
                     {addOnServices.map((addon) => {
-                      const selected = selectedAddOns.includes(addon.id);
+                      const selected = displayedAddOns.includes(addon.id);
                       const Icon = addOnIcons[addon.icon] || Zap;
                       return (
                         <button
@@ -294,13 +268,13 @@ export default function CustomerDocument() {
                   </div>
                 </section>
                 {chosenTier && (
-                  <section className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-3">
+                  <section className="quote-summary rounded-xl border border-primary/20 bg-primary/5 p-5 sm:p-6 space-y-3">
                     <h2 className="font-semibold">Your Selection</h2>
                     <div className="flex justify-between text-sm">
                       <span>{selectedQuoteOption?.label} Package</span>
                       <span>{money(selectedQuoteOption?.customerPrice)}</span>
                     </div>
-                    {selectedAddOns.map((id) => {
+                    {displayedAddOns.map((id) => {
                       const addon = addOnServices.find((a) => a.id === id);
                       return addon ? (
                         <div key={id} className="flex justify-between text-sm">
@@ -322,8 +296,8 @@ export default function CustomerDocument() {
                   </section>
                 )}
                 {!closed && (
-                  <section className="space-y-3 border-t pt-5">
-                    <h2 className="font-semibold">Your decision</h2>
+                  <section className="no-print space-y-3 rounded-xl border bg-muted/20 p-5 sm:p-6">
+                    <h2 className="font-bold text-lg">Approve your proposal</h2><p className="text-sm text-muted-foreground">Review your selected package and upgrades above, then sign below. No payment is required to accept.</p>
                     <Label htmlFor="customer-name">Your name</Label>
                     <Input
                       id="customer-name"
@@ -399,6 +373,7 @@ export default function CustomerDocument() {
                     additional charges.
                   </p>
                 </section>
+                <QuoteFooter />
               </>
             ) : (
               <BrandedInvoice

@@ -1,3 +1,4 @@
+import { QuoteHeader, QuoteGuide, QuoteFooter } from "@/components/branded-quote";
 import { DocumentActions } from "@/components/document-actions";
 import { useLocation, useParams, Link } from "wouter";
 import { useState, useEffect } from "react";
@@ -200,7 +201,7 @@ export default function Proposal() {
   };
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-sky-50 to-background dark:from-slate-900 dark:to-background">
+    <div className="quote-surface min-h-full bg-slate-50 dark:bg-slate-950">
       <style>{`
         @media print {
           .no-print {
@@ -213,7 +214,7 @@ export default function Proposal() {
           }
         }
       `}</style>
-      <div className="max-w-4xl mx-auto px-4 py-6 proposal-printable">
+      <div className="quote-page max-w-5xl mx-auto px-4 sm:px-8 py-6 proposal-printable">
         {/* Header */}
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3 no-print">
           <Link href="/quotes">
@@ -305,36 +306,13 @@ export default function Proposal() {
           </CardContent>
         </Card>
 
-        {/* Proposal Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center mb-3">
-            <svg width="48" height="48" viewBox="0 0 40 40" fill="none">
-              <path
-                d="M6 16L10 8L14 14L20 6L26 14L30 8L34 16L34 20L6 20L6 16Z"
-                fill="#D4A53A"
-              />
-              <circle cx="10" cy="7" r="2" fill="#D4A53A" />
-              <circle cx="20" cy="5" r="2" fill="#D4A53A" />
-              <circle cx="30" cy="7" r="2" fill="#D4A53A" />
-              <ellipse
-                cx="20"
-                cy="37"
-                rx="12"
-                ry="1.5"
-                fill="#D4A53A"
-                opacity="0.6"
-              />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-navy-900 dark:text-white">
-            Air King Mechanical Services
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Professional HVAC Proposal for {quote.customerName}
-          </p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Proposal {quote.id} · {quote.title} · {quote.createdAt}
-          </p>
+        <div className="space-y-5 mb-6">
+          <QuoteHeader number={quote.id} title={quote.title} customerName={quote.customerName} status={quote.status} createdAt={quote.createdAt} />
+          {!accepted && <QuoteGuide />}
+          <section className="rounded-xl border bg-card p-5 sm:p-6">
+            <h2 className="text-sm font-bold mb-2">Scope of work</h2>
+            <p className="text-sm text-muted-foreground leading-7 whitespace-pre-wrap">{quote.laborDescription || quote.title}</p>
+          </section>
         </div>
 
         {/* Equipment List */}
@@ -386,17 +364,17 @@ export default function Proposal() {
         )}
 
         {/* Good/Better/Best Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="quote-options grid grid-cols-1 md:grid-cols-3 gap-5 mb-6 pt-3">
           {quote.options.map((option) => {
             const isSelected = selectedTier === option.tier;
             return (
               <Card
                 key={option.tier}
-                className={`relative transition-all cursor-pointer ${
+                className={`quote-option relative transition-all cursor-pointer ${
                   isSelected
                     ? "ring-2 ring-primary shadow-lg"
                     : "hover:shadow-md"
-                } ${option.isPopular ? "md:scale-105" : ""}`}
+                } `}
                 onClick={() => {
                   if (!accepted) setSelectedTier(option.tier);
                 }}
@@ -408,7 +386,7 @@ export default function Proposal() {
                     </Badge>
                   </div>
                 )}
-                <CardContent className="p-5">
+                <CardContent className="quote-option-content p-5">
                   <div className="text-center mb-4">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       {option.tier}
@@ -557,7 +535,7 @@ export default function Proposal() {
                 </div>
               </div>
 
-              <div className="mt-4 space-y-2">
+              <div className="mt-4 space-y-2 no-print">
                 {accepted ? (
                   <div className="space-y-3">
                     <div className="flex items-center justify-center gap-2 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900">
@@ -658,17 +636,7 @@ export default function Proposal() {
           </CardContent>
         </Card>
 
-        {/* Footer */}
-        <div className="text-center py-4">
-          <p className="text-xs text-muted-foreground">
-            Air King Mechanical Services LLC · Kansas City, MO · Lic.
-            #HVAC-2019-0442
-          </p>
-          <p className="text-[10px] text-muted-foreground mt-1">
-            Prices subject to change without notice. © 2026 Air King Mechanical
-            Services.
-          </p>
-        </div>
+        <QuoteFooter />
       </div>
 
       {/* Send Dialog */}
