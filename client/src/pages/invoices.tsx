@@ -1,3 +1,4 @@
+import { prepareInvoiceLines, saveInvoiceThenSend } from "../../../shared/invoice-workflow";
 import { guardSave } from "@/lib/confirmed-save";
 import { DocumentActions } from "@/components/document-actions";
 import { useEffect, useState } from "react";
@@ -97,6 +98,7 @@ export default function Invoices() {
   const [invoiceEquipment, setInvoiceEquipment] = useState<string[]>([]);
   const [lineItems, setLineItems] = useState([{ description: "", quantity: "1", unitPrice: "" }]);
   const [saving, setSaving] = useState(false);
+  const [savedResult,setSavedResult]=useState<{id:string;deliveryError:string|null}|null>(null);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [catalogSearch, setCatalogSearch] = useState("");
   const [catalogEquipment, setCatalogEquipment] = useState<CatalogItem[]>([]);
@@ -166,18 +168,11 @@ export default function Invoices() {
       toast({ title: "Select a customer", description: "Please choose a customer for this invoice.", variant: "destructive" });
       return;
     }
-    const cleanItems = lineItems
-      .filter((item) => item.description.trim() && Number(item.quantity) > 0)
-      .map((item) => ({ description: item.description.trim(), amount: Number(item.quantity) * Number(item.unitPrice || 0) }));
-    const amount = cleanItems.reduce((sum, item) => sum + item.amount, 0);
-    if (!cleanItems.length || amount <= 0) {
-      toast({ title: "Add an invoice item", description: "Each invoice needs a description, quantity, and price.", variant: "destructive" });
-      return;
-    }
+    const {items:cleanItems,amount}=prepareInvoiceLines(lineItems);
     setSaving(true);
     try {
       const custName = customers.find((customer) => customer.id === form.customer)?.name || "Customer";
-      const invoice = await createInvoice({
+      const outcome = await saveInvoiceThenSend(() => createInvoice({
         customerId: form.customer,
         customerName: custName,
         amount,
@@ -191,23 +186,26 @@ export default function Invoices() {
           category: item.category,
           description: item.description || item.name,
         })),
-      });
-      setShowCreateDialog(false);
-      if (sendNow) {
-        await crm(`crm/invoice/${invoice.id}/send`, "POST", { channels: ["email"] }, crypto.randomUUID());
-        window.dispatchEvent(new Event("crm-refresh"));
-      }
+      }), invoice => {
+        setSavedResult({id:invoice.id,deliveryError:null});
+        setShowCreateDialog(false);
+        setForm({customer:"",description:"",amount:"",dueDate:new Date(Date.now()+30*86400000).toISOString().slice(0,10)});
+        setLineItems([{description:"",quantity:"1",unitPrice:""}]);
+        setInvoiceEquipment([]);setCatalogEquipment([]);
+      }, sendNow ? async invoice => {
+        const response=await crm(`crm/invoice/${invoice.id}/send`,"POST",{channels:["email"]},crypto.randomUUID());
+        const failed=response.messages?.filter((message:any)=>message.status==="failed") || [];
+        if(failed.length)throw new Error(failed.map((message:any)=>message.error || "Email could not be queued.").join(" "));
+      } : undefined);
+      setSavedResult({id:outcome.invoice.id,deliveryError:outcome.deliveryError});
+      window.dispatchEvent(new Event("crm-refresh"));
       toast({
-        title: sendNow ? "Invoice saved and queued for email" : "Invoice saved as draft",
-        description: `${custName} — ${fmtCurrency(amount)}`,
+        title:outcome.deliveryError ? "Invoice saved; email needs attention" : sendNow ? "Invoice saved and queued for email" : "Invoice saved as draft",
+        description:outcome.deliveryError || `${custName} — ${fmtCurrency(amount)}`,
+        ...(outcome.deliveryError ? {variant:"destructive" as const} : {}),
       });
-      setShowCreateDialog(false);
-      setForm({ customer: "", description: "", amount: "", dueDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10) });
-      setLineItems([{ description: "", quantity: "1", unitPrice: "" }]);
-      setInvoiceEquipment([]);
-      setCatalogEquipment([]);
     } catch (error: any) {
-      toast({ title: "Could not finish saving or sending", description: error.message, variant: "destructive" });
+      toast({ title: "Could not save invoice", description: error.message, variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -215,6 +213,11 @@ export default function Invoices() {
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4">
+      {savedResult&&<div role="status" className="rounded-lg border p-4 flex flex-wrap items-center justify-between gap-3">
+        <div><p className="font-medium">Invoice {savedResult.id} saved</p>
+        <p className="text-sm text-muted-foreground">{savedResult.deliveryError ? `${savedResult.deliveryError} Open this invoice to review delivery before retrying.` : "Open the saved invoice to review its details or delivery history."}</p></div>
+        <Link href={`/invoices/view/${savedResult.id}`}><Button variant="outline">Open invoice</Button></Link>
+      </div>}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Invoices</h1>

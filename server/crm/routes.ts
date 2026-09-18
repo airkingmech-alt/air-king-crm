@@ -1,3 +1,4 @@
+import { updateVersioned } from "../../shared/versioned-save";
 import { saveCallback, processCallbacks } from "./callbacks";
 import type { Express, Request, Response } from "express";
 import Stripe from "stripe";
@@ -380,13 +381,8 @@ export function registerCrm(app: Express) {
         }
       if (req.params.id) {
         await entity(table, String(req.params.id), c.company);
-        await result(
-          db()
-            .from(table)
-            .update({ ...data, updated_at: new Date().toISOString() })
-            .eq("id", req.params.id)
-            .eq("company_id", c.company),
-        );
+        await updateVersioned(db(),table,{id:String(req.params.id),company_id:c.company,updated_at:req.body.updated_at},
+          {...data,updated_at:new Date().toISOString()});
       } else
         await result(
           db()
@@ -409,13 +405,14 @@ export function registerCrm(app: Express) {
         c.company,
       );
       requireAutomationProviders({ enabled, steps: automation.steps });
-      await result(
-        db()
-          .from("automations")
-          .update({ enabled, updated_at: new Date().toISOString() })
-          .eq("id", req.params.id)
-          .eq("company_id", c.company),
-      );
+      if(enabled) {
+        await updateVersioned(db(),"automations",{id:String(req.params.id),company_id:c.company,updated_at:req.body.updated_at},
+          {enabled,updated_at:new Date().toISOString()});
+      } else {
+        // Turning off must always work; advancing the version rejects stale editor saves.
+        await result(db().from("automations").update({enabled:false,updated_at:new Date().toISOString()})
+          .eq("id",automation.id).eq("company_id",c.company));
+      }
       res.json({ enabled });
     }),
   );

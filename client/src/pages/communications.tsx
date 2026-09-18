@@ -257,7 +257,7 @@ export function Automations() {
                   onCheckedChange={async (enabled) => {
                     try {
                       await crm(`crm/automations/${a.id}/toggle`, "POST", {
-                        enabled,
+                        enabled, updated_at:a.updated_at,
                       });
                       await refetch();
                     } catch (e: any) {

@@ -1,3 +1,4 @@
+import { sellingPriceFromCost } from "@/lib/pricebook-utils";
 import { guardSave } from "@/lib/confirmed-save";
 import { useState } from "react";
 import { Link } from "wouter";
@@ -69,10 +70,10 @@ export default function Quotes() {
   const labor = parseFloat(laborCost) || 0;
   const materials = parseFloat(materialsCost) || 0;
   const totalCost = equipmentCost + labor + materials;
-  // Air King pricing formula: total cost ÷ 0.75
-  const customerPrice = Math.round(totalCost / 0.75);
+  // Air King pricing formula: total cost ÷ 0.80
+  const customerPrice = Number.isFinite(totalCost) && totalCost >= 0 ? Number(sellingPriceFromCost(totalCost)) : 0;
   const grossProfit = customerPrice - totalCost;
-  const margin = ((grossProfit / customerPrice) * 100).toFixed(1);
+  const margin = customerPrice > 0 ? ((grossProfit / customerPrice) * 100).toFixed(1) : "0.0";
 
   const categories = [
     "All",
@@ -403,7 +404,7 @@ export default function Quotes() {
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">
-                Customer Price (÷ 0.75)
+                Customer Price (÷ 0.80)
               </span>
               <span className="font-medium text-primary">
                 {fmtCurrency(customerPrice)}

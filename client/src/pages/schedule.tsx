@@ -1,3 +1,4 @@
+import { jobDuration } from "../../../shared/scheduling";
 import { guardSave } from "@/lib/confirmed-save";
 import { useEffect, useRef, useState } from "react";
 import { DispatchCalendar } from "@/components/dispatch-calendar";
@@ -110,7 +111,7 @@ function buildWeekDays(weekStart: Date) {
 }
 
 export default function Schedule() {
-  const { data: scheduling } = useQuery({ queryKey:["dispatch-calendar"], queryFn:()=>crm("scheduling") });
+  const { data: scheduling, refetch:refreshSchedule } = useQuery({ queryKey:["dispatch-calendar"], queryFn:()=>crm("scheduling") });
   const teamMembers: {name:string;role:string;initials:string;color:string}[] = (scheduling?.people || []).filter((person:any)=>person.full_name).map((person:any)=>({name:person.full_name,role:person.role,initials:person.full_name.split(" ").map((part:string)=>part[0]).join("").slice(0,2),color:"bg-sky-700"}));
   const { toast } = useToast();
   const {
@@ -129,6 +130,7 @@ export default function Schedule() {
   const [weekStart, setWeekStart] = useState(getWeekStart(new Date()));
   const [showAssignDialog, setShowAssignDialog] = useState(false);
   const [assignTarget, setAssignTarget] = useState<string | null>(null);
+  const [assignVersion,setAssignVersion]=useState("");
   const [assignForm, setAssignForm] = useState({
     technician: "",
     date: formatDate(new Date(Date.now() + 86400000)),
@@ -213,14 +215,17 @@ export default function Schedule() {
       });
       return;
     }
-    await updateWorkOrder(assignTarget, {
-      technician: assignForm.technician,
-      scheduledDate: assignForm.date,
-      scheduledTime: assignForm.time,
-      priority: assignForm.priority as any,
-      status: "Scheduled",
-    });
     const wo = workOrders.find((w) => w.id === assignTarget);
+    const people=(scheduling?.people || []).filter((person:any)=>person.full_name===assignForm.technician);
+    if(people.length!==1)throw new Error("Choose a current team member. If names are duplicated, assign from the calendar.");
+    if(!assignVersion)throw new Error("Refresh the schedule and reopen this job before assigning it.");
+    await crm(`scheduling/${assignTarget}`,"PATCH",{
+      version:assignVersion,
+      change:{technicianId:people[0].id,technician:people[0].full_name,scheduledDate:assignForm.date,
+        scheduledTime:assignForm.time,priority:assignForm.priority,durationMinutes:jobDuration(wo || {})},
+    });
+    await refreshSchedule();
+    window.dispatchEvent(new Event("crm-refresh"));
     toast({
       title: "Job assigned",
       description: `${wo?.customerName || "Job"} assigned to ${assignForm.technician} on ${assignForm.date} at ${assignForm.time}.`,
@@ -238,6 +243,7 @@ export default function Schedule() {
   const openAssignDialog = (woId: string) => {
     const wo = workOrders.find((w) => w.id === woId);
     setAssignTarget(woId);
+    setAssignVersion(scheduling?.jobs.find((job:any)=>job.id===woId)?.version || "");
     setAssignForm({
       technician: wo?.technician || "",
       date: wo?.scheduledDate || formatDate(new Date(Date.now() + 86400000)),
@@ -248,7 +254,7 @@ export default function Schedule() {
   };
 
   useEffect(() => {
-    if (openedLinkedJob.current || !workOrders.length) return;
+    if (openedLinkedJob.current || !workOrders.length || !scheduling) return;
     const query = window.location.hash.split("?")[1] || "";
     const jobId = new URLSearchParams(query).get("job");
     if (jobId && workOrders.some((workOrder) => workOrder.id === jobId)) {
@@ -256,7 +262,7 @@ export default function Schedule() {
       setView("list");
       openAssignDialog(jobId);
     }
-  }, [workOrders]);
+  }, [workOrders,scheduling]);
 
   const openOrCreateInvoice = guardSave("schedule-invoice", async (wo: (typeof workOrders)[number]) => {
     const existing = invoices.find(

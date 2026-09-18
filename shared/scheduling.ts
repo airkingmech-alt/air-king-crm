@@ -8,6 +8,7 @@ export const scheduleChange = z.object({
   scheduledTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
   durationMinutes: z.number().int().min(15).max(1440),
   technician: z.string().trim().max(200),
+  priority: z.enum(["Low","Normal","High","Emergency"]).optional(),
   technicianId: z.string().uuid().nullable().optional(),
 });
 export function jobDuration(job: Record<string, any>) {

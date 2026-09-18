@@ -1,6 +1,6 @@
 # Air King CRM — launch repair checklist
 
-Updated September 17, 2026. This supersedes the old PR #1 rollout checklist. The CRM is already deployed; this release repairs the existing application. Checked items describe the evidence below, not certification of every workflow.
+Updated September 18, 2026. This supersedes the old PR #1 rollout checklist. The CRM is already deployed; this release repairs the existing application. Checked items describe the evidence below, not certification of every workflow.
 
 ## Implemented in this repair release
 
@@ -19,6 +19,14 @@ Updated September 17, 2026. This supersedes the old PR #1 rollout checklist. The
 - [x] Remove unnecessary elevated privileges from the company-lookup helper after checking the profile policy and testing company isolation.
 
 Neither migration rewrites or deletes customer data. No new environment variables are required. These repairs did not send customer messages, charge cards, change passwords, enable automations, or purchase hosting.
+
+## September 18 follow-up repairs
+
+- [x] Price-book edits/archive, lead-status updates, template edits/archive and automation edits now compare the record version. A stale screen cannot silently overwrite newer changes. Turning an automation off remains available even from a stale screen; stale saves cannot turn it back on.
+- [x] Invoice Save & Send clears the creation form as soon as saving succeeds. Email failure preserves the invoice and shows an Open invoice button, with separate saved-versus-email status. Invalid line amounts are rejected and line totals are rounded to cents.
+- [x] List-view job assignment now uses the same server date/time, staff, overlap and stale-edit checks as the calendar. Priority saves with the appointment. Deliberate overlap overrides remain available in the calendar.
+- [x] New base quote calculations use the established cost / 0.80 rule through the same pricing helper as the price book. Existing quotes are not repriced.
+- [x] 143 automated tests, TypeScript check and production build pass. No database migration or new credentials needed for this follow-up.
 
 ## Verification completed
 
@@ -45,10 +53,10 @@ Render live status, recent logs and side-effect-free public smoke tests must als
 | Before relying on intake | Website/Meta live submission | Actual provider/browser access needed to submit a controlled lead and verify account permissions, subscriptions and token lifetime. Mapping/signature tests passed. |
 | Before marketing | Failed delivery, consent and automation review | Review the known provider-failed email. Three earlier failures were preference blocks and must not be bypassed. Most automations remain disabled. Test delivery, bounce and opt-out using controlled destinations before activating sequences. |
 | Before equipment campaigns | Historical dates and placeholder contacts | Air King must review the placeholder-contact record and missing service dates. New completion transitions already record last service; historical dates/identities were not guessed. |
-| Before quoting | Pricing consistency | Legacy quote builders divide cost by 0.75; catalog pricing uses 0.80. Confirm the intended rule before changing customer prices. Existing quotes were not recalculated. |
+| Before quoting | Complete estimating review | Base margin now matches the saved Air King rule (cost / 0.80). The legacy Good/Better/Best multipliers and equipment-tax/allowance treatment still need a full estimating review with actual matched equipment before treating generated packages as final prices. Existing quotes were not recalculated. |
 | Before subscriptions | Crown Care billing/agreement lifecycle | Tracking and custom equipment/filter/pricing configuration exist. Recurring collection, signed enrollment/cancellation and failed-payment handling remain incomplete. Use manual billing until separately implemented and tested. |
 | Security follow-up | Leaked-password protection | Supabase reports it disabled. Owner must enable the supported account/plan setting. Existing passwords remain unchanged. |
-| Workflow follow-up | Other editors and initial appointment validation | Shared blob saves now reject conflicts, but price-book, lead-status and template edits still need a concurrency review. Calendar moves have conflict checks; legacy initial job/Crown Care creation needs equivalent staff/date/conflict validation and membership-visit linkage. |
+| Workflow follow-up | Other editors and initial appointment validation | Shared blob saves and price-book, lead-status, template and automation edits now reject stale versions. Calendar moves and list assignment have conflict checks. Initial new-job/Crown Care creation still needs equivalent validation and membership-visit linkage. |
 | Hands-on acceptance | Equipment AI, inventory, clock and calendar | Actual AI-provider accuracy, employee phones, clock corrections, drag/resize gestures and physical stock workflows still require operational testing. Automated rules/database tests are not a substitute. |
 
 ## Audit correction

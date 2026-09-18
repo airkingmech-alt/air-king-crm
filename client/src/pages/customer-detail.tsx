@@ -1,3 +1,4 @@
+import { sellingPriceFromCost } from "@/lib/pricebook-utils";
 import { guardSave } from "@/lib/confirmed-save";
 import { CustomerCommunications } from "@/pages/communications";
 import { EquipmentScanner } from "@/components/equipment-scanner";
@@ -189,7 +190,7 @@ export default function CustomerDetail() {
   const labor = parseFloat(laborCost) || 0;
   const materials = parseFloat(materialsCost) || 0;
   const totalCost = equipmentCost + labor + materials;
-  const customerPrice = Math.round(totalCost / 0.75);
+  const customerPrice = Number.isFinite(totalCost) && totalCost >= 0 ? Number(sellingPriceFromCost(totalCost)) : 0;
   const grossProfit = customerPrice - totalCost;
   const margin =
     customerPrice > 0
@@ -1143,7 +1144,7 @@ export default function CustomerDetail() {
                   <Sparkles size={14} /> Pricing Formula
                 </p>
                 <p className="mt-1">
-                  Customer price = Total Internal Cost ÷ 0.75 (25% margin).
+                  Customer price = Total Internal Cost ÷ 0.80 (20% margin).
                   Internal costs are never shown to customers.
                 </p>
               </div>
@@ -1402,7 +1403,7 @@ export default function CustomerDetail() {
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">
-                    Customer Price (÷ 0.75)
+                    Customer Price (÷ 0.80)
                   </span>
                   <span className="font-medium text-sky-600">
                     {fmtCurrency(customerPrice)}
