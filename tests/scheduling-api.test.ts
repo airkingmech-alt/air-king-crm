@@ -51,3 +51,9 @@ test("conflicts require explicit override and invalid appointments cannot save",
   assert.equal((await send({...payload(),change:{...change,scheduledDate:"2026-02-30"}})).status,400);
   assert.equal((await send({...payload(),change:{...change,technician:"Unverified"}})).status,400);
 });
+
+test("list assignment validates priority and stores it with the appointment",async()=>{
+ assert.equal((await send({...payload(),change:{...change,priority:"Emergency"}})).status,200);
+ assert.equal(written.data.priority,"Emergency");
+ assert.equal((await send({...payload(),change:{...change,priority:"invalid"}})).status,400);
+});

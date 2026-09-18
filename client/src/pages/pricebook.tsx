@@ -1,3 +1,4 @@
+import { updateVersioned } from "../../../shared/versioned-save";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, CircleDollarSign, Loader2, PackageOpen, Pencil, Plus, RefreshCw, RotateCcw, Search, Wrench } from "lucide-react";
@@ -21,7 +22,7 @@ type ItemType = "equipment" | "part" | "service" | "labor";
 type PriceItem = {
   id: string; company_id: string; item_type: ItemType; category: string; name: string;
   description: string; sku: string | null; brand: string | null; model: string | null;
-  unit: string; cost_cents: number; price_cents: number; taxable: boolean; active: boolean;
+  updated_at: string; unit: string; cost_cents: number; price_cents: number; taxable: boolean; active: boolean;
 };
 type PriceForm = {
   item_type: ItemType; category: string; name: string; description: string; sku: string;
@@ -126,11 +127,11 @@ export default function Pricebook() {
         unit: form.unit.trim() || "each", cost_cents: dollarsToCents(form.cost),
         price_cents: dollarsToCents(form.price), taxable: form.taxable, active: form.active,
       };
-      const query = editing
-        ? supabase.from("price_book_items").update(row).eq("id", editing.id)
-        : supabase.from("price_book_items").insert(row);
-      const { error } = await query;
-      if (error) throw error;
+      if (editing) await updateVersioned(supabase,"price_book_items",editing,row);
+      else {
+        const {error}=await supabase.from("price_book_items").insert(row);
+        if(error)throw error;
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: key }); setOpen(false); setEditing(null); setForm(newForm());
@@ -141,8 +142,7 @@ export default function Pricebook() {
 
   const setActive = useMutation({
     mutationFn: async ({ item, active }: { item: PriceItem; active: boolean }) => {
-      const { error } = await supabase.from("price_book_items").update({ active }).eq("id", item.id);
-      if (error) throw error;
+      await updateVersioned(supabase,"price_book_items",item,{active});
     },
     onSuccess: (_, variables) => {
       qc.invalidateQueries({ queryKey: key });
