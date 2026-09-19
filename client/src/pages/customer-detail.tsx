@@ -1,3 +1,4 @@
+import { LaborDescriptionBuilder } from "@/components/labor-description-builder";
 import { DeleteRecord } from "@/components/delete-record";
 import { sellingPriceFromCost } from "@/lib/pricebook-utils";
 import { guardSave } from "@/lib/confirmed-save";
@@ -139,6 +140,7 @@ export default function CustomerDetail() {
   const [eqFilter, setEqFilter] = useState<string>("All");
   const [selectedEquipment, setSelectedEquipment] = useState<string[]>([]);
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([]);
+  const [scopeNotes, setScopeNotes] = useState("");
   const [laborCost, setLaborCost] = useState("1200");
   const [laborDesc, setLaborDesc] = useState(
     "Remove old equipment, install new system, reconnect electrical and refrigerant lines",
@@ -208,6 +210,7 @@ export default function CustomerDetail() {
     setEqSearch("");
     setEqFilter("All");
     setSelectedEquipment([]);
+    setScopeNotes("");
     setSelectedAddOns([]);
     setLaborCost("1200");
     setLaborDesc(
@@ -1373,6 +1376,8 @@ export default function CustomerDetail() {
               </div>
 
               <Separator />
+
+              <LaborDescriptionBuilder equipment={selectedItems} addOns={addOnServices.filter(a => selectedAddOns.includes(a.id))} scope={scopeNotes} onScopeChange={setScopeNotes} onApply={setLaborDesc} />
 
               {/* Pricing Summary */}
               <div className="space-y-2">

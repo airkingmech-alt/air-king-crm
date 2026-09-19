@@ -45,9 +45,8 @@ export function DeleteRecord({ kind, record, destination }: {
           <DialogTitle>Delete this {kind}?</DialogTitle>
           <DialogDescription>
             {record.id} will be removed from active screens. Its history will be retained.
-            {kind === "customer" ? " Customers with linked work, memberships, or financial records cannot be deleted." : " Its customer link will stop working and queued reminders will be cancelled."}
-            {kind === "invoice" && " Invoices with payments, online payment attempts, or linked quotes/jobs cannot be deleted."}
-            {kind === "quote" && " Accepted quotes and quotes linked to jobs or invoices cannot be deleted."}
+            {kind === "customer" ? " Linked jobs, quotes, invoices, payments, and memberships will remain. This does not cancel a membership or its billing." : " Its customer link will stop working and queued reminders will be cancelled. Linked jobs and payment history will remain."}
+            {kind === "invoice" && " This does not refund payments. An already-open Stripe checkout may still finish, and its payment will remain recorded."}
           </DialogDescription>
         </DialogHeader>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

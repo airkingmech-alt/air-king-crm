@@ -1,3 +1,4 @@
+import { LaborDescriptionBuilder } from "@/components/labor-description-builder";
 import { sellingPriceFromCost } from "@/lib/pricebook-utils";
 import { guardSave } from "@/lib/confirmed-save";
 import { useState } from "react";
@@ -42,6 +43,7 @@ export default function Quotes() {
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [selectedEquipment, setSelectedEquipment] = useState<string[]>([]);
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([]);
+  const [scopeNotes, setScopeNotes] = useState("");
   const [laborCost, setLaborCost] = useState("1200");
   const [laborDesc, setLaborDesc] = useState(
     "Remove old equipment, install new system, reconnect electrical and refrigerant lines",
@@ -309,6 +311,7 @@ export default function Quotes() {
                 />
               </div>
             </div>
+            <LaborDescriptionBuilder equipment={selectedItems} addOns={addOnServices.filter(a => selectedAddOns.includes(a.id))} scope={scopeNotes} onScopeChange={setScopeNotes} onApply={setLaborDesc} />
             <div className="mt-3">
               <Label htmlFor="labor-desc" className="text-xs">
                 Labor Description

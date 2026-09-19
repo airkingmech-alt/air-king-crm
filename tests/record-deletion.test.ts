@@ -89,3 +89,45 @@ test('in-flight send blocks deletion without cancelling or hiding anything',asyn
  const q=await add('quotes','sending');await pg.exec("insert into communications(id,company_id,quote_id,status) values('sending','airking','sending','sending')");
  await assert.rejects(remove('quotes',q),/being sent/);assert.equal((await read('quotes','sending')).deletedAt,undefined);
 });
+
+test('expanded deletion preserves paid, accepted and linked records without cascading',async()=>{
+ const saves=await readFile('supabase/migrations/20260917225457_launch_permissions_and_confirmed_saves.sql','utf8');
+ await pg.exec(saves.slice(saves.indexOf('create function public.crm_save_records'),saves.indexOf('-- Customer creation')));
+ await pg.exec(await readFile('supabase/migrations/20260919183211_flexible_record_deletion.sql','utf8'));
+ const won=await read('quotes','won');await remove('quotes',won);assert.equal((await read('quotes','won')).status,'Won');
+ const paid=await read('invoices','paid');await remove('invoices',paid);assert.equal((await read('invoices','paid')).paidAmount,25);
+ const linkedInvoice=await read('invoices','linkedinv');await remove('invoices',linkedInvoice);assert.equal((await read('invoices','linkedinv')).quoteId,'won');
+ const customer=await read('customers','linked');await remove('customers',customer);
+ assert.equal((await read('work_orders','job')).customerId,'linked');
+ await assert.rejects(asActor("update customers set data='{}' where id='linked'"),/deleted/);
+ await asActor("update customers set data=data||'{\"lastServiceAt\":\"2026-09-19\"}' where id='linked'");
+ assert.ok((await read('customers','linked')).deletedAt);
+});
+test('a replacement invoice is permitted after deletion, but still prevents active duplicates',async()=>{
+ await add('customers','replacement-customer');
+ const inv=await add('invoices','replacement-old',{customerId:'replacement-customer',quoteId:'replacement-quote',amount:10});
+ await remove('invoices',inv);
+ const save=(id:string)=>asActor('select crm_save_records($1)',[JSON.stringify([{table:'invoices',id,data:{id,customerId:'replacement-customer',quoteId:'replacement-quote',amount:10}}])]);
+ await save('replacement-new');await assert.rejects(save('replacement-duplicate'),/already exists/);
+});
+test('late verified Stripe payment still settles once after invoice and customer deletion',async()=>{
+ // Exercise the actual existing payment SQL, including webhook idempotency.
+ await pg.exec(`alter table invoices add column updated_at timestamptz;
+ alter table payments add column company_id text,add column amount_cents bigint,add column fee_cents bigint,add column method text,add column source text,add column external_id text unique,add column reference text,add column receipt_url text,add column paid_at timestamptz,add column actor_id uuid;
+ alter table payments alter column id set default gen_random_uuid()::text;
+ alter table checkout_attempts alter column id type uuid using id::uuid;
+ alter table checkout_attempts add column amount_cents bigint,add column fee_cents bigint,add column state text,add column expires_at timestamptz;
+ alter table communication_events add column dedupe_key text;
+ create table stripe_events(id text primary key,type text,payment_id text);`);
+ const sql=await readFile('supabase/migrations/20260909230728_communications_payments.sql','utf8');
+ await pg.exec(sql.slice(sql.indexOf('create function public.crm_record_payment'),sql.indexOf('create function public.crm_decide_quote')));
+ const c=await add('customers','late-customer'),inv=await add('invoices','late-invoice',{customerId:c.id,status:'Sent',amount:100,paidAmount:0});
+ const attempt='33333333-3333-4333-8333-333333333333';
+ await pg.query("insert into checkout_attempts(id,invoice_id,amount_cents,fee_cents,state) values($1,'late-invoice',10000,0,'open')",[attempt]);
+ await remove('invoices',inv);await remove('customers',c);
+ const settle=()=>pg.query("select crm_record_payment('late-invoice','airking',10000,'card','pi_test',null,null,$1,'evt_test','checkout.session.completed')",[attempt]);
+ await settle();await settle();
+ const row=await read('invoices','late-invoice');assert.equal(row.paidAmount,100);assert.equal(row.status,'Paid');assert.ok(row.deletedAt);
+ assert.equal((await pg.query<any>("select count(*)::int n from payments where invoice_id='late-invoice'")).rows[0].n,1);
+ await assert.rejects(pg.exec("insert into checkout_attempts(invoice_id) values('late-invoice')"),/deleted/);
+});
