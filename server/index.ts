@@ -1,3 +1,4 @@
+import { registerLaborDescription } from "./crm/labor-description";
 import "dotenv/config";
 import express, { Response, NextFunction } from 'express';
 import type { Request } from 'express';
@@ -68,6 +69,7 @@ app.use((req, res, next) => {
   registerTimeClock(app);
   registerScheduling(app);
   registerEquipmentAnalysis(app);
+  registerLaborDescription(app);
   registerCrownCare(app);
   registerReports(app);
   await registerRoutes(httpServer, app);

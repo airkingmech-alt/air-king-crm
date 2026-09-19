@@ -2,7 +2,7 @@ import { prepareInvoiceLines, saveInvoiceThenSend } from "../../../shared/invoic
 import { guardSave } from "@/lib/confirmed-save";
 import { DocumentActions } from "@/components/document-actions";
 import { useEffect, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   Search,
   DollarSign,
@@ -88,6 +88,7 @@ export default function Invoices() {
   const { toast } = useToast();
   const { profile } = useAuth();
   const { invoices, createInvoice, customers } = useData();
+  const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"All" | InvoiceStatus>("All");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -299,7 +300,8 @@ export default function Invoices() {
         {filtered.map((inv) => {
           const outstanding = inv.amount - inv.paidAmount;
           return (
-            <Card key={inv.id} className="hover:shadow-md transition-shadow">
+            <Card key={inv.id} className="hover:shadow-md transition-shadow cursor-pointer focus-within:ring-2 focus-within:ring-primary"
+              onClick={(e) => { if (!(e.target as HTMLElement).closest("a,button,input,select,textarea")) navigate(`/invoices/view/${inv.id}`); }}>
               <CardContent className="p-4">
                 <div className="flex items-start gap-3 flex-wrap">
                   <div className="flex flex-col items-center justify-center w-14 h-14 rounded-lg bg-muted shrink-0">
@@ -307,9 +309,9 @@ export default function Invoices() {
                       size={18}
                       className={statusConfig[inv.status].color}
                     />
-                    <span className="text-[9px] font-semibold mt-0.5 text-muted-foreground">
+                    <Link href={`/invoices/view/${inv.id}`} className="text-[9px] font-semibold mt-0.5 text-primary underline" aria-label={`Open invoice ${inv.id}`}>
                       {inv.id}
-                    </span>
+                    </Link>
                   </div>
                   <div className="flex-1 min-w-0">
                     <Link href={`/customers/${inv.customerId}`}>
