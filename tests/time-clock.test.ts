@@ -91,6 +91,8 @@ test("employee can correct a forgotten clock-out without starting a new shift", 
 
 test("an old clock-out request cannot stop a newer running shift", async () => {
   const first = await write("clock_in", {}, other);
+  // PostgreSQL timestamps in the test runtime have millisecond precision.
+  await new Promise(resolve => setTimeout(resolve, 5));
   await write("clock_out", { id: first.id, version: 1 }, other);
   const second = await write("clock_in", {}, other);
   await assert.rejects(write("clock_out", { id: first.id, version: 1 }, other), /changed/);
