@@ -68,7 +68,7 @@ export async function entity(
   let q = db().from(table).select("*").eq("id", id);
   if (company) q = q.eq("company_id", company);
   const row = await result(q.maybeSingle());
-  if (!row)
+  if (!row || row.data?.deletedAt)
     throw Object.assign(new Error("Record not found."), { status: 404 });
   return row;
 }

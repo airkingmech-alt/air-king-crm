@@ -57,7 +57,7 @@ async function companyRows(table: string, company: string) {
   const rows: Row[] = [];
   for (let from=0;;from+=500) {
     const page: Row[] = await result(db().from(table).select("*").eq("company_id", company).order(table === "customer_communication_preferences" ? "customer_id" : "id").range(from, from+499));
-    rows.push(...page); if (page.length < 500) return rows;
+    rows.push(...page.filter(row => !row.data?.deletedAt)); if (page.length < 500) return rows;
   }
 }
 export async function evaluateAudience(company: string, audience: Row, channels: string[] = ["email","sms"]) {

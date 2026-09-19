@@ -28,6 +28,6 @@ export function extractEntity<T>(row: { data: unknown } | null | undefined): T |
 export function extractEntities<T>(rows: { data: unknown }[] | null | undefined): T[] {
   if (!rows) return [];
   return rows
-    .filter((r) => r && r.data)
+    .filter((r) => r && r.data && !(r.data as any).deletedAt)
     .map((r) => r.data as T);
 }

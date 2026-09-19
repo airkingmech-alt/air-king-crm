@@ -152,6 +152,7 @@ async function scanDates() {
       );
       for (const row of rows) {
         const d = row.data;
+        if (d.deletedAt) continue;
         const base = {
           company_id: row.company_id,
           customer_id: table === "customers" ? row.id : row.customer_id,

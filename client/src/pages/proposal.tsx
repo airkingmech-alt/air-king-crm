@@ -1,3 +1,4 @@
+import { DeleteRecord } from "@/components/delete-record";
 import { guardSave } from "@/lib/confirmed-save";
 import { QuoteHeader, QuoteGuide, QuoteFooter } from "@/components/branded-quote";
 import { DocumentActions } from "@/components/document-actions";
@@ -225,6 +226,7 @@ export default function Proposal() {
             </Button>
           </Link>
           <div className="flex gap-2">
+              <DeleteRecord kind="quote" record={quote} destination="/quotes" />
             {quote.status === "Won" &&
               (invoiceForQuote ? (
                 <Link href={`/invoices/view/${invoiceForQuote.id}`}>

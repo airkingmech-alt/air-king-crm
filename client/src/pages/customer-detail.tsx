@@ -1,3 +1,4 @@
+import { DeleteRecord } from "@/components/delete-record";
 import { sellingPriceFromCost } from "@/lib/pricebook-utils";
 import { guardSave } from "@/lib/confirmed-save";
 import { CustomerCommunications } from "@/pages/communications";
@@ -370,6 +371,7 @@ export default function CustomerDetail() {
               </div>
             </div>
             <div className="flex gap-2">
+              <DeleteRecord kind="customer" record={customer} destination="/customers" />
               <Button
                 size="sm"
                 variant="outline"

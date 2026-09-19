@@ -13,7 +13,7 @@ export async function marketingStopReason(msg: Row, customer: Row): Promise<stri
   } catch { return "Customer contact is no longer valid."; }
   const tables=["quotes","invoices","work_orders","memberships"];
   const data=await Promise.all(tables.map(table=>result(db().from(table).select("*").eq("company_id",msg.company_id).eq("customer_id",customer.id))));
-  const related={quotes:data[0],invoices:data[1],jobs:data[2],memberships:data[3]};
+  const related={quotes:data[0].filter((r:Row)=>!r.data?.deletedAt),invoices:data[1].filter((r:Row)=>!r.data?.deletedAt),jobs:data[2],memberships:data[3]};
   if (!matchesAudience(customer,related,snapshot.audience)) return "Customer no longer matches the campaign audience.";
   if (!(step.conditions||[]).every((c:Row)=>match(valueFor(c.field,customer,related),c))) return "Campaign step conditions no longer match.";
   if (msg.quote_id) {
