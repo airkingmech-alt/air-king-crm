@@ -30,6 +30,31 @@ test('AI endpoint requires login, quotes permission, equipment and scope',async(
 test('AI requests are bounded and missing connection reports a usable fallback',async()=>{
  for(let i=0;i<4;i++)assert.equal((await call(input)).status,200);
  assert.equal((await call(input)).status,429);assert.equal(calls,5);
- const old=process.env.ANTHROPIC_API_KEY;delete process.env.ANTHROPIC_API_KEY;
- try{await assert.rejects(generateLaborDescription(laborInputSchema.parse(input)),/use a labor template/);}finally{if(old)process.env.ANTHROPIC_API_KEY=old;}
+ const old=process.env.OPENAI_API_KEY;delete process.env.OPENAI_API_KEY;
+ try{await assert.rejects(generateLaborDescription(laborInputSchema.parse(input)),/use a labor template/);}finally{if(old)process.env.OPENAI_API_KEY=old;}
+});
+
+test('OpenAI Responses returns draft text with privacy and cost fields enforced',async()=>{
+ const previousFetch=globalThis.fetch,previousKey=process.env.OPENAI_API_KEY;
+ process.env.OPENAI_API_KEY='test-only-placeholder';let request:any;
+ globalThis.fetch=async(url:any,options:any)=>{
+  assert.equal(String(url),'https://api.openai.com/v1/responses');assert.equal(options.redirect,'error');assert.ok(options.signal);
+  request=JSON.parse(options.body);
+  return new Response(JSON.stringify({status:'completed',output:[{type:'reasoning',summary:[]},{type:'message',role:'assistant',content:[{type:'output_text',text:'Install the selected equipment and perform the agreed startup checks.'}]}]}),{status:200});
+ };
+ try {
+  assert.match(await generateLaborDescription(input as any),/selected equipment/);
+  assert.equal(request.store,false);assert.equal(request.max_output_tokens,1600);
+  assert.ok(!request.input.includes('999'));assert.equal(request.instructions,laborSystemPrompt);
+ }finally{globalThis.fetch=previousFetch;if(previousKey)process.env.OPENAI_API_KEY=previousKey;else delete process.env.OPENAI_API_KEY;}
+});
+test('OpenAI incomplete, refused, unauthorized and unavailable responses never become a draft',async()=>{
+ const previousFetch=globalThis.fetch,previousKey=process.env.OPENAI_API_KEY;
+ process.env.OPENAI_API_KEY='test-only-placeholder';
+ try{
+  for(const [status,body] of [[401,{error:{message:'secret-provider-detail'}}],[429,{}],[500,{}],[200,{status:'incomplete',output:[]}],[200,{status:'completed',output:[{type:'message',role:'assistant',content:[{type:'refusal',refusal:'No draft'}]}]}]] as const){
+   globalThis.fetch=async()=>new Response(JSON.stringify(body),{status});
+   await assert.rejects(generateLaborDescription(laborInputSchema.parse(input)),(e:any)=>e.status===503&&!e.message.includes('secret-provider-detail'));
+  }
+ }finally{globalThis.fetch=previousFetch;if(previousKey)process.env.OPENAI_API_KEY=previousKey;else delete process.env.OPENAI_API_KEY;}
 });
