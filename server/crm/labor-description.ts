@@ -3,19 +3,31 @@ import { z } from "zod";
 import { caller } from "./core";
 import { laborInputSchema, laborSystemPrompt, laborTemplates, type LaborInput } from "../../shared/labor-descriptions";
 export async function generateLaborDescription(input:LaborInput):Promise<string> {
- if(!process.env.ANTHROPIC_API_KEY) throw Object.assign(new Error("AI drafting is not connected yet. You can use a labor template and edit it now. The owner can connect AI with the server's ANTHROPIC_API_KEY setting."),{status:503});
- const Anthropic=(await import("@anthropic-ai/sdk")).default;
- const client=new Anthropic({apiKey:process.env.ANTHROPIC_API_KEY,maxRetries:1,timeout:45000});
+ if(!process.env.OPENAI_API_KEY) throw Object.assign(new Error("OpenAI drafting is not connected yet. You can use a labor template and edit it now. Ask the owner to add OPENAI_API_KEY in Render."),{status:503});
+ const safe=laborInputSchema.parse(input);
  try {
-  const response=await client.messages.create({model:process.env.ANTHROPIC_LABOR_MODEL || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",max_tokens:1600,system:laborSystemPrompt,
-   messages:[{role:"user",content:JSON.stringify({equipment:input.equipment,selectedAddOns:input.addOns,scope:input.scope,startingTemplate:laborTemplates.find(t=>t.id===input.templateId)?.body || null})}]});
-  const text=response.content.filter(c=>c.type==='text').map(c=>c.text).join('\n').trim();
-  if(response.stop_reason!=='end_turn' || text.length<20 || text.length>8000) throw new Error('Incomplete draft');
+  const response=await fetch("https://api.openai.com/v1/responses",{
+   method:"POST",redirect:"error",signal:AbortSignal.timeout(45000),
+   headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,"Content-Type":"application/json"},
+   body:JSON.stringify({model:process.env.OPENAI_LABOR_MODEL || "gpt-4.1-mini-2025-04-14",store:false,max_output_tokens:1600,
+    instructions:laborSystemPrompt,input:JSON.stringify({equipment:safe.equipment,selectedAddOns:safe.addOns,scope:safe.scope,startingTemplate:laborTemplates.find(t=>t.id===safe.templateId)?.body || null})}),
+  });
+  if(!response.ok) {
+   if(response.status===401 || response.status===403) throw Object.assign(new Error("OpenAI could not authorize this request. Ask the owner to check the API key and model access in Render. Your description has not changed."),{providerSetup:true});
+   if(response.status===429) throw Object.assign(new Error("OpenAI's usage limit was reached. Try again shortly, or ask the owner to check API billing and limits. Your description has not changed."),{providerSetup:true});
+   throw new Error("OpenAI request failed");
+  }
+  const data=await response.json();
+  if(data.status!=="completed" || !Array.isArray(data.output)) throw new Error("Incomplete draft");
+  const content=data.output.filter((item:any)=>item.type==='message' && item.role==='assistant').flatMap((item:any)=>Array.isArray(item.content)?item.content:[]);
+  if(content.some((item:any)=>item.type==='refusal')) throw new Error("Draft unavailable");
+  const text=content.filter((item:any)=>item.type==='output_text' && typeof item.text==='string').map((item:any)=>item.text).join('\n').trim();
+  if(text.length<20 || text.length>8000) throw new Error('Incomplete draft');
   return text;
- }catch {throw Object.assign(new Error("AI drafting is temporarily unavailable. Your current description has not changed. Try again or use a labor template."),{status:503});}
+ }catch(e:any){throw Object.assign(new Error(e.providerSetup ? e.message : "OpenAI drafting is temporarily unavailable. Your current description has not changed. Try again or use a labor template."),{status:503});}
 }
 export function registerLaborDescription(app:Express,generate=generateLaborDescription) {
- console.info("Labor description AI: " + (process.env.ANTHROPIC_API_KEY ? "configured" : "not configured; templates available"));
+ console.info("Labor description AI (OpenAI): " + (process.env.OPENAI_API_KEY ? "configured" : "not configured; templates available"));
  const active=new Set<string>(),recent=new Map<string,number[]>();
  app.post('/api/crm/quotes/labor-description',async(req,res)=>{
   res.set('Cache-Control','no-store');let key:string|undefined;
