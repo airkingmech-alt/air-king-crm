@@ -1,3 +1,4 @@
+import { isUnpaidInvoice } from "../../../shared/dashboard";
 import { prepareInvoiceLines, saveInvoiceThenSend } from "../../../shared/invoice-workflow";
 import { guardSave } from "@/lib/confirmed-save";
 import { DocumentActions } from "@/components/document-actions";
@@ -90,7 +91,7 @@ export default function Invoices() {
   const { invoices, createInvoice, customers } = useData();
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"All" | InvoiceStatus>("All");
+  const [filter, setFilter] = useState<"All" | "Unpaid" | InvoiceStatus>(()=>new URLSearchParams(window.location.hash.split("?")[1] || "").get("filter")==="Unpaid"?"Unpaid":"All");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [sendInvoice, setSendInvoice] = useState<(typeof invoices)[0] | null>(
     null,
@@ -114,7 +115,7 @@ export default function Invoices() {
     const matchesSearch =
       inv.customerName.toLowerCase().includes(search.toLowerCase()) ||
       inv.id.toLowerCase().includes(search.toLowerCase());
-    const matchesFilter = filter === "All" || inv.status === filter;
+    const matchesFilter = filter === "All" || (filter === "Unpaid" ? isUnpaidInvoice(inv) : inv.status === filter);
     return matchesSearch && matchesFilter;
   });
 
@@ -280,7 +281,7 @@ export default function Invoices() {
         </div>
         <div className="flex gap-1.5 flex-wrap">
           {(
-            ["All", "Draft", "Sent", "Partial", "Paid", "Overdue"] as const
+            ["All", "Unpaid", "Draft", "Sent", "Partial", "Paid", "Overdue", "Void"] as const
           ).map((f) => (
             <Button
               key={f}
