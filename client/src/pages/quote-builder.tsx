@@ -39,6 +39,7 @@ export default function Quotes() {
   const { quotes, createQuote, customers, workOrders, invoices } = useData();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const [pendingOnly,setPendingOnly]=useState(()=>new URLSearchParams(window.location.hash.split("?")[1] || "").get("status")==="pending");
   const [showBuilder, setShowBuilder] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [selectedEquipment, setSelectedEquipment] = useState<string[]>([]);
@@ -494,7 +495,8 @@ export default function Quotes() {
       </div>
 
       <div className="grid grid-cols-1 gap-4">
-        {quotes.map((quote) => {
+        {pendingOnly && <div className="col-span-full flex items-center gap-3 text-sm"><span>Showing pending quotes</span><Button variant="outline" size="sm" onClick={()=>setPendingOnly(false)}>Show all quotes</Button></div>}
+        {quotes.filter(quote=>!pendingOnly || quote.status==="Quote Sent").map((quote) => {
           const linkedJob = workOrders.find((job) => job.quoteId === quote.id);
           const linkedInvoice = invoices.find(
             (invoice) => invoice.quoteId === quote.id,

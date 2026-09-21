@@ -12,3 +12,8 @@ export function membershipSummary(memberships:any[]){
   const active=memberships.filter(m=>m.status==="Active");
   return {annualCents:active.reduce((n,m)=>n+membershipPriceCents(m)*(m.billingFrequency==="Monthly"?12:1),0),unbooked:active.reduce((n,m)=>n+[m.springVisit,m.fallVisit].filter(v=>v?.status==="Unscheduled").length,0)};
 }
+
+// Draft/void/settled invoices never belong in collections, even with stale balances.
+export function isUnpaidInvoice(invoice:{status:string;amount:number;paidAmount:number}) {
+  return ["Sent","Partial","Overdue"].includes(invoice.status) && Math.round((invoice.amount-invoice.paidAmount)*100)>0;
+}
