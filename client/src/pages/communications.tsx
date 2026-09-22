@@ -793,15 +793,16 @@ export function Integrations() {
       <div className="grid sm:grid-cols-3 gap-4">
         {[
           ["Stripe", "stripe"],
-          ["Text Messages", "twilio"],
+          ["Text Messages", "sms"],
           ["Email", "email"],
         ].map(([name, key]) => (
           <Card key={key}>
             <CardContent className="p-5">
               <h2 className="font-semibold">{name}</h2>
               <p className="text-sm mt-2">
-                {data.connections[key] ? "Configured" : "Setup needed"}
+                {data.connections[key] ? "Configured" : key === "sms" && data.connections.sms_provider === "sentdm" && data.connections.sentdm ? "Connected — sending paused" : "Setup needed"}
               </p>
+              {key === "sms" && (<p className="text-xs text-muted-foreground">{data.connections.sms_provider === "sentdm" ? "Sent.dm · SMS only" : "Twilio"}{data.connections.sms_provider === "sentdm" && !data.connections.sms ? " — awaiting setup / approval" : ""}</p>)}
               {key === "stripe" && (
                 <p className="text-xs text-muted-foreground">
                   Mode: {data.connections.stripe_mode}

@@ -19,7 +19,7 @@ export function DocumentActions({
     queryKey: ["crm-config"],
     queryFn: () => crm("crm/config"),
   });
-  const smsReady = Boolean(config?.connections.twilio);
+  const smsReady = Boolean(config?.connections.sms);
   async function act(channels?: string[]) {
     setBusy(true);
     setNotice("");
