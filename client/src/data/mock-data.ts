@@ -138,6 +138,7 @@ export interface Quote {
 }
 
 export interface WorkOrder {
+  projectName?: string;
   id: string;
   customerId: string;
   customerName: string;
@@ -154,6 +155,8 @@ export interface WorkOrder {
 }
 
 export interface Invoice {
+  projectName?: string;
+  constructionStage?: "Rough-in" | "Finish";
   id: string;
   customerId: string;
   customerName: string;
