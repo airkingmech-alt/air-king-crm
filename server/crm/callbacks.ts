@@ -1,3 +1,4 @@
+import { processSentInbound } from "./sentdm-inbound";
 import { db, result, event, type Row } from "./core";
 export async function saveCallback(
   provider: string,
@@ -24,6 +25,10 @@ export async function processCallbacks() {
       .limit(100),
   );
   for (const callback of callbacks) {
+    if (callback.provider === "sentdm-inbound") {
+      await processSentInbound(callback);
+      continue;
+    }
     const msg = await result(
       db()
         .from("communications")
@@ -36,6 +41,8 @@ export async function processCallbacks() {
     const failed = [
       "failed",
       "undelivered",
+      "blocked",
+      "filtered",
       "email.bounced",
       "email.complained",
       "email.failed",
