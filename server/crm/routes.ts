@@ -1,3 +1,4 @@
+import { surchargeReady, surchargeEnabled, surchargeCheckoutOptions, verifiedSurcharge, SURCHARGE_API_VERSION, type SurchargeSession } from "./surcharge";
 import { smsProvider, sentConfigured, verifySentWebhook, sentStatus } from "./sentdm";
 import { updateVersioned } from "../../shared/versioned-save";
 import { saveCallback, processCallbacks } from "./callbacks";
@@ -256,7 +257,7 @@ export function registerCrm(app: Express) {
           marketing_address: !!process.env.MARKETING_POSTAL_ADDRESS,
           meta: !!process.env.META_APP_SECRET && !!process.env.META_PAGE_ACCESS_TOKEN && !!process.env.META_VERIFY_TOKEN,
           meta_webhook: `${origin()}/api/webhooks/meta/leadgen`,
-          surcharge_available: false,
+          surcharge_available: surchargeReady(c.company),
         },
       });
     }),
@@ -293,10 +294,8 @@ export function registerCrm(app: Express) {
       const data = schema.parse(req.body);
       if (data.sms_start >= data.sms_end)
         throw new Error("Sending start time must be before the end time.");
-      if (data.fee_enabled)
-        throw new Error(
-          "Card fees are not available until credit-card eligibility can be verified. Debit and prepaid cards must not be surcharged.",
-        );
+      if (data.fee_enabled && (!surchargeReady(c.company) || data.fee_basis_points !== 300 || data.fee_fixed_cents !== 0))
+        throw new Error("Complete Stripe automatic-surcharge setup first. The provider must enforce a maximum 3% credit-card-only fee with no fixed fee.");
       if (
         data.payments_enabled &&
         (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET)
@@ -998,7 +997,7 @@ export function registerCrm(app: Express) {
         payments,
         payments_enabled:
           config.payments_enabled && !!process.env.STRIPE_SECRET_KEY && !!process.env.STRIPE_WEBHOOK_SECRET,
-        fee_enabled: false,
+        fee_enabled: surchargeEnabled(row.company_id, config),
       });
     }),
   );
@@ -1058,9 +1057,10 @@ export function registerCrm(app: Express) {
       if (!process.env.STRIPE_WEBHOOK_SECRET) throw new Error("Stripe payment confirmation is not configured. Please contact Air King.");
       const checkoutClient = stripe();
       const attempt = await result(
-        db().rpc("crm_reserve_full_checkout", {
+        db().rpc("crm_reserve_surcharge_checkout", {
           p_invoice: row.id,
           p_company: row.company_id,
+          p_surcharge_basis_points: surchargeEnabled(row.company_id, config) ? 300 : 0,
         }),
       );
       if (attempt.session_url) {
@@ -1070,10 +1070,12 @@ export function registerCrm(app: Express) {
       const expiresAt = Math.floor(new Date(attempt.expires_at).getTime() / 1000);
       if (!Number.isFinite(expiresAt) || expiresAt < Math.floor(Date.now()/1000) + 31*60)
         throw new Error("This checkout reservation is expiring. Please try again after it expires, or contact Air King.");
+      const withSurcharge = attempt.surcharge_basis_points === 300;
       const base = `${origin()}/#/customer/${req.params.token}`;
       const session = await checkoutClient.checkout.sessions.create(
         {
           mode: "payment",
+          ...surchargeCheckoutOptions(withSurcharge),
           integration_identifier: "air_king_crm_full_balance_qmzpvrta",
           client_reference_id: attempt.id,
           line_items: [
@@ -1086,13 +1088,13 @@ export function registerCrm(app: Express) {
               quantity: 1,
             },
           ],
-          metadata: { attempt_id: attempt.id },
+          metadata: { attempt_id: attempt.id, ...(withSurcharge ? { surcharge_cap_bps: "300" } : {}) },
           payment_intent_data: { metadata: { attempt_id: attempt.id } },
           success_url: base + "?payment=processing",
           cancel_url: base,
           expires_at: expiresAt,
         },
-        { idempotencyKey: "checkout:" + attempt.id },
+        { idempotencyKey: "checkout:" + attempt.id, ...(withSurcharge ? { apiVersion: SURCHARGE_API_VERSION } : {}) },
       );
       await result(
         db()
@@ -1162,27 +1164,19 @@ export function registerCrm(app: Express) {
             "checkout_attempts",
             s.metadata?.attempt_id || "",
           );
-          if (a.session_id && a.session_id !== s.id)
-            throw new Error("Checkout session mismatch.");
-          if (
-            s.currency !== "usd" ||
-            s.amount_total !== Number(a.amount_cents) + Number(a.fee_cents) ||
-            s.livemode !== process.env.STRIPE_SECRET_KEY?.startsWith("sk_live_")
-          )
-            throw new Error("Payment verification mismatch.");
+          // Retrieve preview fields directly; webhook endpoint versions may omit them.
+          const paidSession = a.surcharge_basis_points === 300
+            ? await stripe().checkout.sessions.retrieve(s.id, {}, { apiVersion: SURCHARGE_API_VERSION }) as SurchargeSession
+            : s;
           const intent = await stripe().paymentIntents.retrieve(
-            String(s.payment_intent),
-            { expand: ["latest_charge"] },
+            String(paidSession.payment_intent), { expand: ["latest_charge"] },
           );
-          if (
-            intent.status !== "succeeded" ||
-            intent.amount_received !== s.amount_total
-          )
-            throw new Error("Payment has not been confirmed.");
+          const fee = verifiedSurcharge(paidSession, intent, { id: a.id, session_id: a.session_id, amount_cents: a.amount_cents, surcharge_basis_points: a.surcharge_basis_points },
+            /^(sk|rk)_live_/.test(process.env.STRIPE_SECRET_KEY || ""));
           const charge = intent.latest_charge as Stripe.Charge;
           const card = charge?.payment_method_details?.card;
           await result(
-            db().rpc("crm_record_payment", {
+            db().rpc("crm_record_surcharge_payment", {
               p_invoice: a.invoice_id,
               p_company: a.company_id,
               p_amount: a.amount_cents,
@@ -1191,7 +1185,7 @@ export function registerCrm(app: Express) {
               p_attempt: a.id,
               p_event: e.id,
               p_event_type: e.type,
-              p_fee: a.fee_cents,
+              p_fee: fee,
               p_receipt: charge?.receipt_url || null,
             }),
           );

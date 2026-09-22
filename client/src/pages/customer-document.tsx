@@ -386,12 +386,13 @@ export default function CustomerDocument() {
                   <section className="space-y-3 rounded-xl border bg-muted/30 p-4 sm:p-5">
                     <p className="font-semibold">Full balance due: {money(due)}</p>
                     <p className="text-sm text-muted-foreground">Online payments must cover the full remaining balance of this invoice.</p>
+                    {data.fee_enabled && <p className="text-sm text-muted-foreground">Eligible credit cards have a merchant surcharge of up to 3%. Debit and prepaid cards have no surcharge. Your exact fee and total appear in secure checkout before you pay.</p>}
                     <Button
                       className="w-full bg-[#b7192f] py-6 text-lg text-white hover:bg-[#951326]"
                       disabled={busy || !data.payments_enabled}
                       onClick={() => act()}
                     >
-                      {busy ? "Opening secure checkout…" : `PAY ${money(due)} IN FULL`}
+                      {busy ? "Opening secure checkout…" : data.fee_enabled ? "CONTINUE TO SECURE CHECKOUT" : `PAY ${money(due)} IN FULL`}
                     </Button>
                     <p className="text-xs text-muted-foreground">
                       {data.payments_enabled
@@ -416,7 +417,8 @@ export default function CustomerDocument() {
                             : ""}
                         </span>
                         <span className="whitespace-nowrap">
-                          {money(payment.amount_cents / 100)}{" "}
+                          {money((Number(payment.amount_cents) + Number(payment.fee_cents || 0)) / 100)}{" "}
+                          {Number(payment.fee_cents) > 0 && <span className="block text-xs text-muted-foreground">Invoice: {money(payment.amount_cents / 100)} · Credit-card fee: {money(payment.fee_cents / 100)}</span>}
                           {payment.receipt_url && (
                             <a
                               className="text-sky-700 underline"

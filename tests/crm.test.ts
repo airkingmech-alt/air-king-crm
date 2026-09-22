@@ -907,3 +907,30 @@ test("full-balance checkout uses ledger balance, reuses one attempt, and rejects
   const [access]=await sql("select has_function_privilege('anon','crm_reserve_full_checkout(text,text)','EXECUTE') as anon,has_function_privilege('authenticated','crm_reserve_full_checkout(text,text)','EXECUTE') as staff,has_function_privilege('service_role','crm_reserve_full_checkout(text,text)','EXECUTE') as service");
   assert.deepEqual(access,{anon:false,staff:false,service:true});
 });
+
+test("automatic surcharge settlement preserves full balance, exact fees, retries and access", async () => {
+  await pg.exec(await readFile("supabase/migrations/20260922233136_stripe_automatic_surcharge.sql","utf8"));
+  await invoice("fee-invoice",1000);
+  const [a]=await sql("select * from crm_reserve_surcharge_checkout($1,$2,300)",["fee-invoice",company]);
+  assert.equal(a.surcharge_basis_points,300);
+  const [retry]=await sql("select * from crm_reserve_surcharge_checkout($1,$2,0)",["fee-invoice",company]);
+  assert.equal(retry.id,a.id);assert.equal(retry.surcharge_basis_points,300);
+  const settle=(fee:number,event="evt_fee",org=company)=>sql("select * from crm_record_surcharge_payment($1,$2,100000,'visa','pi_fee',$3,$4,'checkout.session.completed',$5,'https://receipt.stripe.com/test')",["fee-invoice",org,a.id,event,fee]);
+  await assert.rejects(settle(3001));await assert.rejects(settle(-1));await assert.rejects(settle(3000,"evt_wrong","other-company"));
+  const [pay]=await settle(3000);const [duplicate]=await settle(3000,"evt_fee_retry");assert.equal(pay.id,duplicate.id);
+  assert.equal(Number(pay.amount_cents),100000);assert.equal(Number(pay.fee_cents),3000);
+  await assert.rejects(settle(2500,"evt_wrong_fee"));
+  const [inv]=await sql("select data from invoices where id='fee-invoice'");assert.equal(inv.data.paidAmount,1000);assert.equal(inv.data.status,"Paid");
+  const [event]=await sql("select metadata from communication_events where dedupe_key=$1",["payment:"+pay.id]);
+  assert.equal(event.metadata.total_cents,103000);assert.equal(event.metadata.fee_cents,3000);
+  await invoice("zero-fee",1000);
+  const [zero]=await sql("select * from crm_reserve_surcharge_checkout($1,$2,0)",["zero-fee",company]);
+  await assert.rejects(sql("select * from crm_record_surcharge_payment($1,$2,100000,'debit','pi_debit',$3,'evt_debit','checkout.session.completed',1,null)",["zero-fee",company,zero.id]));
+  await sql("select * from crm_record_surcharge_payment($1,$2,100000,'debit','pi_debit',$3,'evt_debit','checkout.session.completed',0,null)",["zero-fee",company,zero.id]);
+  await assert.rejects(sql("select * from crm_reserve_surcharge_checkout($1,$2,350)",["full-only",company]));
+  const [legacy]=await sql("select * from crm_reserve_surcharge_checkout($1,$2,300)",["full-only",company]);assert.equal(legacy.surcharge_basis_points,0);
+  for(const signature of ["crm_reserve_surcharge_checkout(text,text,integer)","crm_record_surcharge_payment(text,text,bigint,text,text,uuid,text,text,bigint,text)"]) {
+    const [access]=await sql("select has_function_privilege('anon',$1,'EXECUTE') anon,has_function_privilege('authenticated',$1,'EXECUTE') staff,has_function_privilege('service_role',$1,'EXECUTE') service",[signature]);
+    assert.deepEqual(access,{anon:false,staff:false,service:true});
+  }
+});

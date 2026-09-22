@@ -87,7 +87,9 @@ export async function context(ref: Row) {
     job_address: job?.data.property,
     technician_name: job?.data.technician || "Your technician",
     review_link: config.review_url || "",
-    receipt_amount: money((ref.metadata?.amount_cents || 0) / 100),
+    receipt_amount: ref.metadata?.fee_cents > 0
+      ? `${money((Number(ref.metadata.amount_cents) + Number(ref.metadata.fee_cents)) / 100)} (invoice ${money(ref.metadata.amount_cents / 100)} + credit-card surcharge ${money(ref.metadata.fee_cents / 100)})`
+      : money((ref.metadata?.amount_cents || 0) / 100),
     coupon_code: coupon?.code || "",
     coupon_amount: money((coupon?.amount_cents || 0) / 100),
     coupon_expires: coupon?.expires_at
