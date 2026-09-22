@@ -1,3 +1,4 @@
+import { smsProvider, sentConfigured, verifySentWebhook, sentStatus } from "./sentdm";
 import { updateVersioned } from "../../shared/versioned-save";
 import { saveCallback, processCallbacks } from "./callbacks";
 import type { Express, Request, Response } from "express";
@@ -242,7 +243,11 @@ export function registerCrm(app: Express) {
             ? "live"
             : "test",
           stripe_webhook: !!process.env.STRIPE_WEBHOOK_SECRET,
-          twilio: smsConfigured(),
+          twilio: smsProvider() === "twilio" && smsConfigured(),
+          sms: smsConfigured(),
+          sms_provider: smsProvider(),
+          sentdm: sentConfigured(),
+          sms_marketing: smsProvider() === "twilio" && smsConfigured(),
           email: !!process.env.RESEND_API_KEY,
           email_webhook: !!process.env.RESEND_WEBHOOK_SECRET,
           worker: !!process.env.CRM_WORKER_SECRET,
@@ -1229,6 +1234,31 @@ export function registerCrm(app: Express) {
       res.json({ received: true });
     }),
   );
+  app.post("/api/webhooks/sentdm", wrap(async (req, res) => {
+    if (!sentConfigured() || !Buffer.isBuffer(req.rawBody)) { res.sendStatus(503); return; }
+    if (!verifySentWebhook(req.rawBody, req.headers)) { res.sendStatus(403); return; }
+    const body = req.body;
+    const payload = body?.payload;
+    if (!payload || payload.account_id !== process.env.SENT_DM_ACCOUNT_ID) { res.sendStatus(403); return; }
+    if (typeof payload.message_id !== "string" || !payload.message_id) { res.sendStatus(400); return; }
+    const providerId = `sentdm:${payload.message_id}`;
+    const createdAt = payload.updated_at || body.timestamp;
+    if (typeof createdAt !== "string" || !Number.isFinite(Date.parse(createdAt))) { res.sendStatus(400); return; }
+    if (body.event === "message.received") {
+      if (payload.channel !== "sms") { res.sendStatus(204); return; }
+      if (typeof payload.text !== "string") { res.sendStatus(204); return; }
+      await saveCallback("sentdm-inbound", `sentdm-inbound:${payload.message_id}`, providerId, {
+        company_id: process.env.SENT_DM_COMPANY_ID, from: phone(payload.inbound_number),
+        text: payload.text.slice(0, 4000), message_id: payload.message_id, created_at: createdAt,
+      });
+    } else {
+      const status = sentStatus(body.event);
+      if (!status) { res.sendStatus(204); return; }
+      await saveCallback("sms", `sentdm:${payload.message_id}:${status}:${createdAt}`, providerId, {status, created_at: createdAt});
+    }
+    await processCallbacks();
+    res.sendStatus(204);
+  }));
   const twilioValid = (req: Request) =>
     !!process.env.TWILIO_AUTH_TOKEN &&
     twilio.validateRequest(
