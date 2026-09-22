@@ -9,6 +9,7 @@ import {
   html,
 } from "../server/crm/delivery";
 import { randomUUID } from "node:crypto";
+import { processSentInbound } from "../server/crm/sentdm-inbound";
 process.env.SUPABASE_URL = "https://unit-test.supabase.invalid";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "unit-test-only";
 process.env.RESEND_API_KEY = "unit-test-only";
@@ -181,6 +182,24 @@ globalThis.fetch = async (input: any, init: any = {}) => {
 };
 after(() => {
   globalThis.fetch = original;
+});
+test("Sent inbound STOP is company scoped, preserves consent, and deduplicates history", async () => {
+  defaults();
+  state.customers.push({id:"other-c",company_id:"other",data:{contacts:[{phone:"+18165551234"}]}});
+  state.customer_communication_preferences = [];
+  state.provider_webhook_events = [{id:"callback",processed_at:null}];
+  const callback = {id:"callback",payload:{company_id:"co",from:"+18165551234",text:" STOP ",message_id:"inbound"}};
+  await processSentInbound(callback);
+  assert.equal(state.customer_communication_preferences.length, 1);
+  assert.equal(state.customer_communication_preferences[0].customer_id, "c");
+  assert.equal(state.customer_communication_preferences[0].sms_stopped, true);
+  assert.equal(state.customer_communication_preferences[0].sms_marketing, undefined);
+  assert.ok(state.provider_webhook_events[0].processed_at);
+  await processSentInbound(callback);
+  assert.equal(state.communication_events.length, 1);
+  assert.equal(state.communication_events[0].event_type, "customer.opted_out");
+  await processSentInbound({...callback,payload:{...callback.payload,text:"START",message_id:"reply"}});
+  assert.ok(state.customer_communication_preferences.every(p=>p.sms_stopped));
 });
 const message = (extra: any = {}) => {
   const m = {
