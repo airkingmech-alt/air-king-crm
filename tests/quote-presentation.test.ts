@@ -16,9 +16,9 @@ test("quote presentation renders logo, contacts, scope, saved add-ons and no-pay
       import { Router, Route } from 'wouter';
       import CustomerDocument from './client/src/pages/customer-document';
       import { addOnServices } from './client/src/data/pricebook';
-      export function renderInvoice() {
+      export function renderInvoice(fees=false) {
         const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:Infinity}}});
-        client.setQueryData(['public-document','test-invoice'],{kind:'invoice',payments_enabled:true,payments:[],document:{
+        client.setQueryData(['public-document','test-invoice'],{kind:'invoice',payments_enabled:true,fee_enabled:fees,payments:fees?[{amount_cents:100000,fee_cents:3000,method:'Visa',paid_at:'2026-09-22'}]:[],document:{
           number:'INV-TEST',customerName:'Test Builder',status:'Partial',amount:5000,paidAmount:1250,dueDate:'2026-10-01',
           projectName:'Lot 12',constructionStage:'Rough-in',items:[{description:'Ductwork and piping rough-in',amount:5000}]
         }});
@@ -47,6 +47,9 @@ test("quote presentation renders logo, contacts, scope, saved add-ons and no-pay
     assert.match(invoiceHtml,/PAY \$3,750.00 IN FULL/);
     assert.match(invoiceHtml,/Rough-in/);assert.match(invoiceHtml,/Lot 12/);
     assert.doesNotMatch(invoiceHtml,/pay-amount|partial payment|<input/);
+    const feeHtml=renderInvoice(true);
+    assert.match(feeHtml,/up to 3%/);assert.match(feeHtml,/Debit and prepaid cards have no surcharge/);
+    assert.match(feeHtml,/CONTINUE TO SECURE CHECKOUT/);assert.match(feeHtml,/Credit-card fee: \$30.00/);assert.match(feeHtml,/\$1,030.00/);
     const pending = render("Quote Sent").html;
     assert.match(pending, /alt="Air King logo"/);
     assert.match(pending, /Mechanical Services LLC/);
