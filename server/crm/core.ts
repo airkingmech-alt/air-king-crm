@@ -175,6 +175,8 @@ export function publicFields(kind: string, data: Row): Row {
   if (kind === "invoice")
     return {
       number: data.id,
+      projectName: data.projectName,
+      constructionStage: data.constructionStage,
       customerName: data.customerName,
       amount: data.amount,
       paidAmount: data.paidAmount,
