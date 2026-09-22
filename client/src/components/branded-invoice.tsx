@@ -30,6 +30,8 @@ const displayDate = (value: string) => {
 
 export function BrandedInvoice({
   invoiceNumber,
+  projectName,
+  constructionStage,
   customerName,
   status,
   dueDate,
@@ -40,6 +42,8 @@ export function BrandedInvoice({
   children,
 }: {
   invoiceNumber: string;
+  projectName?: string;
+  constructionStage?: string;
   customerName: string;
   status: string;
   dueDate: string;
@@ -102,6 +106,7 @@ export function BrandedInvoice({
 
         <div className="my-6 h-[3px] bg-[linear-gradient(90deg,#c99828_0_35%,#b7192f_35%_100%)]" />
 
+        {(projectName || constructionStage) && <p className="mb-4 font-semibold">{constructionStage ? `New construction · ${constructionStage}` : "Project"}{projectName ? ` — ${projectName}` : ""}</p>}
         <section className="mb-6 grid gap-6 sm:grid-cols-[1.4fr_1fr]">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
