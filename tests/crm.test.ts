@@ -884,3 +884,26 @@ test("voiding an unpaid invoice blocks checkout and manual payments", async () =
     sql("select crm_void_invoice($1,$2)", ["partial", company]),
   );
 });
+
+
+test("full-balance checkout uses ledger balance, reuses one attempt, and rejects unsafe invoices", async () => {
+  await pg.exec(await readFile("supabase/migrations/20260922225304_full_balance_checkout.sql","utf8"));
+  await invoice("full-only");
+  await manual("full-only",125000,"deposit-before-full");
+  const [a]=await sql("select * from crm_reserve_full_checkout($1,$2)",["full-only",company]);
+  assert.equal(Number(a.amount_cents),375000);
+  assert.equal(new Date(a.expires_at).getTime()-new Date(a.created_at).getTime(),3600000);
+  const [b]=await sql("select * from crm_reserve_full_checkout($1,$2)",["full-only",company]);
+  assert.equal(a.id,b.id);
+  await assert.rejects(manual("full-only",10000,"concurrent-manual"));
+  await assert.rejects(sql("select * from crm_reserve_full_checkout($1,$2)",["full-only","other-company"]));
+  await assert.rejects(sql("select * from crm_reserve_full_checkout($1,$2)",["void",company]));
+  await invoice("full-draft");
+  await sql("update invoices set data=data||'{\"status\":\"Draft\"}'::jsonb where id='full-draft'");
+  await assert.rejects(sql("select * from crm_reserve_full_checkout($1,$2)",["full-draft",company]));
+  await invoice("full-paid",100);
+  await manual("full-paid",10000,"paid-before-checkout");
+  await assert.rejects(sql("select * from crm_reserve_full_checkout($1,$2)",["full-paid",company]));
+  const [access]=await sql("select has_function_privilege('anon','crm_reserve_full_checkout(text,text)','EXECUTE') as anon,has_function_privilege('authenticated','crm_reserve_full_checkout(text,text)','EXECUTE') as staff,has_function_privilege('service_role','crm_reserve_full_checkout(text,text)','EXECUTE') as service");
+  assert.deepEqual(access,{anon:false,staff:false,service:true});
+});
