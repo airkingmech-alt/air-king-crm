@@ -834,40 +834,17 @@ export function Integrations() {
             disabled={!canEdit}
           />
           <Toggle
-            title="Pass card processing fee to customer"
+            title="Credit-card surcharge (up to 3%)"
             checked={config.fee_enabled}
-            onChange={(v) => set("fee_enabled", v)}
+            onChange={(v) => setDraft({ ...config, fee_enabled: v, fee_basis_points: 300, fee_fixed_cents: 0 })}
             disabled={!canEdit || !data.connections.surcharge_available}
           />
           <p className="text-xs text-muted-foreground">
-            Card fees remain off until credit-card eligibility is supported.
-            Debit and prepaid cards cannot be surcharged.
+            {data.connections.surcharge_available
+              ? "Stripe calculates and displays the fee before payment. Eligible credit cards only; debit and prepaid cards are excluded. The surcharge provider manages the rate and applicable lower limits."
+              : "Not active — Stripe automatic-surcharge access and provider setup are required. Online payments currently have no added fee."}
           </p>
-          <div className="grid sm:grid-cols-2 gap-3">
-            <div>
-              <Label>Fee percentage</Label>
-              <Input
-                disabled={!canEdit}
-                type="number"
-                value={config.fee_basis_points / 100}
-                onChange={(e) =>
-                  set(
-                    "fee_basis_points",
-                    Math.round(Number(e.target.value) * 100),
-                  )
-                }
-              />
-            </div>
-            <div>
-              <Label>Fixed fee (cents)</Label>
-              <Input
-                disabled={!canEdit}
-                type="number"
-                value={config.fee_fixed_cents}
-                onChange={(e) => set("fee_fixed_cents", Number(e.target.value))}
-              />
-            </div>
-          </div>
+          <p className="text-sm">Maximum fee: 3% · No fixed fee</p>
         </CardContent>
       </Card>
       <Card>
