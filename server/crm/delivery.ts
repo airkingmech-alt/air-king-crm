@@ -1,3 +1,5 @@
+import { smsConfigured } from "./readiness";
+import { smsProvider, sendSentSms } from "./sentdm";
 import twilio from "twilio";
 import { Resend } from "resend";
 import { MARKETING_RELEASE_READY } from "./marketing-readiness";
@@ -451,9 +453,7 @@ export async function deliver(
     }
     if (
       !transport &&
-      (!process.env.TWILIO_ACCOUNT_SID ||
-        !process.env.TWILIO_AUTH_TOKEN ||
-        !process.env.TWILIO_MESSAGING_SERVICE_SID)
+      !smsConfigured()
     )
       return;
   } else if (
@@ -518,6 +518,8 @@ export async function deliver(
     attempted = true;
     if (transport) {
       providerId = await transport(msg);
+    } else if (msg.channel === "sms" && smsProvider() === "sentdm") {
+      providerId = await sendSentSms(msg as any);
     } else if (msg.channel === "sms") {
       const response = await twilio(
         process.env.TWILIO_ACCOUNT_SID!,
