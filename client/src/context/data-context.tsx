@@ -71,6 +71,7 @@ interface DataContextValue {
     customerId: string;
     customerName: string;
     type: string;
+    projectName?: string;
     property: string;
     description: string;
     quoteId?: string;
@@ -81,6 +82,8 @@ interface DataContextValue {
     customerName: string;
     amount: number;
     description: string;
+    projectName?: string;
+    constructionStage?: "Rough-in" | "Finish";
     items?: { description: string; amount: number }[];
     workOrderId?: string;
     quoteId?: string;
@@ -367,6 +370,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       customerId: string;
       customerName: string;
       type: string;
+      projectName?: string;
       property: string;
       description: string;
       quoteId?: string;
@@ -378,6 +382,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         customerName: data.customerName,
         property: data.property,
         type: data.type,
+        projectName: data.projectName?.trim() || undefined,
         status: data.technician ? "Scheduled" : "Unscheduled",
         scheduledDate: data.scheduledDate || new Date(Date.now() + 7 * 86400000)
           .toISOString()
@@ -403,6 +408,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       customerName: string;
       amount: number;
       description: string;
+      projectName?: string;
+      constructionStage?: "Rough-in" | "Finish";
       items?: { description: string; amount: number }[];
       workOrderId?: string;
       quoteId?: string;
@@ -418,6 +425,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         workOrderId: data.workOrderId,
         quoteId: data.quoteId,
         equipmentItems: data.equipmentItems,
+        projectName: data.projectName?.trim() || undefined,
+        constructionStage: data.constructionStage,
         amount: data.amount,
         paidAmount: 0,
         status: "Draft",

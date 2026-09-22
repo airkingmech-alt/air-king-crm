@@ -67,6 +67,8 @@ export default function InvoiceView() {
           <BrandedInvoice
             invoiceNumber={invoice.id}
             customerName={invoice.customerName}
+            projectName={invoice.projectName}
+            constructionStage={invoice.constructionStage}
             status={invoice.status}
             dueDate={invoice.dueDate}
             sentDate={invoice.sentDate}

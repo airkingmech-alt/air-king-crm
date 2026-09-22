@@ -2,7 +2,7 @@ import { isUnpaidInvoice } from "../../../shared/dashboard";
 import { prepareInvoiceLines, saveInvoiceThenSend } from "../../../shared/invoice-workflow";
 import { guardSave } from "@/lib/confirmed-save";
 import { DocumentActions } from "@/components/document-actions";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Search,
@@ -88,8 +88,13 @@ const statusConfig: Record<InvoiceStatus, { color: string; badge: string }> = {
 export default function Invoices() {
   const { toast } = useToast();
   const { profile } = useAuth();
-  const { invoices, createInvoice, customers } = useData();
+  const { invoices, createInvoice, customers, workOrders } = useData();
   const [, navigate] = useLocation();
+  const initialJobId = new URLSearchParams(window.location.hash.split("?")[1] || "").get("job");
+  const initializedJob = useRef(false);
+  const [workOrderId,setWorkOrderId] = useState("");
+  const [projectName,setProjectName] = useState("");
+  const [constructionStage,setConstructionStage] = useState<""|"Rough-in"|"Finish">("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"All" | "Unpaid" | InvoiceStatus>(()=>new URLSearchParams(window.location.hash.split("?")[1] || "").get("filter")==="Unpaid"?"Unpaid":"All");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -111,10 +116,22 @@ export default function Invoices() {
     dueDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
   });
 
+  useEffect(()=>{
+    const job=workOrders.find(w=>w.id===initialJobId);
+    if(!job || initializedJob.current)return;
+    initializedJob.current=true;
+    setWorkOrderId(job.id);setProjectName(job.projectName || job.property);
+    setConstructionStage(job.type === "New Construction - Rough-in" ? "Rough-in" : job.type === "New Construction - Finish" ? "Finish" : "");
+    setForm(f=>({...f,customer:job.customerId}));
+    setLineItems([{description:`${job.type} — ${job.description || job.projectName || job.property}`,quantity:"1",unitPrice:""}]);
+    setShowCreateDialog(true);
+  },[initialJobId,workOrders]);
   const filtered = invoices.filter((inv) => {
     const matchesSearch =
       inv.customerName.toLowerCase().includes(search.toLowerCase()) ||
-      inv.id.toLowerCase().includes(search.toLowerCase());
+      inv.id.toLowerCase().includes(search.toLowerCase()) ||
+      (inv.projectName || "").toLowerCase().includes(search.toLowerCase()) ||
+      (inv.constructionStage || "").toLowerCase().includes(search.toLowerCase());
     const matchesFilter = filter === "All" || (filter === "Unpaid" ? isUnpaidInvoice(inv) : inv.status === filter);
     return matchesSearch && matchesFilter;
   });
@@ -170,6 +187,7 @@ export default function Invoices() {
       toast({ title: "Select a customer", description: "Please choose a customer for this invoice.", variant: "destructive" });
       return;
     }
+    if(constructionStage && !projectName.trim())throw new Error("Enter the house address or project / lot name.");
     const {items:cleanItems,amount}=prepareInvoiceLines(lineItems);
     setSaving(true);
     try {
@@ -181,6 +199,8 @@ export default function Invoices() {
         description: cleanItems[0].description,
         items: cleanItems,
         dueDate: form.dueDate,
+        workOrderId: workOrderId || undefined,
+        projectName, constructionStage: constructionStage || undefined,
         equipmentItems: invoiceEquipment,
         installedEquipment: catalogEquipment.map((item) => ({
           brand: item.brand,
@@ -194,6 +214,7 @@ export default function Invoices() {
         setForm({customer:"",description:"",amount:"",dueDate:new Date(Date.now()+30*86400000).toISOString().slice(0,10)});
         setLineItems([{description:"",quantity:"1",unitPrice:""}]);
         setInvoiceEquipment([]);setCatalogEquipment([]);
+        setWorkOrderId("");setProjectName("");setConstructionStage("");
       }, sendNow ? async invoice => {
         const response=await crm(`crm/invoice/${invoice.id}/send`,"POST",{channels:["email"]},crypto.randomUUID());
         const failed=response.messages?.filter((message:any)=>message.status==="failed") || [];
@@ -335,6 +356,7 @@ export default function Invoices() {
                         </span>
                       )}
                     </div>
+                    {inv.constructionStage && <p className="mt-1 text-sm font-medium">{inv.constructionStage} · {inv.projectName}</p>}
                     {/* Line items preview */}
                     {inv.items.length > 0 && (
                       <div className="mt-2 space-y-0.5">
@@ -457,10 +479,15 @@ export default function Invoices() {
               <Label>Customer *</Label>
               <CustomerCombobox
                 value={form.customer}
-                onChange={(v) => setForm({ ...form, customer: v })}
+                onChange={(v) => {setForm({ ...form, customer: v });setWorkOrderId("");}}
                 testId="select-invoice-customer"
               />
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2"><Label htmlFor="invoice-stage">Construction stage</Label><select id="invoice-stage" className="flex h-10 w-full rounded-md border bg-background px-3 text-sm" value={constructionStage} onChange={e=>{setConstructionStage(e.target.value as ""|"Rough-in"|"Finish");setWorkOrderId("");}}><option value="">Standard invoice</option><option>Rough-in</option><option>Finish</option></select></div>
+              <div className="space-y-2"><Label htmlFor="invoice-project">House / project / lot{constructionStage ? " *" : ""}</Label><Input id="invoice-project" required={!!constructionStage} maxLength={200} value={projectName} onChange={e=>setProjectName(e.target.value)} placeholder="123 Main St · Lot 12"/></div>
+            </div>
+            {constructionStage && <div className="space-y-2"><Label htmlFor="invoice-job">Link scheduled stage (optional)</Label><select id="invoice-job" className="flex h-10 w-full rounded-md border bg-background px-3 text-sm" value={workOrderId} onChange={e=>{setWorkOrderId(e.target.value);const job=workOrders.find(w=>w.id===e.target.value);if(job)setProjectName(job.projectName || job.property);}}><option value="">No linked job</option>{workOrders.filter(w=>w.customerId===form.customer && w.type===`New Construction - ${constructionStage}`).map(w=><option key={w.id} value={w.id}>{w.projectName || w.property} · {w.scheduledDate} · {w.id}</option>)}</select><p className="text-xs text-muted-foreground">Enter only this stage’s agreed amount. The customer pays this invoice in full.</p></div>}
             <div className="space-y-2">
               <div className="flex items-center justify-between"><Label>Invoice items *</Label><Button type="button" size="sm" variant="outline" onClick={() => setLineItems([...lineItems,{description:"",quantity:"1",unitPrice:""}])}><Plus size={14} className="mr-1"/>Add line</Button></div>
               <div className="space-y-2">

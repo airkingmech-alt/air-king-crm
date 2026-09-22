@@ -52,7 +52,6 @@ export default function CustomerDocument() {
   const [signature, setSignature] = useState("");
   const [message, setMessage] = useState("");
   const [confirmed, setConfirmed] = useState(false);
-  const [amount, setAmount] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const { data, error, isLoading, refetch } = useQuery({
@@ -82,11 +81,6 @@ export default function CustomerDocument() {
         await refetch();
       } else {
         const r = await crm("public/documents/" + token + "/checkout", "POST", {
-          amount:
-            amount ||
-            String(
-              Math.max(0, data.document.amount - data.document.paidAmount),
-            ),
         });
         window.location.assign(r.url);
       }
@@ -379,6 +373,8 @@ export default function CustomerDocument() {
               <BrandedInvoice
                 invoiceNumber={d.number}
                 customerName={d.customerName}
+            projectName={d.projectName}
+            constructionStage={d.constructionStage}
                 status={d.status}
                 dueDate={d.dueDate}
                 sentDate={d.sentDate}
@@ -388,22 +384,14 @@ export default function CustomerDocument() {
               >
                 {due > 0 && d.status !== "Void" && (
                   <section className="space-y-3 rounded-xl border bg-muted/30 p-4 sm:p-5">
-                    <Label htmlFor="pay-amount">
-                      Pay in full or enter a partial payment
-                    </Label>
-                    <Input
-                      id="pay-amount"
-                      inputMode="decimal"
-                      placeholder={String(due.toFixed(2))}
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                    />
+                    <p className="font-semibold">Full balance due: {money(due)}</p>
+                    <p className="text-sm text-muted-foreground">Online payments must cover the full remaining balance of this invoice.</p>
                     <Button
                       className="w-full bg-[#b7192f] py-6 text-lg text-white hover:bg-[#951326]"
                       disabled={busy || !data.payments_enabled}
                       onClick={() => act()}
                     >
-                      PAY NOW
+                      {busy ? "Opening secure checkout…" : `PAY ${money(due)} IN FULL`}
                     </Button>
                     <p className="text-xs text-muted-foreground">
                       {data.payments_enabled

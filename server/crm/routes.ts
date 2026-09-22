@@ -997,7 +997,7 @@ export function registerCrm(app: Express) {
         company: config.company_name,
         payments,
         payments_enabled:
-          config.payments_enabled && !!process.env.STRIPE_SECRET_KEY,
+          config.payments_enabled && !!process.env.STRIPE_SECRET_KEY && !!process.env.STRIPE_WEBHOOK_SECRET,
         fee_enabled: false,
       });
     }),
@@ -1055,23 +1055,26 @@ export function registerCrm(app: Express) {
         throw new Error(
           "Online payments are not enabled yet. Please contact Air King.",
         );
-      const amount = cents(req.body.amount);
+      if (!process.env.STRIPE_WEBHOOK_SECRET) throw new Error("Stripe payment confirmation is not configured. Please contact Air King.");
+      const checkoutClient = stripe();
       const attempt = await result(
-        db().rpc("crm_reserve_checkout", {
+        db().rpc("crm_reserve_full_checkout", {
           p_invoice: row.id,
           p_company: row.company_id,
-          p_amount: amount,
         }),
       );
       if (attempt.session_url) {
         res.json({ url: attempt.session_url });
         return;
       }
+      const expiresAt = Math.floor(new Date(attempt.expires_at).getTime() / 1000);
+      if (!Number.isFinite(expiresAt) || expiresAt < Math.floor(Date.now()/1000) + 31*60)
+        throw new Error("This checkout reservation is expiring. Please try again after it expires, or contact Air King.");
       const base = `${origin()}/#/customer/${req.params.token}`;
-      const session = await stripe().checkout.sessions.create(
+      const session = await checkoutClient.checkout.sessions.create(
         {
           mode: "payment",
-          payment_method_types: ["card"],
+          integration_identifier: "air_king_crm_full_balance_qmzpvrta",
           client_reference_id: attempt.id,
           line_items: [
             {
@@ -1087,8 +1090,7 @@ export function registerCrm(app: Express) {
           payment_intent_data: { metadata: { attempt_id: attempt.id } },
           success_url: base + "?payment=processing",
           cancel_url: base,
-          expires_at:
-            Math.floor(new Date(attempt.created_at).getTime() / 1000) + 30 * 60,
+          expires_at: expiresAt,
         },
         { idempotencyKey: "checkout:" + attempt.id },
       );

@@ -67,6 +67,8 @@ const jobTypes = [
   "Maintenance - Spring Tune-up",
   "Maintenance - Fall Tune-up",
   "Installation",
+  "New Construction - Rough-in",
+  "New Construction - Finish",
   "Estimate / Quote Visit",
   "Crown Care Visit",
   "Emergency Repair",
@@ -140,6 +142,7 @@ export default function Schedule() {
   const [form, setForm] = useState({
     customer: "",
     jobType: "Service Call",
+    projectName: "",
     date: formatDate(new Date(Date.now() + 86400000)),
     time: "09:00",
     technician: "",
@@ -177,11 +180,13 @@ export default function Schedule() {
     const selectedCustomer = customers.find((c) => c.id === form.customer);
     const custName = selectedCustomer?.name || "Customer";
     const propertyAddress = selectedCustomer?.properties?.[0]?.address || "TBD";
+    if (form.jobType.startsWith("New Construction") && !form.projectName.trim()) throw new Error("Enter the house address or project / lot name.");
     const wo = await createWorkOrder({
       customerId: form.customer,
       customerName: custName,
       type: form.jobType,
-      property: propertyAddress,
+      property: form.projectName.trim() || propertyAddress,
+      projectName: form.projectName,
       description: form.description,
       scheduledDate: form.date,
       scheduledTime: form.time,
@@ -196,6 +201,7 @@ export default function Schedule() {
     setForm({
       customer: "",
       jobType: "Service Call",
+    projectName: "",
       date: formatDate(new Date(Date.now() + 86400000)),
       time: "09:00",
       technician: "",
@@ -272,6 +278,10 @@ export default function Schedule() {
     );
     if (existing) {
       setLocation(`/invoices/view/${existing.id}`);
+      return;
+    }
+    if (wo.type.startsWith("New Construction")) {
+      setLocation(`/invoices?job=${encodeURIComponent(wo.id)}`);
       return;
     }
     const quote = quotes.find((item) => item.id === wo.quoteId);
@@ -451,7 +461,7 @@ export default function Schedule() {
                         {wo.customerName}
                       </p>
                     </Link>
-                    <p className="text-xs text-muted-foreground">{wo.type}</p>
+                    <p className="text-xs text-muted-foreground">{wo.type}{wo.projectName ? ` · ${wo.projectName}` : ""}</p>
                     <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                       <MapPin size={11} /> {wo.property}
                     </p>
@@ -542,7 +552,7 @@ export default function Schedule() {
                       </Badge>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">{wo.type}</p>
+                  <p className="text-xs text-muted-foreground">{wo.type}{wo.projectName ? ` · ${wo.projectName}` : ""}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {wo.description}
                   </p>
@@ -661,6 +671,11 @@ export default function Schedule() {
                 </SelectContent>
               </Select>
             </div>
+            {form.jobType.startsWith("New Construction") && <div className="space-y-2">
+              <Label htmlFor="job-project">House address / project / lot *</Label>
+              <Input id="job-project" value={form.projectName} required maxLength={200} placeholder="123 Main St · Lot 12" onChange={e=>setForm({...form,projectName:e.target.value})}/>
+              <p className="text-xs text-muted-foreground">Use the same project label for rough-in and finish. Schedule and invoice each stage separately.</p>
+            </div>}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="job-date">Date</Label>
