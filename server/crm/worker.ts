@@ -290,7 +290,7 @@ async function queueReceipts() {
   }
 }
 export async function tick() {
-  await reconcileDirectPayments();
+  await reconcileDirectPayments().catch(()=>console.error("Stripe reconciliation deferred; payment reservations remain held."));
   // Stale sending rows are ambiguous; never release them into the send queue.
   await result(
     db()
