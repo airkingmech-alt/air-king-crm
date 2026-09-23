@@ -1,3 +1,4 @@
+import { CardCheckout } from "@/components/card-checkout";
 import { QuoteHeader, QuoteGuide, QuoteFooter } from "@/components/branded-quote";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -54,6 +55,7 @@ export default function CustomerDocument() {
   const [confirmed, setConfirmed] = useState(false);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showCheckout,setShowCheckout]=useState(false);
   const { data, error, isLoading, refetch } = useQuery({
     queryKey: ["public-document", token],
     queryFn: () => crm("public/documents/" + token),
@@ -82,7 +84,8 @@ export default function CustomerDocument() {
       } else {
         const r = await crm("public/documents/" + token + "/checkout", "POST", {
         });
-        window.location.assign(r.url);
+        if(r.mode === "direct") setShowCheckout(true);
+        else window.location.assign(r.url);
       }
     } catch (e: any) {
       setNotice(e.message);
@@ -386,14 +389,14 @@ export default function CustomerDocument() {
                   <section className="space-y-3 rounded-xl border bg-muted/30 p-4 sm:p-5">
                     <p className="font-semibold">Full balance due: {money(due)}</p>
                     <p className="text-sm text-muted-foreground">Online payments must cover the full remaining balance of this invoice.</p>
-                    {data.fee_enabled && <p className="text-sm text-muted-foreground">Eligible credit cards have a merchant surcharge of up to 3%. Debit and prepaid cards have no surcharge. Your exact fee and total appear in secure checkout before you pay.</p>}
-                    <Button
+                    {data.fee_enabled && <p className="text-sm text-muted-foreground">Eligible credit cards have a fee of up to {data.fee_basis_points / 100 || 3}%. Cash, check, debit and prepaid have no added fee. Review the exact fee and total before you pay.</p>}
+                    {showCheckout && data.stripe_publishable_key ? <CardCheckout token={token!} publishableKey={data.stripe_publishable_key} amount={Math.round(due*100)} onPaid={()=>{void refetch();}} onClose={()=>setShowCheckout(false)}/> : <Button
                       className="w-full bg-[#b7192f] py-6 text-lg text-white hover:bg-[#951326]"
                       disabled={busy || !data.payments_enabled}
                       onClick={() => act()}
                     >
                       {busy ? "Opening secure checkout…" : data.fee_enabled ? "CONTINUE TO SECURE CHECKOUT" : `PAY ${money(due)} IN FULL`}
-                    </Button>
+                    </Button>}
                     <p className="text-xs text-muted-foreground">
                       {data.payments_enabled
                         ? "Secure card payment through Stripe. The invoice updates after your payment is confirmed."
