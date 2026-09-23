@@ -1,90 +1,76 @@
-# Credit-card surcharges — Air King
+# Online credit-card fees — Air King
 
-Status: automatic surcharging is NOT in use. The owner chose manual invoice fees instead of a paid third-party provider.
+The owner requested a fee only when paying online, without a third-party surcharge service.
 
-## Manual invoice fee
+## Customer experience
 
-In Invoices → Create Invoice, select **Include credit-card fee** and enter a percentage
-(default 3%, maximum 3%). The amount is calculated from the invoice's rounded line-item
-subtotal, shown before saving, and saved as a separate `Credit-card fee (N%)` line.
-It appears on the customer invoice, printed invoice, and the full balance collected by
-ordinary Stripe Checkout. The fee is included in the invoice total; it is not a second
-Stripe/provider surcharge and must not also be enabled in automatic surcharge settings.
+The invoice and cash/check balance stay unchanged. Selecting online payment opens Stripe's
+Payment Element. The customer enters payment details and selects **Review fee and total**.
+The server retrieves a Stripe ConfirmationToken and determines funding type. Only verified
+credit cards receive the configured fee (up to 3%); debit, prepaid, unknown funding and
+non-card methods receive no added fee. The review shows principal, fee and total before
+**Pay in full**. The customer can change method or cancel without being charged.
 
-This is a manually selected invoice line, not card-type detection. Select it only after
-agreeing an eligible credit-card payment. Do not include it for debit/prepaid or non-card
-payments. If the customer changes payment method, correct/reissue the unpaid invoice
-before payment. Do not add fees retroactively to paid invoices. Regular Stripe processing
-fees still apply. No Yeeld subscription was activated.
+Invoice creation defaults to **Apply credit-card fee at online checkout**, at 3%. Uncheck
+it to waive the fee on that invoice, or lower the percentage. This stores `cardFeePercent`
+as policy; it never adds a fee line to the invoice principal. Existing invoices without
+that field use the company setting. Invoices with an earlier generated manual fee line
+are excluded from a second fee. No such invoices existed when this change was prepared.
 
-The following automatic-integration documentation is retained for reference only.
-Do not enable its server readiness variables without a separately authorized setup.
-The approved policy is a credit-card-only merchant surcharge of up to 3%, never above
-actual acceptance cost or applicable lower limits. No fixed fee. Debit, prepaid and
-other payment methods carry no surcharge. Full invoice balance remains required.
+## Configuration
 
-## Activation
+- Keep the existing Stripe secret and webhook keys.
+- Set `STRIPE_PUBLISHABLE_KEY` for the same account and live/test mode.
+- Set `STRIPE_DIRECT_CHECKOUT_COMPANY_ID=air-king`.
+- Company settings: `fee_enabled=true`, `fee_basis_points=300`, `fee_fixed_cents=0`.
+- The business settings toggle can disable new fees. It does not rewrite payment history
+  or previously reviewed/reserved payments.
+- Receive `payment_intent.succeeded`, `payment_intent.processing`,
+  `payment_intent.payment_failed`, and `payment_intent.canceled` in addition to the existing
+  Checkout Session events. Keep the existing webhook endpoint/signing secret.
 
-1. Sign in to the existing Air King Stripe account. Obtain Checkout automatic-surcharge
-   preview access from Stripe. This is distinct from the public PaymentIntent surcharge API.
-2. Install and onboard a supported surcharge provider (Yeeld or InterPayments) in Stripe.
-   Review any provider price and terms before accepting. Configure its pre-charge policy:
-   US/Missouri merchant, credit cards only, maximum 3%, no fixed fee, capped to actual
-   acceptance costs and applicable lower limits. Verify merchant/acquirer notices and
-   their required waiting period (Visa states at least 30 days). The CRM does not send
-   notices or enroll in a paid service by itself.
-3. Verify provider behavior in an authorized Stripe sandbox: credit at 3%, lower cost
-   cap, debit/prepaid zero, Apple Pay funding eligibility, changing payment methods,
-   failed calculations, disclosure before confirmation, cancellation, and itemized receipt.
-   Verify the provider does not add tax or other charges outside the agreed total policy.
-4. Verify hosted Checkout supports the API fields below on the account. Confirm preview
-   response shapes against current documentation. Unit/PGlite fixtures are not a substitute
-   for provider testing. Never test with test card numbers against live Stripe.
-5. Only after these checks, set server environment variables:
-   - `STRIPE_SURCHARGE_COMPANY_ID=air-king`
-   - `STRIPE_SURCHARGE_READY_AT=<verified activation date in ISO 8601 UTC>`
-   The date must reflect completion of provider setup and any required notice period.
-6. Enable **Credit-card surcharge (up to 3%)** in Settings & Integrations. This saves
-   `fee_enabled=true`, `fee_basis_points=300`, `fee_fixed_cents=0`. Without a reached
-   activation date and correct company/Stripe configuration, enabling is rejected.
-7. Verify a fresh customer invoice shows the policy before Checkout, Stripe shows the
-   exact surcharge and total before payment, and a legitimately authorized payment
-   credits only the invoice principal while separately recording the fee and receipt.
-   Existing sessions retain the fee policy under which they were created until expiry.
+This uses Stripe's direct PaymentIntent surcharge API (`2026-08-26.preview`) with
+`amount_details.surcharge.enforce_validation=enabled`. Stripe validates surcharge
+eligibility and its technical maximum before authorizing a charge. No Yeeld or
+InterPayments service is used. The prior hosted automatic-surcharge integration remains
+inactive; do not set its `STRIPE_SURCHARGE_*` readiness variables.
 
-Do not set readiness variables simply to bypass the disabled toggle. They attest that
-Stripe/provider verification is complete. The provider enforces the cap BEFORE charging;
-the CRM reconciliation checks are defense in depth and do not alter an already paid charge.
+The merchant must set fees no higher than its acceptance costs or applicable limits,
+complete required acquirer/network notices and any waiting period, and maintain required
+disclosures. This code does not send merchant notices. Stripe's technical cap is not a
+substitute for those obligations. Regular Stripe processing charges still apply.
 
-## Implementation
+## Payment safety and recovery
 
-- Hosted Checkout uses `automatic_surcharge.enabled=true`, calculation basis
-  `total_after_tax`, API version `2026-08-26.preview`, and disables Adaptive Pricing.
-  The provider controls eligibility and the actual rate; Checkout has no percentage
-  parameter in the documented automatic-surcharge integration. Invoice total already
-  includes its taxes; the CRM does not add Stripe automatic tax.
-- Customer policy disclosure appears on the public invoice and in Checkout submit text.
-  Stripe renders the fee/total dynamically and provides itemized receipts.
-- The full balance reservation snapshots a 0 or 300-basis-point cap. Existing zero-fee
-  sessions and retries retain their original parameters/idempotency key.
-- Signed webhooks retrieve preview fields directly when applicable, verify session,
-  intent, currency, environment, total, base, fee breakdown and credit funding type.
-- An invoice-locked transaction records the fee separately, credits only the principal,
-  and updates receipt event metadata. Payment history and automatic receipt text show
-  both principal and surcharge. Duplicate notifications remain idempotent.
-- Zero-fee Checkout uses the stable SDK/API path. Disabling the feature affects new
-  sessions; it does not rewrite historical payments or pending sessions.
-- Refund through Stripe with the fee included: full refunds include the full surcharge;
-  partial refunds include its proportional share. CRM automated refunds are outside
-  this change. Follow existing refund/reconciliation procedures.
+- The server calculates the full remaining principal from the payment ledger, checks the
+  reviewed amount, and atomically reserves it under an invoice row lock.
+- Each ConfirmationToken can map to one reservation. Creation and confirmation have
+  separate stable Stripe idempotency keys; creation/recovery alone never charges.
+- Unconfirmed intent client secrets are never returned. Only `requires_action` responses
+  expose a secret to Stripe.js for 3DS. Confirmation uses the server-selected token.
+- Cash/check recording, another online attempt and amount edits remain blocked while
+  an intent is active. Native reservations do not expire merely because a clock elapsed.
+- Cancellation must succeed at Stripe before the reservation is released. Processing
+  bank payments remain reserved until settled or genuinely cancelled.
+- The worker and status endpoint reconcile server-retrieved successful intents. Abandoned
+  non-processing attempts older than one hour are cancelled at Stripe before release.
+- Webhooks and reconciliation verify intent identity, account mode, currency, principal,
+  received total, surcharge amount/cap and credit funding. An atomic ledger function
+  credits principal only, records the fee separately, and makes repeated events harmless.
+- Payment history and automatic receipt emails include both principal and fee. Stripe's
+  native surcharge receipts also itemize the surcharge.
+- Refund through Stripe including the full fee on full refunds and a proportional fee
+  on partial refunds. There is no new automatic CRM refund workflow in this change.
 
-## Verification performed
+## Verification
 
-TypeScript, production build, 45 focused tests (ledger locking/idempotency/access,
-legacy payments, eligible and ineligible methods, cap/amount integrity, UI disclosure).
-Live surcharged checkout and end-to-end settlement are NOT verified until activation.
+TypeScript, production build, pure fee/verification tests, mocked API integration tests
+(review, confirmation, retries, debit, altered totals, 3DS, cancellation), and PGlite
+ledger tests (full balance, competing payments, idempotency, principal/fee separation,
+service-only permissions). These do not constitute a real card transaction test.
 
 References:
-- https://docs.stripe.com/payments/checkout/surcharge/automatic-surcharge
 - https://docs.stripe.com/payments/cards/surcharge
-- https://usa.visa.com/content/dam/VCOM/global/support-legal/documents/merchant-surcharging-qa-for-web.pdf
+- https://docs.stripe.com/payments/finalize-payments-on-the-server?platform=web&type=payment
+- https://docs.stripe.com/payments/build-a-two-step-confirmation
+- https://markate.freshdesk.com/support/solutions/articles/14000148134-include-payment-processing-fees-for-online-payments
