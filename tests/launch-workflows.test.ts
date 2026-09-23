@@ -69,3 +69,15 @@ test('failed invoice email preserves the saved invoice and clears the create for
 test('failed invoice persistence never clears the form or attempts delivery',async()=>{
  await assert.rejects(saveInvoiceThenSend(async()=>{throw new Error('Offline');},()=>assert.fail('form cleared'),async()=>assert.fail('message sent')),/Offline/);
 });
+
+test('optional invoice card fee is itemized, rounded, capped, and never compounds',()=>{
+ const lines=[{description:'Install',quantity:'1',unitPrice:'1000'}];
+ assert.deepEqual(prepareInvoiceLines(lines,3),{items:[{description:'Install',amount:1000},{description:'Credit-card fee (3%)',amount:30}],amount:1030});
+ assert.equal(prepareInvoiceLines(lines).amount,1000);
+ assert.equal(prepareInvoiceLines(lines,2.5).amount,1025);
+ assert.equal(prepareInvoiceLines(lines,3).amount,1030);
+ assert.equal(lines.length,1);
+ const fractional=prepareInvoiceLines([{description:'Labor',quantity:'1.5',unitPrice:'19.99'}],3);
+ assert.equal(fractional.items[1].amount,.9);assert.equal(fractional.amount,30.89);
+ for(const rate of [-1,3.5,NaN,Infinity])assert.throws(()=>prepareInvoiceLines(lines,rate));
+});
