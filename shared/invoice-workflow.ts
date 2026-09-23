@@ -1,4 +1,4 @@
-export function prepareInvoiceLines(lines: {description:string;quantity:string;unitPrice:string}[]) {
+export function prepareInvoiceLines(lines: {description:string;quantity:string;unitPrice:string}[], cardFeePercent = 0) {
   const items = lines.filter(line => line.description.trim() || line.unitPrice.trim()).map(line => {
     const quantity=Number(line.quantity), price=Number(line.unitPrice);
     if (!line.description.trim() || !line.unitPrice.trim() || !Number.isFinite(quantity) || quantity<=0 || !Number.isFinite(price) || price<0)
@@ -7,8 +7,16 @@ export function prepareInvoiceLines(lines: {description:string;quantity:string;u
     if (!Number.isSafeInteger(cents)) throw new Error("An invoice item amount is too large.");
     return {description:line.description.trim(),amount:cents/100};
   });
-  const totalCents=items.reduce((sum,item)=>sum+Math.round(item.amount*100),0);
+  let totalCents=items.reduce((sum,item)=>sum+Math.round(item.amount*100),0);
   if (!items.length || totalCents<=0 || !Number.isSafeInteger(totalCents)) throw new Error("Add invoice items with a total greater than zero.");
+  if (!Number.isFinite(cardFeePercent) || cardFeePercent < 0 || cardFeePercent > 3)
+    throw new Error("Enter a credit-card fee between 0% and 3%.");
+  const feeCents = Math.round(totalCents * cardFeePercent / 100);
+  if (feeCents > 0) {
+    items.push({description:`Credit-card fee (${cardFeePercent}%)`,amount:feeCents/100});
+    totalCents += feeCents;
+    if (!Number.isSafeInteger(totalCents)) throw new Error("Invoice total is too large.");
+  }
   return {items,amount:totalCents/100};
 }
 
