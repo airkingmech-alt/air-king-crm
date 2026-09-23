@@ -84,6 +84,7 @@ interface DataContextValue {
     description: string;
     projectName?: string;
     constructionStage?: "Rough-in" | "Finish";
+    cardFeePercent?: number;
     items?: { description: string; amount: number }[];
     workOrderId?: string;
     quoteId?: string;
@@ -410,6 +411,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       description: string;
       projectName?: string;
       constructionStage?: "Rough-in" | "Finish";
+      cardFeePercent?: number;
       items?: { description: string; amount: number }[];
       workOrderId?: string;
       quoteId?: string;
@@ -427,6 +429,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         equipmentItems: data.equipmentItems,
         projectName: data.projectName?.trim() || undefined,
         constructionStage: data.constructionStage,
+        cardFeePercent: data.cardFeePercent,
         amount: data.amount,
         paidAmount: 0,
         status: "Draft",
