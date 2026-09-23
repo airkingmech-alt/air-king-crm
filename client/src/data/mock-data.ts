@@ -155,6 +155,7 @@ export interface WorkOrder {
 }
 
 export interface Invoice {
+  cardFeePercent?: number;
   projectName?: string;
   constructionStage?: "Rough-in" | "Finish";
   id: string;
