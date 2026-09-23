@@ -1,3 +1,5 @@
+import { directCheckoutReady, invoiceFeeBps } from "./card-fee";
+import { registerCardCheckout, reconcileDirectPayments, settleDirectPayment } from "./card-checkout";
 import { surchargeReady, surchargeEnabled, surchargeCheckoutOptions, verifiedSurcharge, SURCHARGE_API_VERSION, type SurchargeSession } from "./surcharge";
 import { smsProvider, sentConfigured, verifySentWebhook, sentStatus } from "./sentdm";
 import { updateVersioned } from "../../shared/versioned-save";
@@ -257,7 +259,7 @@ export function registerCrm(app: Express) {
           marketing_address: !!process.env.MARKETING_POSTAL_ADDRESS,
           meta: !!process.env.META_APP_SECRET && !!process.env.META_PAGE_ACCESS_TOKEN && !!process.env.META_VERIFY_TOKEN,
           meta_webhook: `${origin()}/api/webhooks/meta/leadgen`,
-          surcharge_available: surchargeReady(c.company),
+          surcharge_available: directCheckoutReady(c.company) || surchargeReady(c.company),
         },
       });
     }),
@@ -294,8 +296,8 @@ export function registerCrm(app: Express) {
       const data = schema.parse(req.body);
       if (data.sms_start >= data.sms_end)
         throw new Error("Sending start time must be before the end time.");
-      if (data.fee_enabled && (!surchargeReady(c.company) || data.fee_basis_points !== 300 || data.fee_fixed_cents !== 0))
-        throw new Error("Complete Stripe automatic-surcharge setup first. The provider must enforce a maximum 3% credit-card-only fee with no fixed fee.");
+      if (data.fee_enabled && (!(directCheckoutReady(c.company) || surchargeReady(c.company)) || data.fee_basis_points !== 300 || data.fee_fixed_cents !== 0))
+        throw new Error("Complete Stripe checkout setup first. Credit-card fees are capped at 3% with no fixed fee.");
       if (
         data.payments_enabled &&
         (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET)
@@ -945,6 +947,7 @@ export function registerCrm(app: Express) {
     wrap(async (req, res) => {
       const c = await caller(req);
       const row = await entity("invoices", String(req.params.id), c.company);
+      await reconcileDirectPayments(row.id);
       const method = z
         .enum(["Cash", "Check", "ACH", "Other"])
         .parse(req.body.method);
@@ -997,7 +1000,9 @@ export function registerCrm(app: Express) {
         payments,
         payments_enabled:
           config.payments_enabled && !!process.env.STRIPE_SECRET_KEY && !!process.env.STRIPE_WEBHOOK_SECRET,
-        fee_enabled: surchargeEnabled(row.company_id, config),
+        fee_enabled: directCheckoutReady(row.company_id) ? invoiceFeeBps(row.data, config) > 0 : surchargeEnabled(row.company_id, config),
+        fee_basis_points: directCheckoutReady(row.company_id) ? invoiceFeeBps(row.data, config) : 0,
+        stripe_publishable_key: directCheckoutReady(row.company_id) ? process.env.STRIPE_PUBLISHABLE_KEY : undefined,
       });
     }),
   );
@@ -1044,6 +1049,7 @@ export function registerCrm(app: Express) {
       res.json({ decision: decision.decision });
     }),
   );
+  registerCardCheckout(app, wrap);
   app.post(
     "/api/public/documents/:token/checkout",
     wrap(async (req, res) => {
@@ -1055,6 +1061,13 @@ export function registerCrm(app: Express) {
           "Online payments are not enabled yet. Please contact Air King.",
         );
       if (!process.env.STRIPE_WEBHOOK_SECRET) throw new Error("Stripe payment confirmation is not configured. Please contact Air King.");
+      if (directCheckoutReady(row.company_id)) {
+        await reconcileDirectPayments(row.id);
+        const old = await result(db().from("checkout_attempts").select("session_url").eq("invoice_id",row.id)
+          .eq("checkout_kind","hosted").in("state",["reserved","open"]).gt("expires_at",new Date().toISOString()).limit(1).maybeSingle());
+        if(old?.session_url) { res.json({url:old.session_url}); return; }
+        res.json({mode:"direct"}); return;
+      }
       const checkoutClient = stripe();
       const attempt = await result(
         db().rpc("crm_reserve_surcharge_checkout", {
@@ -1152,7 +1165,15 @@ export function registerCrm(app: Express) {
         res.status(400).json({ error: "Invalid webhook signature." });
         return;
       }
-      if (
+      if (e.type.startsWith("payment_intent.")) {
+        const pi = e.data.object as Stripe.PaymentIntent;
+        if (pi.metadata?.checkout_kind === "direct" && pi.metadata.attempt_id) {
+          const a = await entity("checkout_attempts",pi.metadata.attempt_id);
+          if(a.checkout_kind !== "direct" || (a.payment_intent_id && a.payment_intent_id !== pi.id)) throw new Error("Payment reference mismatch.");
+          if(e.type === "payment_intent.succeeded") await settleDirectPayment(a,e.id,e.type);
+          else await reconcileDirectPayments(a.invoice_id);
+        }
+      } else if (
         [
           "checkout.session.completed",
           "checkout.session.async_payment_succeeded",
