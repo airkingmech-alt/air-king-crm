@@ -833,7 +833,10 @@ export function Integrations() {
             onChange={(v) => set("payments_enabled", v)}
             disabled={!canEdit}
           />
-          <p className="text-sm text-muted-foreground">To include a card fee manually, use the “Include credit-card fee” box when creating an invoice. No additional surcharge service is required.</p>
+          <Toggle title="Add up to 3% for eligible online credit-card payments" checked={config.fee_enabled}
+            onChange={(v)=>setDraft({...config,fee_enabled:v,fee_basis_points:v?300:0,fee_fixed_cents:0})}
+            disabled={!canEdit || !data?.connections?.surcharge_available} />
+          <p className="text-sm text-muted-foreground">Credit-card fees are added only at online checkout. Cash, check, debit and prepaid remain fee-free. Use the invoice checkbox to waive or lower the fee. No additional surcharge service is required.</p>
         </CardContent>
       </Card>
       <Card>
