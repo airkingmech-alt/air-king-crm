@@ -833,18 +833,7 @@ export function Integrations() {
             onChange={(v) => set("payments_enabled", v)}
             disabled={!canEdit}
           />
-          <Toggle
-            title="Credit-card surcharge (up to 3%)"
-            checked={config.fee_enabled}
-            onChange={(v) => setDraft({ ...config, fee_enabled: v, fee_basis_points: 300, fee_fixed_cents: 0 })}
-            disabled={!canEdit || !data.connections.surcharge_available}
-          />
-          <p className="text-xs text-muted-foreground">
-            {data.connections.surcharge_available
-              ? "Stripe calculates and displays the fee before payment. Eligible credit cards only; debit and prepaid cards are excluded. The surcharge provider manages the rate and applicable lower limits."
-              : "Not active — Stripe automatic-surcharge access and provider setup are required. Online payments currently have no added fee."}
-          </p>
-          <p className="text-sm">Maximum fee: 3% · No fixed fee</p>
+          <p className="text-sm text-muted-foreground">To include a card fee manually, use the “Include credit-card fee” box when creating an invoice. No additional surcharge service is required.</p>
         </CardContent>
       </Card>
       <Card>

@@ -104,6 +104,10 @@ export default function Invoices() {
   const [sendTarget, setSendTarget] = useState({ email: "", phone: "" });
   const [invoiceEquipment, setInvoiceEquipment] = useState<string[]>([]);
   const [lineItems, setLineItems] = useState([{ description: "", quantity: "1", unitPrice: "" }]);
+  const [includeCardFee, setIncludeCardFee] = useState(false);
+  const [cardFeePercent, setCardFeePercent] = useState("3");
+  let invoicePreview: ReturnType<typeof prepareInvoiceLines> | null = null;
+  try { invoicePreview = prepareInvoiceLines(lineItems, includeCardFee ? Number(cardFeePercent) : 0); } catch { /* Show totals only for valid lines. */ }
   const [saving, setSaving] = useState(false);
   const [savedResult,setSavedResult]=useState<{id:string;deliveryError:string|null}|null>(null);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
@@ -188,7 +192,7 @@ export default function Invoices() {
       return;
     }
     if(constructionStage && !projectName.trim())throw new Error("Enter the house address or project / lot name.");
-    const {items:cleanItems,amount}=prepareInvoiceLines(lineItems);
+    const {items:cleanItems,amount}=prepareInvoiceLines(lineItems, includeCardFee ? Number(cardFeePercent) : 0);
     setSaving(true);
     try {
       const custName = customers.find((customer) => customer.id === form.customer)?.name || "Customer";
@@ -214,6 +218,7 @@ export default function Invoices() {
         setForm({customer:"",description:"",amount:"",dueDate:new Date(Date.now()+30*86400000).toISOString().slice(0,10)});
         setLineItems([{description:"",quantity:"1",unitPrice:""}]);
         setInvoiceEquipment([]);setCatalogEquipment([]);
+        setIncludeCardFee(false);setCardFeePercent("3");
         setWorkOrderId("");setProjectName("");setConstructionStage("");
       }, sendNow ? async invoice => {
         const response=await crm(`crm/invoice/${invoice.id}/send`,"POST",{channels:["email"]},crypto.randomUUID());
@@ -498,7 +503,18 @@ export default function Invoices() {
                   <Button type="button" size="icon" variant="ghost" disabled={lineItems.length===1} onClick={()=>setLineItems(lineItems.filter((_,i)=>i!==index))}>×</Button>
                 </div>)}
               </div>
-              <div className="text-right font-semibold">Invoice total: {fmtCurrency(lineItems.reduce((sum,item)=>sum+Number(item.quantity||0)*Number(item.unitPrice||0),0))}</div>
+              <div className="rounded-lg border p-3 space-y-2">
+                <Label htmlFor="include-card-fee" className="flex items-center gap-2 cursor-pointer">
+                  <input id="include-card-fee" type="checkbox" checked={includeCardFee} onChange={e=>setIncludeCardFee(e.target.checked)} />
+                  Include credit-card fee
+                </Label>
+                {includeCardFee && <div className="flex items-end justify-between gap-3">
+                  <div><Label htmlFor="card-fee-percent">Fee (%)</Label><Input id="card-fee-percent" className="w-28" type="number" min="0" max="3" step="0.01" required value={cardFeePercent} onChange={e=>setCardFeePercent(e.target.value)} /></div>
+                  <span className="font-medium">{invoicePreview ? fmtCurrency(invoicePreview.items.at(-1)?.description.startsWith("Credit-card fee (") ? invoicePreview.items.at(-1)!.amount : 0) : "—"}</span>
+                </div>}
+                <p className="text-xs text-muted-foreground">Adds a separate fee line to this invoice. Select only for an agreed, eligible credit-card payment, up to your processing cost or 3%, whichever is lower. This does not detect card type; leave it off for debit, prepaid, cash or check.</p>
+              </div>
+              <div className="text-right font-semibold">Invoice total: {invoicePreview ? fmtCurrency(invoicePreview.amount) : "—"}</div>
             </div>
             <div className="space-y-2"><Label htmlFor="inv-due">Due Date</Label><Input id="inv-due" type="date" value={form.dueDate} onChange={(e)=>setForm({...form,dueDate:e.target.value})}/></div>
             <div className="space-y-2">

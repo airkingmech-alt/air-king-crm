@@ -1,6 +1,24 @@
 # Credit-card surcharges — Air King
 
-Status: implementation prepared; production fee collection remains OFF pending Stripe setup.
+Status: automatic surcharging is NOT in use. The owner chose manual invoice fees instead of a paid third-party provider.
+
+## Manual invoice fee
+
+In Invoices → Create Invoice, select **Include credit-card fee** and enter a percentage
+(default 3%, maximum 3%). The amount is calculated from the invoice's rounded line-item
+subtotal, shown before saving, and saved as a separate `Credit-card fee (N%)` line.
+It appears on the customer invoice, printed invoice, and the full balance collected by
+ordinary Stripe Checkout. The fee is included in the invoice total; it is not a second
+Stripe/provider surcharge and must not also be enabled in automatic surcharge settings.
+
+This is a manually selected invoice line, not card-type detection. Select it only after
+agreeing an eligible credit-card payment. Do not include it for debit/prepaid or non-card
+payments. If the customer changes payment method, correct/reissue the unpaid invoice
+before payment. Do not add fees retroactively to paid invoices. Regular Stripe processing
+fees still apply. No Yeeld subscription was activated.
+
+The following automatic-integration documentation is retained for reference only.
+Do not enable its server readiness variables without a separately authorized setup.
 The approved policy is a credit-card-only merchant surcharge of up to 3%, never above
 actual acceptance cost or applicable lower limits. No fixed fee. Debit, prepaid and
 other payment methods carry no surcharge. Full invoice balance remains required.
