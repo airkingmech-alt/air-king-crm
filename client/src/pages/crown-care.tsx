@@ -1,3 +1,4 @@
+import { CrownChecklists } from "@/components/crown-checklists";
 import { guardSave } from "@/lib/confirmed-save";
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -78,6 +79,7 @@ export default function CrownCare() {
   const [saving,setSaving]=useState(false);
   const saveLock=useRef(false);
   const requestKey=useRef(crypto.randomUUID());
+  const [checklistMembership,setChecklistMembership]=useState<string|null>(null);
   const [memberSearch,setMemberSearch]=useState("");
   const [savedMembership,setSavedMembership]=useState<any>(null);
   async function openEdit(id:string){
@@ -342,6 +344,7 @@ export default function CrownCare() {
                 {m.coveredEquipment?.map(e=><p key={e.id} className="text-xs mt-1 whitespace-pre-wrap">{e.type}{e.filterSize?` · Filter: ${e.filterSize} (${e.filterQuantity})`:""}{e.filterNotes?` · ${e.filterNotes}`:""}{e.notes?` · ${e.notes}`:""}</p>)}
                 {m.notes&&<p className="text-xs mt-2 whitespace-pre-wrap">Notes: {m.notes}</p>}
                 {m.pricing?.adjustmentReason&&<p className="text-xs text-muted-foreground mt-1">Price adjustment: {crownMoney(m.pricing.adjustmentCents)} — {m.pricing.adjustmentReason}</p>}
+                <Button size="sm" variant="outline" className="mt-2 mr-2" onClick={()=>setChecklistMembership(m.id)}>Maintenance checklists</Button>
                 <Button size="sm" variant="outline" className="mt-2" disabled={saving} onClick={()=>openEdit(m.id)}>Edit Coverage & Price</Button>
 
                 {/* Visit status */}
@@ -455,6 +458,7 @@ export default function CrownCare() {
         </Card>
       )}
 
+      {checklistMembership&&<CrownChecklists id={checklistMembership} onClose={()=>setChecklistMembership(null)}/>}
       <Dialog open={!!editing} onOpenChange={open=>!open&&!saving&&setEditing(null)}>
         <DialogContent className="sm:max-w-[760px] max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>Edit Crown Care — {editing?.membership.customerName}</DialogTitle><DialogDescription>Update coverage and the agreed price while preserving payment status and completed visits.</DialogDescription></DialogHeader>
           {editing&&<form onSubmit={saveEdit} className="space-y-4"><fieldset disabled={saving} className="space-y-4">
