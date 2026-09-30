@@ -1,3 +1,5 @@
+import { canBookCrownVisit } from "../../../shared/crown-scheduling";
+import { UNKNOWN_LEAD_SOURCE } from "../../../shared/customer-lead-source";
 import { CrownChecklists } from "@/components/crown-checklists";
 import { membershipSummary } from "../../../shared/dashboard";
 import { guardSave } from "@/lib/confirmed-save";
@@ -70,7 +72,7 @@ import {
 
 export default function CrownCare() {
   const { toast } = useToast();
-  const { customers, memberships, addCustomer, createWorkOrder, updateWorkOrder } = useData();
+  const { customers, memberships, addCustomer, createWorkOrder } = useData();
   const {profile}=useAuth();
   const {data:staff}=useQuery({queryKey:["crown-care-team",profile?.id],queryFn:()=>crm("scheduling"),enabled:canAccess(profile,"schedule")});
   const teamMembers: {name:string}[]=(staff?.people || []).filter((p:any)=>p.full_name).map((p:any)=>({name:p.full_name}));
@@ -113,7 +115,7 @@ export default function CrownCare() {
     city: "Kansas City",
     state: "MO",
     zip: "",
-    leadSource: "Google Ads",
+    leadSource: UNKNOWN_LEAD_SOURCE,
   });
 
   // Post-enrollment schedule state
@@ -179,7 +181,7 @@ export default function CrownCare() {
     setConfiguration({...configurationFor({}),coveredEquipment:[]});
     setCustomerSearch(created.name);
     setShowNewCustomerForm(false);
-    setNewCustomer({ name: "", type: "Residential", phone: "", email: "", address: "", city: "Kansas City", state: "MO", zip: "", leadSource: "Google Ads" });
+    setNewCustomer({ name: "", type: "Residential", phone: "", email: "", address: "", city: "Kansas City", state: "MO", zip: "", leadSource: UNKNOWN_LEAD_SOURCE });
     toast({ title: "Customer added", description: `${created.name} has been added and selected for enrollment.` });
   });
 
@@ -201,30 +203,52 @@ export default function CrownCare() {
     finally{saveLock.current=false;setSaving(false);}
   };
 
-  const handleScheduleVisit = guardSave("pages/crown-care.tsx:handleScheduleVisit", async (e: React.FormEvent) => {
+  const handleScheduleVisit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.customer) return;
-    const propertyAddress = savedMembership?.propertyAddress || selectedCustomer?.properties?.[0]?.address || "TBD";
-    const wo = await createWorkOrder({
-      customerId: form.customer,
-      customerName: enrolledCustomerName,
-      type: scheduleForm.visitType,
-      property: propertyAddress,
-      description: `Crown Care ${scheduleForm.visitType.toLowerCase()} — precision tune-up\nMembership: ${enrolledMembershipId}\n\n${serviceDetails(savedMembership || {})}`,
-      scheduledDate: scheduleForm.date,
-      scheduledTime: scheduleForm.time,
-      technician: scheduleForm.technician || undefined,
-      priority: scheduleForm.priority as any,
-    });
-    toast({
-      title: "Visit scheduled",
-      description: `${scheduleForm.visitType} for ${enrolledCustomerName} on ${scheduleForm.date} at ${scheduleForm.time}${scheduleForm.technician ? ` with ${scheduleForm.technician}` : ""}.`,
-    });
-    closeEnrollDialog();
-  });
+    if (!form.customer || !enrolledMembershipId || saveLock.current) return;
+    saveLock.current = true;
+    setSaving(true);
+    try {
+      const propertyAddress = savedMembership?.propertyAddress || selectedCustomer?.properties?.[0]?.address || "TBD";
+      await createWorkOrder({
+        customerId: form.customer,
+        customerName: enrolledCustomerName,
+        membershipId: enrolledMembershipId,
+        membershipSeason: scheduleForm.visitType === "Spring Tune-Up (Cooling)" ? "spring" : "fall",
+        type: scheduleForm.visitType,
+        property: propertyAddress,
+        description: `Crown Care ${scheduleForm.visitType.toLowerCase()} — precision tune-up\nMembership: ${enrolledMembershipId}\n\n${serviceDetails(savedMembership || {})}`,
+        scheduledDate: scheduleForm.date,
+        scheduledTime: scheduleForm.time,
+        technician: scheduleForm.technician || undefined,
+        priority: scheduleForm.priority as any,
+      });
+      toast({
+        title: "Visit scheduled",
+        description: `${scheduleForm.visitType} for ${enrolledCustomerName} on ${scheduleForm.date} at ${scheduleForm.time}${scheduleForm.technician ? ` with ${scheduleForm.technician}` : " (technician unassigned)"}.`,
+      });
+      // Release the synchronous dismissal guard only after both records commit.
+      saveLock.current = false;
+      closeEnrollDialog();
+    } catch (error: any) {
+      toast({ title: "Visit could not be scheduled", description: error.message, variant: "destructive" });
+    } finally {
+      saveLock.current = false;
+      setSaving(false);
+    }
+  };
+
+  const openScheduleVisit = (membership: typeof memberships[number]) => {
+    setSavedMembership(membership);
+    setEnrolledMembershipId(membership.id);
+    setEnrolledCustomerName(membership.customerName);
+    setForm(previous => ({ ...previous, customer: membership.customerId }));
+    setScheduleForm(previous => ({ ...previous, technician: "", visitType: canBookCrownVisit(membership.springVisit) ? "Spring Tune-Up (Cooling)" : "Fall Tune-Up (Heating)" }));
+    setShowEnrollDialog(true);
+  };
 
   const closeEnrollDialog = () => {
-    if(saving)return;
+    if(saveLock.current)return;
     setConfiguration({...configurationFor({}),coveredEquipment:[]});setSavedMembership(null);requestKey.current=crypto.randomUUID();
     setShowEnrollDialog(false);
     setEnrolledMembershipId(null);
@@ -342,7 +366,10 @@ export default function CrownCare() {
                 {m.notes&&<p className="text-xs mt-2 whitespace-pre-wrap">Notes: {m.notes}</p>}
                 {m.pricing?.adjustmentReason&&<p className="text-xs text-muted-foreground mt-1">Price adjustment: {crownMoney(m.pricing.adjustmentCents)} — {m.pricing.adjustmentReason}</p>}
                 <Button size="sm" variant="outline" className="mt-2 mr-2" onClick={()=>setChecklistMembership(m.id)}>Maintenance checklists</Button>
-                <Button size="sm" variant="outline" className="mt-2" disabled={saving} onClick={()=>openEdit(m.id)}>Edit Coverage & Price</Button>
+                <Button size="sm" variant="outline" className="mt-2 mr-2" disabled={saving} onClick={()=>openEdit(m.id)}>Edit Coverage & Price</Button>
+                {m.status === "Active" && (canBookCrownVisit(m.springVisit) || canBookCrownVisit(m.fallVisit)) && (
+                  <Button size="sm" variant="outline" className="mt-2" disabled={saving || !canAccess(profile, "schedule")} onClick={() => openScheduleVisit(m)}>Schedule Visit</Button>
+                )}
 
                 {/* Visit status */}
                 <div className="flex gap-2 mt-2 flex-wrap">
@@ -472,11 +499,11 @@ export default function CrownCare() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Crown size={18} className="text-yellow-600" />
-              {enrolledMembershipId ? "Schedule First Visit" : "Enroll Customer in Crown Care"}
+              {enrolledMembershipId ? "Schedule Crown Care Visit" : "Enroll Customer in Crown Care"}
             </DialogTitle>
             <DialogDescription>
               {enrolledMembershipId
-                ? `${enrolledCustomerName} is enrolled. Schedule the first precision tune-up below — or skip and do it later from the Schedule page.`
+                ? `${enrolledCustomerName} is enrolled. Schedule a precision tune-up below, or return to this membership’s Schedule Visit button later.`
                 : "Choose covered equipment, record service requirements, and set this customer's membership price."}
             </DialogDescription>
           </DialogHeader>
@@ -677,22 +704,22 @@ export default function CrownCare() {
 
           {/* STEP 2: Schedule first visit */}
           {enrolledMembershipId && (
-            <form onSubmit={handleScheduleVisit} className="space-y-4">
+            <form onSubmit={handleScheduleVisit} className="space-y-4"><fieldset disabled={saving} className="space-y-4">
               <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 p-3 flex items-center gap-2">
                 <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
                 <p className="text-xs text-muted-foreground">
-                  <span className="font-medium text-emerald-700 dark:text-emerald-400">{enrolledCustomerName}</span> is now enrolled in Crown Care. Schedule the first tune-up below.
+                  <span className="font-medium text-emerald-700 dark:text-emerald-400">{enrolledCustomerName}</span> is enrolled in Crown Care. Schedule an available seasonal tune-up below.
                 </p>
               </div>
               <div className="space-y-2">
                 <Label>Visit Type</Label>
-                <Select value={scheduleForm.visitType} onValueChange={(v) => setScheduleForm({ ...scheduleForm, visitType: v as any })}>
+                <Select disabled={saving} value={scheduleForm.visitType} onValueChange={(v) => setScheduleForm({ ...scheduleForm, visitType: v as any })}>
                   <SelectTrigger data-testid="select-visit-type">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Spring Tune-Up (Cooling)">Spring Tune-Up (Cooling)</SelectItem>
-                    <SelectItem value="Fall Tune-Up (Heating)">Fall Tune-Up (Heating)</SelectItem>
+                    <SelectItem disabled={!canBookCrownVisit(savedMembership?.springVisit)} value="Spring Tune-Up (Cooling)">Spring Tune-Up (Cooling)</SelectItem>
+                    <SelectItem disabled={!canBookCrownVisit(savedMembership?.fallVisit)} value="Fall Tune-Up (Heating)">Fall Tune-Up (Heating)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -702,6 +729,7 @@ export default function CrownCare() {
                   <Input
                     id="visit-date"
                     type="date"
+                    required
                     value={scheduleForm.date}
                     onChange={(e) => setScheduleForm({ ...scheduleForm, date: e.target.value })}
                     data-testid="input-visit-date"
@@ -712,6 +740,7 @@ export default function CrownCare() {
                   <Input
                     id="visit-time"
                     type="time"
+                    required
                     value={scheduleForm.time}
                     onChange={(e) => setScheduleForm({ ...scheduleForm, time: e.target.value })}
                     data-testid="input-visit-time"
@@ -721,7 +750,7 @@ export default function CrownCare() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Technician</Label>
-                  <Select value={scheduleForm.technician} onValueChange={(v) => setScheduleForm({ ...scheduleForm, technician: v })}>
+                  <Select disabled={saving} value={scheduleForm.technician} onValueChange={(v) => setScheduleForm({ ...scheduleForm, technician: v })}>
                     <SelectTrigger data-testid="select-visit-technician">
                       <SelectValue placeholder="Assign to..." />
                     </SelectTrigger>
@@ -734,7 +763,7 @@ export default function CrownCare() {
                 </div>
                 <div className="space-y-2">
                   <Label>Priority</Label>
-                  <Select value={scheduleForm.priority} onValueChange={(v) => setScheduleForm({ ...scheduleForm, priority: v })}>
+                  <Select disabled={saving} value={scheduleForm.priority} onValueChange={(v) => setScheduleForm({ ...scheduleForm, priority: v })}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -750,11 +779,11 @@ export default function CrownCare() {
                 <Button type="button" variant="outline" onClick={closeEnrollDialog} data-testid="button-skip-visit">
                   Skip for Now
                 </Button>
-                <Button type="submit" data-testid="button-submit-visit">
-                  Schedule Visit
+                <Button type="submit" disabled={saving || !canAccess(profile, "schedule")} data-testid="button-submit-visit">
+                  {saving ? "Scheduling…" : "Schedule Visit"}
                 </Button>
               </DialogFooter>
-            </form>
+            </fieldset></form>
           )}
         </DialogContent>
       </Dialog>

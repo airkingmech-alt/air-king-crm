@@ -28,3 +28,6 @@ Saving coverage/pricing does not charge a card, send customer messages, update a
 ## Verification
 
 Targeted automated tests cover permissions/company isolation, legacy prices, custom and zero prices, filter notes, preservation of completed visits/payments, invalid equipment and pricing, stale edits, duplicate retries, enrollment dates, and migration preservation/versioning. Full TypeScript/test/build checks run before release. Production checks are read-only; no customer messages or charges are generated. Authenticated hands-on browser QA requires an employee session.
+
+For atomic appointment linkage, seasonal visit status, and the required scheduling
+migration, see [Crown Care seasonal scheduling](crown-care-scheduling.md).

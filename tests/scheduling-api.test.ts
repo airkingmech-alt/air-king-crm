@@ -8,7 +8,7 @@ process.env.SUPABASE_URL="https://dispatch-test.supabase.invalid";
 process.env.SUPABASE_SERVICE_ROLE_KEY="local-test-only";
 const nativeFetch=globalThis.fetch;
 const employee="11111111-1111-4111-8111-111111111111";
-let permission=true, collision=false, stale=false, written:any;
+let permission=true, membershipPermission=true, collision=false, stale=false, written:any;
 const job={id:"job-one",company_id:"airking",updated_at:"2026-09-17T00:00:00Z",data:{id:"job-one",customerId:"customer",customerName:"Test",status:"Scheduled",scheduledDate:"2026-09-17",scheduledTime:"09:00",technician:"Test",durationMinutes:60,description:"Preserve scope",selectedAddOns:["addon"]}};
 const app=express();app.use(express.json());registerScheduling(app);registerEquipmentAnalysis(app);
 let server:ReturnType<typeof app.listen>,base:string;
@@ -19,7 +19,7 @@ globalThis.fetch=async(input:any,init?:any)=>{
   if(url.pathname==="/auth/v1/user")return reply({id:employee,aud:"authenticated"});
   if(url.pathname==="/rest/v1/profiles") {
     if(url.searchParams.get("select")==="id,full_name,role") {assert.equal(url.searchParams.get("company_id"),"eq.airking");return reply([{id:employee,full_name:"Test",role:"technician"}]);}
-    return reply({id:employee,company_id:"airking",role:"technician",permissions:{schedule:permission,customers:permission},full_name:"Test"});
+    return reply({id:employee,company_id:"airking",role:"technician",permissions:{schedule:permission,customers:permission,memberships:membershipPermission},full_name:"Test"});
   }
   assert.equal(url.searchParams.get("company_id"),"eq.airking");
   if(url.pathname==="/rest/v1/work_orders") {
@@ -56,4 +56,25 @@ test("list assignment validates priority and stores it with the appointment",asy
  assert.equal((await send({...payload(),change:{...change,priority:"Emergency"}})).status,200);
  assert.equal(written.data.priority,"Emergency");
  assert.equal((await send({...payload(),change:{...change,priority:"invalid"}})).status,400);
+});
+
+
+test("linked Crown Care scheduling enforces membership access and preserves the durable link", async () => {
+  const data = job.data as typeof job.data & { membershipId?: string; membershipSeason?: string };
+  data.membershipId = "CC-test";
+  data.membershipSeason = "fall";
+  try {
+    membershipPermission = false;
+    written = undefined;
+    assert.equal((await send(payload())).status, 403);
+    assert.equal(written, undefined);
+    membershipPermission = true;
+    assert.equal((await send(payload())).status, 200);
+    assert.equal(written.data.membershipId, "CC-test");
+    assert.equal(written.data.membershipSeason, "fall");
+  } finally {
+    membershipPermission = true;
+    delete data.membershipId;
+    delete data.membershipSeason;
+  }
 });
