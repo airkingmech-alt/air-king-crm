@@ -1,3 +1,4 @@
+import { buildQuoteDraft, type QuoteDraftInput } from "@/lib/quote-pricing";
 import {
   createContext,
   useContext,
@@ -89,17 +90,7 @@ interface DataContextValue {
     installedEquipment?: { brand?: string | null; model?: string | null; category: string; description: string }[];
     dueDate?: string;
   }) => Promise<Invoice>;
-  createQuote: (data: {
-    customerId: string;
-    customerName: string;
-    jobType: string;
-    title: string;
-    totalCost: number;
-    customerPrice: number;
-    equipmentItems?: string[];
-    laborDescription?: string;
-    selectedAddOns?:string[];
-  }) => Promise<Quote>;
+  createQuote: (data: QuoteDraftInput) => Promise<Quote>;
   updateQuoteStatus: (quoteId: string, status: string) => Promise<void>;
   updateWorkOrder: (workOrderId: string, updates: Partial<WorkOrder>) => Promise<void>;
   memberships: CrownCareMembership[];
@@ -509,69 +500,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const createQuote = useCallback(
-    async (data: {
-      customerId: string;
-      customerName: string;
-      jobType: string;
-      title: string;
-      totalCost: number;
-      customerPrice: number;
-      equipmentItems?: string[];
-      laborDescription?: string;
-    selectedAddOns?:string[];
-    }): Promise<Quote> => {
-      const q: Quote = {
-        id: createId("Q-",data),
-        customerId: data.customerId,
-        customerName: data.customerName,
-        jobType: data.jobType as Quote["jobType"],
-        title: data.title,
-        status: "Quote Sent",
-        createdAt: new Date().toISOString().slice(0, 10),
-        equipmentItems: data.equipmentItems,
-        laborDescription: data.laborDescription,
-        options: [
-          {
-            tier: "Good",
-            label: "Essential",
-            equipment: "Standard efficiency",
-            efficiency: "13 SEER",
-            features: ["Reliable cooling", "10-year parts and labor warranty"],
-            totalCost: data.totalCost,
-            customerPrice: Math.round(data.customerPrice * 0.85),
-          },
-          {
-            tier: "Better",
-            label: "Enhanced",
-            equipment: "Upgraded efficiency",
-            efficiency: "14 SEER",
-            features: [
-              "Upgraded efficiency",
-              "10-year parts and labor warranty",
-            ],
-            totalCost: data.totalCost,
-            customerPrice: data.customerPrice,
-            isPopular: true,
-          },
-          {
-            tier: "Best",
-            label: "Ultimate",
-            equipment: "Premium high efficiency",
-            efficiency: "16 SEER Variable",
-            features: [
-              "Premium efficiency",
-              "10-year parts and labor warranty",
-              "Wi-Fi thermostat",
-            ],
-            totalCost: data.totalCost,
-            customerPrice: Math.round(data.customerPrice * 1.25),
-          },
-        ],
-        selectedAddOns: data.selectedAddOns || [],
-        laborCost: 0,
-        materialsCost: 0,
-        taxRate: 0,
-      };
+    async (data: QuoteDraftInput): Promise<Quote> => {
+      const q = buildQuoteDraft(data, createId("Q-", data), new Date().toISOString().slice(0, 10));
       await saveRecords([{table:"quotes",id:q.id,data:q}]);
       finishCreate("Q-",data);
       setQuotes((prev) => [q, ...prev.filter(x=>x.id!==q.id)]);

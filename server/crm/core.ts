@@ -200,10 +200,12 @@ export function publicFields(kind: string, data: Row): Row {
     selectedOption: data.selectedOption,
     selectedAddOns: data.selectedAddOns || [],
     equipmentItems: data.equipmentItems || [],
+    equipmentSelectionMode: data.equipmentSelectionMode,
     options: (data.options || []).map((o: Row) => ({
       tier: o.tier,
       label: o.label,
       equipment: o.equipment,
+      equipmentItems: o.equipmentItems,
       efficiency: o.efficiency,
       features: o.features,
       customerPrice: o.customerPrice,

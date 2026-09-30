@@ -68,7 +68,7 @@ export default function Dashboard() {
   // Group equipment by work order
   const equipmentByJob = unassignedWorkOrders.map((wo) => {
     const quote = quotes.find((q) => q.id === wo.quoteId);
-    const items = (quote?.equipmentItems || []).map((id) => {const saved=catalog.data?.find(p=>p.id===id);return saved || {id,brand:"",model:id,category:"Equipment",description:"Review saved quote for equipment details",cost:0};});
+    const items = (quote?.options.find(option => option.tier === quote.selectedOption)?.equipmentItems || quote?.equipmentItems || []).map((id) => {const saved=catalog.data?.find(p=>p.id===id);return saved || {id,brand:"",model:id,category:"Equipment",description:"Review saved quote for equipment details",cost:0};});
     return { workOrder: wo, quote, items };
   }).filter((job) => job.items.length > 0);
 

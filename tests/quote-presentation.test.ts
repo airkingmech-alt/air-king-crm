@@ -16,6 +16,8 @@ test("quote presentation renders logo, contacts, scope, saved add-ons and no-pay
       import { Router, Route } from 'wouter';
       import CustomerDocument from './client/src/pages/customer-document';
       import { addOnServices } from './client/src/data/pricebook';
+      import { buildQuoteDraft } from './client/src/lib/quote-pricing';
+      import { publicFields } from './server/crm/core';
       export function renderInvoice(fees=false) {
         const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:Infinity}}});
         client.setQueryData(['public-document','test-invoice'],{kind:'invoice',payments_enabled:true,fee_enabled:fees,payments:fees?[{amount_cents:100000,fee_cents:3000,method:'Visa',paid_at:'2026-09-22'}]:[],document:{
@@ -23,6 +25,13 @@ test("quote presentation renders logo, contacts, scope, saved add-ons and no-pay
           projectName:'Lot 12',constructionStage:'Rough-in',items:[{description:'Ductwork and piping rough-in',amount:5000}]
         }});
         const html=renderToStaticMarkup(<QueryClientProvider client={client}><Router ssrPath='/customer/test-invoice'><Route path='/customer/:token'><CustomerDocument /></Route></Router></QueryClientProvider>);
+        client.clear();return html;
+      }
+      export function renderTiered(tier) {
+        const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:Infinity}}});
+        const q=buildQuoteDraft({customerId:'synthetic',customerName:'Test Customer',jobType:'Changeout',title:'Synthetic model-based quote',equipmentCost:4974,laborCost:1000,materialsCost:300,equipmentItems:['chp-z9e080c20','chp-ec42','chp-xc342']},'Q-TEST','2026-09-30');
+        client.setQueryData(['public-document','test-quote'],{kind:'quote',document:publicFields('quote',{...q,status:'Won',selectedOption:tier})});
+        const html=renderToStaticMarkup(<QueryClientProvider client={client}><Router ssrPath='/customer/test-quote'><Route path='/customer/:token'><CustomerDocument /></Route></Router></QueryClientProvider>);
         client.clear();return html;
       }
       export function render(status) {
@@ -42,7 +51,7 @@ test("quote presentation renders logo, contacts, scope, saved add-ons and no-pay
       plugins: [{ name: "no-network-crm", setup(b) { b.onResolve({ filter: /^@\/lib\/crm-api$/ }, () => ({ path: "crm", namespace: "test" }));
         b.onLoad({ filter: /.*/, namespace: "test" }, () => ({ contents: "export async function crm(){throw new Error('Network forbidden in presentation test')}" })); } }],
     });
-    const { render, renderInvoice } = await import(pathToFileURL(path.join(temp, "render.mjs")).href);
+    const { render, renderInvoice, renderTiered } = await import(pathToFileURL(path.join(temp, "render.mjs")).href);
     const invoiceHtml=renderInvoice();
     assert.match(invoiceHtml,/PAY \$3,750.00 IN FULL/);
     assert.match(invoiceHtml,/Rough-in/);assert.match(invoiceHtml,/Lot 12/);
@@ -65,6 +74,14 @@ test("quote presentation renders logo, contacts, scope, saved add-ons and no-pay
     assert.ok(accepted.includes(expectedTotal), "Accepted total includes persisted add-ons");
     assert.match(accepted, /Accepted/);
     assert.doesNotMatch(accepted, /Approve your proposal/);
+    const best=renderTiered('Best');
+    assert.match(best,/CTM48C5CFS1/);assert.doesNotMatch(best,/CTM42C5CES1/);
+    assert.match(best,/4 Ton Champion AC/);assert.match(best,/15.75 SEER2/);
+    assert.match(best,/\$9,974.09/);assert.doesNotMatch(best,/16 SEER/);
+    assert.doesNotMatch(best,/Purchase tax|Internal cost|576.27|6,103.00/);
+    const good=renderTiered('Good');
+    assert.match(good,/CTM42C5CES1/);assert.match(good,/\$8,435.83/);
+    assert.match(good,/13.4 SEER2/);assert.doesNotMatch(good,/13 SEER/);
     const staff = await readFile("client/src/pages/proposal.tsx", "utf8");
     assert.match(staff, /<QuoteHeader/);
     assert.match(staff, /<QuoteFooter/);

@@ -1,5 +1,5 @@
 import { LaborDescriptionBuilder } from "@/components/labor-description-builder";
-import { sellingPriceFromCost } from "@/lib/pricebook-utils";
+import { calculateQuotePricing } from "@/lib/quote-pricing";
 import { guardSave } from "@/lib/confirmed-save";
 import { useState } from "react";
 import { Link } from "wouter";
@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { fmtCurrency } from "@/data/mock-data";
+import { fmtCurrency, fmtCurrencyExact } from "@/data/mock-data";
 import { CustomerCombobox } from "@/components/customer-combobox";
 import { useData } from "@/context/data-context";
 import { useToast } from "@/hooks/use-toast";
@@ -72,9 +72,10 @@ export default function Quotes() {
   const equipmentCost = selectedItems.reduce((sum, item) => sum + item.cost, 0);
   const labor = parseFloat(laborCost) || 0;
   const materials = parseFloat(materialsCost) || 0;
-  const totalCost = equipmentCost + labor + materials;
-  // Air King pricing formula: total cost ÷ 0.80
-  const customerPrice = Number.isFinite(totalCost) && totalCost >= 0 ? Number(sellingPriceFromCost(totalCost)) : 0;
+  const validCosts = [equipmentCost, labor, materials].every(value => Number.isFinite(value) && value >= 0);
+  const { totalCost, customerPrice, purchaseTax } = calculateQuotePricing(
+    validCosts ? equipmentCost : 0, validCosts ? labor : 0, validCosts ? materials : 0,
+  );
   const grossProfit = customerPrice - totalCost;
   const margin = customerPrice > 0 ? ((grossProfit / customerPrice) * 100).toFixed(1) : "0.0";
 
@@ -107,7 +108,7 @@ export default function Quotes() {
         <div>
           <h1 className="text-xl font-bold tracking-tight">New Quote</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Build a Good/Better/Best proposal
+            Build a draft with actual model-priced options
           </p>
         </div>
 
@@ -386,11 +387,11 @@ export default function Quotes() {
           <CardContent className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Equipment Cost</span>
-              <span className="font-medium">{fmtCurrency(equipmentCost)}</span>
+              <span className="font-medium">{fmtCurrencyExact(equipmentCost)}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Labor</span>
-              <span className="font-medium">{fmtCurrency(labor)}</span>
+              <span className="font-medium">{fmtCurrencyExact(labor)}</span>
             </div>
             {laborDesc && (
               <p className="text-[10px] text-muted-foreground/70 pl-2">
@@ -399,26 +400,30 @@ export default function Quotes() {
             )}
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Materials</span>
-              <span className="font-medium">{fmtCurrency(materials)}</span>
+              <span className="font-medium">{fmtCurrencyExact(materials)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Purchase tax (9% equipment + materials)</span>
+              <span className="font-medium">{fmtCurrencyExact(purchaseTax)}</span>
             </div>
             <Separator className="my-2" />
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Total Internal Cost</span>
-              <span className="font-medium">{fmtCurrency(totalCost)}</span>
+              <span className="font-medium">{fmtCurrencyExact(totalCost)}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">
                 Customer Price (÷ 0.80)
               </span>
               <span className="font-medium text-primary">
-                {fmtCurrency(customerPrice)}
+                {fmtCurrencyExact(customerPrice)}
               </span>
             </div>
             <Separator className="my-2" />
             <div className="flex justify-between">
               <span className="text-sm font-semibold">Gross Profit</span>
               <span className="font-bold text-emerald-600">
-                {fmtCurrency(grossProfit)}
+                {fmtCurrencyExact(grossProfit)}
               </span>
             </div>
             <div className="flex justify-between">
@@ -438,7 +443,7 @@ export default function Quotes() {
           </Button>
           <Button
             className="bg-primary text-primary-foreground"
-            disabled={!selectedCustomer || selectedEquipment.length === 0}
+            disabled={!validCosts || !selectedCustomer || selectedEquipment.length === 0}
             onClick={guardSave("create-quote", async () => {
               const customer = customers.find((c) => c.id === selectedCustomer);
               if (!customer) return;
@@ -451,14 +456,15 @@ export default function Quotes() {
                 customerName: customer.name,
                 jobType: "Changeout",
                 title: `${selectedItems.length} item(s) — ${truncatedDesc}`,
-                totalCost,
-                customerPrice,
+                equipmentCost,
+                laborCost: labor,
+                materialsCost: materials,
                 equipmentItems: selectedEquipment,
                 laborDescription: laborDesc,
       selectedAddOns,
               });
               toast({
-                title: "Quote created",
+                title: "Draft quote saved",
                 description: `${newQuote.id} generated for ${customer.name}.`,
               });
               setShowBuilder(false);
@@ -467,7 +473,7 @@ export default function Quotes() {
             data-testid="button-generate-quote"
           >
             <FileText size={16} className="mr-1.5" />
-            Generate Good/Better/Best Proposal
+            Save Draft Quote
           </Button>
         </div>
       </div>
