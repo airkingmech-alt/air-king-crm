@@ -29,7 +29,7 @@ import { crm } from "@/lib/crm-api";
 import {
   addOnServices,
   formatEquipmentDescription,
-  getTieredEquipment,
+  getQuoteEquipment,
   pricebook,
 } from "@/data/pricebook";
 
@@ -132,14 +132,7 @@ export default function CustomerDocument() {
                 {d.equipmentItems?.length > 0 && (
                   <section className="rounded-xl border p-5 space-y-3">
                     <h2 className="font-semibold">Equipment Included</h2>
-                    {(chosenTier
-                      ? getTieredEquipment(d.equipmentItems, chosenTier)
-                      : d.equipmentItems
-                          .map((id: string) =>
-                            pricebook.find((p) => p.id === id),
-                          )
-                          .filter(Boolean)
-                    ).map((item: any) => (
+                    {getQuoteEquipment(d, chosenTier).map((item: any) => (
                       <div
                         key={item.id}
                         className="flex items-center gap-3 rounded-lg border p-3"
@@ -149,7 +142,7 @@ export default function CustomerDocument() {
                         </div>
                         <div className="flex-1">
                           <p className="text-sm font-medium">
-                            {formatEquipmentDescription(item)}
+                            {formatEquipmentDescription(d.equipmentSelectionMode === "explicit" && item.category === "Condenser" ? { ...item, tier: undefined } : item)}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {item.model}

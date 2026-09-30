@@ -39,7 +39,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useData } from "@/context/data-context";
 import { type WorkOrderStatus } from "@/data/mock-data";
 import { CustomerCombobox } from "@/components/customer-combobox";
-import { addOnServices, getTieredEquipment } from "@/data/pricebook";
+import { addOnServices, getQuoteEquipment } from "@/data/pricebook";
 
 const statusColors: Record<WorkOrderStatus, string> = {
   Unscheduled: "bg-muted text-muted-foreground",
@@ -299,7 +299,7 @@ export default function Schedule() {
       addons.reduce((sum, item) => sum + item.price, 0);
     const equipmentItems =
       quote?.equipmentItems && option
-        ? getTieredEquipment(quote.equipmentItems, option.tier).map(
+        ? getQuoteEquipment(quote, option.tier).map(
             (item) => item.id,
           )
         : [];

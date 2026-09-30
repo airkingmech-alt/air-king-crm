@@ -171,6 +171,8 @@ export async function queueMessage(
   const ctx = await context(ref);
   let recipient = "",
     error = "";
+  if (ctx.quote?.data.status === "Draft" && reason !== "document_delivery")
+    error = "Draft quotes cannot be sent by automations. Use Send explicitly.";
   if (template.body.includes("{{review_link}}") && !ctx.config.review_url)
     error =
       "Add your Google review link in Integrations before sending review requests.";
@@ -187,7 +189,8 @@ export async function queueMessage(
     error = e.message;
   }
   const values: Row = { ...ctx.fields };
-  if (ctx.quote) values.quote_link = await linkFor(ctx.quote, "quote");
+  if (ctx.quote && !(ctx.quote.data.status === "Draft" && reason !== "document_delivery"))
+    values.quote_link = await linkFor(ctx.quote, "quote");
   if (ctx.invoice) values.payment_link = await linkFor(ctx.invoice, "invoice");
   // Marketing unsubscribe uses a signed capability, never a customer ID exposed as authorization.
   if (template.category === "marketing")
@@ -319,6 +322,8 @@ function couponHtml(body: string, name: string, values: Row) {
   </div>`;
 }
 async function stopReason(msg: Row, ctx: Awaited<ReturnType<typeof context>>) {
+  if (ctx.quote?.data.status === "Draft" && msg.reason !== "document_delivery")
+    return "Draft quotes cannot be sent by automations.";
   if (!allowed(ctx, msg.channel, msg.category))
     return "Customer opted out or consent is missing.";
   if (msg.campaign_id) {

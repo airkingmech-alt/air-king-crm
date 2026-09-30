@@ -108,6 +108,9 @@ export interface QuoteOption {
   totalCost: number; // internal
   customerPrice: number; // what customer sees
   isPopular?: boolean;
+  equipmentItems?: string[];
+  equipmentCost?: number;
+  purchaseTax?: number;
 }
 
 export interface Quote {
@@ -121,7 +124,7 @@ export interface Quote {
     | "Maintenance"
     | "Commercial";
   title: string;
-  status: LeadStatus;
+  status: LeadStatus | "Draft";
   createdAt: string;
   options: QuoteOption[];
   selectedAddOns: string[];
@@ -132,6 +135,11 @@ export interface Quote {
   laborCost: number;
   materialsCost: number;
   taxRate: number;
+  equipmentCost?: number;
+  purchaseTax?: number;
+  pricingVersion?: "purchase-tax-v1";
+  equipmentSelectionMode?: "explicit";
+  internalReviewNote?: string;
   financingEstimate?: number;
   equipmentItems?: string[]; // pricebook item IDs selected for this quote
   laborDescription?: string;

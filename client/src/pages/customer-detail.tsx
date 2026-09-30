@@ -2,7 +2,7 @@ import { useCustomerNotes } from "@/lib/customer-notes";
 import { normalizeLeadSource } from "../../../shared/customer-lead-source";
 import { LaborDescriptionBuilder } from "@/components/labor-description-builder";
 import { DeleteRecord } from "@/components/delete-record";
-import { sellingPriceFromCost } from "@/lib/pricebook-utils";
+import { calculateQuotePricing } from "@/lib/quote-pricing";
 import { guardSave } from "@/lib/confirmed-save";
 import { CustomerCommunications } from "@/pages/communications";
 import { EquipmentScanner } from "@/components/equipment-scanner";
@@ -70,6 +70,7 @@ import {
   customers as seedCustomers,
   quotes,
   fmtCurrency,
+  fmtCurrencyExact,
 } from "@/data/mock-data";
 import { pricebook, addOnServices } from "@/data/pricebook";
 
@@ -202,8 +203,10 @@ export default function CustomerDetail() {
   const equipmentCost = selectedItems.reduce((sum, item) => sum + item.cost, 0);
   const labor = parseFloat(laborCost) || 0;
   const materials = parseFloat(materialsCost) || 0;
-  const totalCost = equipmentCost + labor + materials;
-  const customerPrice = Number.isFinite(totalCost) && totalCost >= 0 ? Number(sellingPriceFromCost(totalCost)) : 0;
+  const validCosts = [equipmentCost, labor, materials].every(value => Number.isFinite(value) && value >= 0);
+  const { totalCost, customerPrice, purchaseTax } = calculateQuotePricing(
+    validCosts ? equipmentCost : 0, validCosts ? labor : 0, validCosts ? materials : 0,
+  );
   const grossProfit = customerPrice - totalCost;
   const margin =
     customerPrice > 0
@@ -248,15 +251,16 @@ export default function CustomerDetail() {
       customerName: customer?.name || "",
       jobType: jobType,
       title: `${jobType} — ${selectedEquipment.length} item(s) · ${truncatedDesc}`,
-      totalCost,
-      customerPrice,
+      equipmentCost,
+      laborCost: labor,
+      materialsCost: materials,
       equipmentItems: selectedEquipment,
       laborDescription: laborDesc,
       selectedAddOns,
     });
     toast({
-      title: "Quote created",
-      description: `${newQuote.id} for ${customer?.name} — ${fmtCurrency(grandTotal)} total. View it in the Quotes tab or the Quotes page.`,
+      title: "Draft quote saved",
+      description: `${newQuote.id} for ${customer?.name} — ${fmtCurrencyExact(grandTotal)} total. View it in the Quotes tab or the Quotes page.`,
     });
     setShowQuoteDialog(false);
     resetQuoteForm();
@@ -1054,8 +1058,7 @@ export default function CustomerDetail() {
               New Quote — {customer.name}
             </DialogTitle>
             <DialogDescription>
-              Build a quote with equipment from the pricebook. Good/Better/Best
-              tiers will be generated automatically.
+              Build a draft with equipment from the pricebook. Champion XC3/XC4 selections generate actual model-priced options; other selections stay as chosen.
             </DialogDescription>
           </DialogHeader>
 
@@ -1398,12 +1401,12 @@ export default function CustomerDetail() {
                     Equipment ({selectedItems.length} items)
                   </span>
                   <span className="font-medium">
-                    {fmtCurrency(equipmentCost)}
+                    {fmtCurrencyExact(equipmentCost)}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Labor</span>
-                  <span className="font-medium">{fmtCurrency(labor)}</span>
+                  <span className="font-medium">{fmtCurrencyExact(labor)}</span>
                 </div>
                 {laborDesc && (
                   <p className="text-[10px] text-muted-foreground/70 pl-2">
@@ -1412,27 +1415,31 @@ export default function CustomerDetail() {
                 )}
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Materials</span>
-                  <span className="font-medium">{fmtCurrency(materials)}</span>
+                  <span className="font-medium">{fmtCurrencyExact(materials)}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Purchase tax (9% equipment + materials)</span>
+                  <span className="font-medium">{fmtCurrencyExact(purchaseTax)}</span>
                 </div>
                 <div className="flex justify-between text-xs pt-1 border-t border-border">
                   <span className="text-muted-foreground font-medium">
                     Total Internal Cost
                   </span>
-                  <span className="font-bold">{fmtCurrency(totalCost)}</span>
+                  <span className="font-bold">{fmtCurrencyExact(totalCost)}</span>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">
                     Customer Price (÷ 0.80)
                   </span>
                   <span className="font-medium text-sky-600">
-                    {fmtCurrency(customerPrice)}
+                    {fmtCurrencyExact(customerPrice)}
                   </span>
                 </div>
                 {addOnsTotal > 0 && (
                   <div className="flex justify-between text-xs">
                     <span className="text-muted-foreground">Add-Ons</span>
                     <span className="font-medium">
-                      {fmtCurrency(addOnsTotal)}
+                      {fmtCurrencyExact(addOnsTotal)}
                     </span>
                   </div>
                 )}
@@ -1440,13 +1447,13 @@ export default function CustomerDetail() {
                 <div className="flex justify-between items-center pt-1">
                   <span className="text-sm font-semibold">Customer Total</span>
                   <span className="text-lg font-bold text-primary">
-                    {fmtCurrency(grandTotal)}
+                    {fmtCurrencyExact(grandTotal)}
                   </span>
                 </div>
                 <div className="flex justify-between text-[10px] text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <TrendingUp size={11} /> Gross Profit:{" "}
-                    {fmtCurrency(grossProfit)}
+                    {fmtCurrencyExact(grossProfit)}
                   </span>
                   <span>Margin: {margin}%</span>
                 </div>
@@ -1464,9 +1471,10 @@ export default function CustomerDetail() {
                 <Button
                   onClick={handleCreateQuote}
                   data-testid="button-submit-quote"
+                  disabled={!validCosts}
                   className="bg-primary text-primary-foreground"
                 >
-                  <FileText size={14} className="mr-1.5" /> Create Quote
+                  <FileText size={14} className="mr-1.5" /> Save Draft Quote
                 </Button>
               </DialogFooter>
             </div>

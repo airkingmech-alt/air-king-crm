@@ -42,12 +42,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { fmtCurrency } from "@/data/mock-data";
+import { fmtCurrency, fmtCurrencyExact } from "@/data/mock-data";
 import {
   addOnServices,
   formatEquipmentDescription,
   pricebook,
-  getTieredEquipment,
+  getQuoteEquipment,
 } from "@/data/pricebook";
 import { useData } from "@/context/data-context";
 import { crm } from "@/lib/crm-api";
@@ -121,6 +121,8 @@ export default function Proposal() {
   };
 
   const selectedOption = quote.options.find((o) => o.tier === selectedTier);
+  const quoteMoney = quote.pricingVersion === "purchase-tax-v1" ? fmtCurrencyExact : fmtCurrency;
+  const costOption = selectedOption || quote.options.find(o => o.equipmentItems?.join() === quote.equipmentItems?.join()) || quote.options[0];
   const addOnTotal = addOnServices
     .filter((a: (typeof addOnServices)[number]) =>
       selectedAddOns.includes(a.id),
@@ -147,10 +149,7 @@ export default function Proposal() {
     }
     if (!selectedOption) return;
     const equipmentItems = quote.equipmentItems
-      ? getTieredEquipment(
-          quote.equipmentItems,
-          selectedOption.tier as "Good" | "Better" | "Best",
-        ).map((item) => item.id)
+      ? getQuoteEquipment(quote, selectedOption.tier).map((item) => item.id)
       : [];
     const invoice = await createInvoice({
       customerId: quote.customerId,
@@ -173,7 +172,7 @@ export default function Proposal() {
     });
     toast({
       title: "Invoice created",
-      description: `${invoice.id} created for ${quote.customerName} — ${fmtCurrency(grandTotal)}.`,
+      description: `${invoice.id} created for ${quote.customerName} — ${quoteMoney(grandTotal)}.`,
     });
     setLocation(`/invoices/view/${invoice.id}`);
   });
@@ -313,6 +312,15 @@ export default function Proposal() {
         <div className="space-y-5 mb-6">
           <QuoteHeader number={quote.id} title={quote.title} customerName={quote.customerName} status={quote.status} createdAt={quote.createdAt} />
           {!accepted && <QuoteGuide />}
+          {quote.status === "Draft" && <div className="no-print rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Draft only. Saving does not send this quote to the customer.</div>}
+          {quote.internalReviewNote && <div className="no-print rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><strong>Internal review:</strong> {quote.internalReviewNote}</div>}
+          {quote.pricingVersion === "purchase-tax-v1" && <div className="no-print rounded-lg border p-3 text-xs space-y-1" aria-label="Internal quote costs">
+            <p className="font-semibold">Internal cost breakdown</p>
+            <p>Equipment: {fmtCurrencyExact(costOption?.equipmentCost ?? quote.equipmentCost ?? 0)} · Materials: {fmtCurrencyExact(quote.materialsCost)}</p>
+            <p>Purchase tax (9% equipment + materials): {fmtCurrencyExact(costOption?.purchaseTax ?? quote.purchaseTax ?? 0)}</p>
+            <p>Labor (no purchase tax): {fmtCurrencyExact(quote.laborCost)}</p>
+            <p>Total internal cost: {fmtCurrencyExact(costOption?.totalCost || 0)} · Price at 20% margin: {fmtCurrencyExact(costOption?.customerPrice || 0)}</p>
+          </div>}
           <section className="rounded-xl border bg-card p-5 sm:p-6">
             <h2 className="text-sm font-bold mb-2">Scope of work</h2>
             <p className="text-sm text-muted-foreground leading-7 whitespace-pre-wrap">{quote.laborDescription || quote.title}</p>
@@ -326,19 +334,11 @@ export default function Proposal() {
               <h2 className="text-sm font-semibold mb-1">Equipment Included</h2>
               <p className="text-xs text-muted-foreground mb-4">
                 {selectedTier
-                  ? `Equipment for the ${selectedTier} package`
+                  ? quote.equipmentSelectionMode === "explicit" ? "Selected equipment" : `Equipment for the ${selectedTier} package`
                   : "Select a package below to see included equipment"}
               </p>
               <div className="space-y-2">
-                {(selectedTier
-                  ? getTieredEquipment(
-                      quote.equipmentItems,
-                      selectedTier as "Good" | "Better" | "Best",
-                    )
-                  : quote.equipmentItems
-                      .map((id) => pricebook.find((p) => p.id === id))
-                      .filter(Boolean)
-                ).map((item) => {
+                {getQuoteEquipment(quote, selectedTier).map((item) => {
                   if (!item) return null;
                   return (
                     <div
@@ -350,7 +350,7 @@ export default function Proposal() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium">
-                          {formatEquipmentDescription(item)}
+                          {formatEquipmentDescription(quote.equipmentSelectionMode === "explicit" && item.category === "Condenser" ? { ...item, tier: undefined } : item)}
                         </p>
                         <p className="text-[10px] text-muted-foreground">
                           {item.model}
@@ -400,7 +400,7 @@ export default function Proposal() {
 
                   <div className="text-center mb-4">
                     <p className="text-2xl font-extrabold tracking-tight">
-                      {fmtCurrency(option.customerPrice)}
+                      {quoteMoney(option.customerPrice)}
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Installed · all-inclusive
@@ -509,7 +509,7 @@ export default function Proposal() {
                 <div className="flex justify-between text-sm">
                   <span>{selectedOption?.label} Package</span>
                   <span className="font-medium">
-                    {fmtCurrency(selectedOption?.customerPrice || 0)}
+                    {quoteMoney(selectedOption?.customerPrice || 0)}
                   </span>
                 </div>
                 {selectedAddOns.map((addonId) => {
@@ -529,7 +529,7 @@ export default function Proposal() {
                     Total Installed Price
                   </span>
                   <span className="text-xl font-extrabold">
-                    {fmtCurrency(grandTotal)}
+                    {quoteMoney(grandTotal)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 p-2 rounded-lg bg-sky-50 dark:bg-sky-950/20 text-xs text-sky-700 dark:text-sky-400">

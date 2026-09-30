@@ -367,3 +367,21 @@ test("current invoice balance replaces stale merge fields immediately before sen
   });
   assert.equal(body, "Remaining: $1,000.00");
 });
+
+test("draft quote automated delivery is blocked, including previously queued work", async () => {
+  defaults();
+  state.quotes[0].data.status = "Draft";
+  const m = message({ quote_id: "q", automation_run_id: "r" });
+  await deliver(m);
+  assert.equal(providerCalls, 0);
+  assert.equal(state.communications[0].status, "cancelled");
+  const queued = await queueMessage({company_id:"co",customer_id:"c",quote_id:"q"}, "email", {channel:"email",category:"transactional",subject:"Test",body:"Review {{quote_link}}"}, "draft-block-test", "automation:test", undefined, "r");
+  assert.equal(queued.status, "failed");
+  assert.equal(state.document_links.length, 0);
+});
+test("draft quote can still be sent only through explicit document delivery", async () => {
+  defaults(); state.quotes[0].data.status = "Draft";
+  await deliver(message({quote_id:"q",reason:"document_delivery"}));
+  assert.equal(providerCalls, 1);
+  assert.equal(state.communications[0].status, "sent");
+});
