@@ -48,7 +48,7 @@ test("quote presentation renders logo, contacts, scope, saved add-ons and no-pay
     assert.match(invoiceHtml,/Rough-in/);assert.match(invoiceHtml,/Lot 12/);
     assert.doesNotMatch(invoiceHtml,/pay-amount|partial payment|<input/);
     const feeHtml=renderInvoice(true);
-    assert.match(feeHtml,/up to 3%/);assert.match(feeHtml,/Debit and prepaid cards have no surcharge/);
+    assert.match(feeHtml,/up to 3%/);assert.match(feeHtml,/Cash, check, debit and prepaid have no added fee/);
     assert.match(feeHtml,/CONTINUE TO SECURE CHECKOUT/);assert.match(feeHtml,/Credit-card fee: \$30.00/);assert.match(feeHtml,/\$1,030.00/);
     const pending = render("Quote Sent").html;
     assert.match(pending, /alt="Air King logo"/);

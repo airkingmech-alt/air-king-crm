@@ -2,6 +2,7 @@ import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import {createClient} from '@supabase/supabase-js';
+import WebSocket from 'ws';
 import {registerCrm} from '../server/crm/routes';
 import {updateVersioned} from '../shared/versioned-save';
 import {prepareInvoiceLines,saveInvoiceThenSend} from '../shared/invoice-workflow';
@@ -28,7 +29,7 @@ globalThis.fetch=async(input:any,init?:any)=>{
  }
  return response(row);
 };
-const client=createClient(process.env.SUPABASE_URL,'test-key',{auth:{persistSession:false,autoRefreshToken:false}});
+const client=createClient(process.env.SUPABASE_URL,'test-key',{auth:{persistSession:false,autoRefreshToken:false},realtime:{transport:WebSocket as any}});
 const app=express();app.use(express.json());registerCrm(app);
 let server:ReturnType<typeof app.listen>,base:string;
 before(async()=>{server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.on('listening',r));base=`http://127.0.0.1:${(server.address() as any).port}`;});
