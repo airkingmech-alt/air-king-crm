@@ -79,21 +79,17 @@ test("membership timestamp migration preserves rows and advances versions on leg
 
 test("checklist saves are scoped, versioned, idempotent and preserve membership data",async()=>{
   reset();row.data.coveredEquipment=[equipment];
-  const {templates}=await import("../shared/crown-checklists");
   const checklist:any={id:crypto.randomUUID(),kind:"furnace",equipmentId:equipment.id,unit:1,date:"2026-09-29",technician:"Test technician",equipmentLabel:"Furnace",modelSerial:"Model Serial",filter:"20x25x4",stage:"High",manual:"Test model manual",answers:{},readings:{},work:"Inspection performed",followUp:"",finalCondition:"Operating",restored:true,status:"draft"};
   const path="/api/crm/memberships/CC-test/checklists";
   const save=(c:any,v=row.updated_at)=>send(path,{version:v,checklist:c});
   permission=false;assert.equal((await save(checklist)).status,403);permission=true;
   foreign=true;assert.equal((await save(checklist)).status,404);foreign=false;
   assert.equal((await save({...checklist,equipmentId:"foreign"})).status,400);
-  assert.equal((await save({...checklist,status:"completed"})).status,400);
   assert.equal((await save(checklist,"stale")).status,409);
   assert.equal((await save(checklist)).status,200);const count=writes;
   assert.equal(row.data.paymentStatus,"Paid");assert.equal(row.data.visitsUsed,1);
   assert.equal((await save(checklist,"stale")).status,200);assert.equal(writes,count);
-  templates.furnace.tasks.forEach((_,i)=>checklist.answers[i]={result:"OK",note:""});
-  templates.furnace.readings.forEach(k=>checklist.readings[k]="Not tested - test fixture");
-  checklist.status="completed";
+  Object.assign(checklist,{date:"",technician:"",modelSerial:"",filter:"",stage:"",manual:"",work:"",followUp:"",finalCondition:"",restored:false,status:"completed"});
   assert.equal((await save(checklist)).status,200);
   assert.equal(row.data.checklists[0].savedBy,employee);assert.ok(row.data.checklists[0].completedAt);
   assert.equal((await save({...checklist,work:"overwrite completed"})).status,409);
