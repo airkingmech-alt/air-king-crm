@@ -1,4 +1,5 @@
 import { CrownChecklists } from "@/components/crown-checklists";
+import { membershipSummary } from "../../../shared/dashboard";
 import { guardSave } from "@/lib/confirmed-save";
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -136,11 +137,7 @@ export default function CrownCare() {
     const daysUntil = Math.round((renewalDate.getTime() - today.getTime()) / 86400000);
     return daysUntil >= 0 && daysUntil <= 45;
   }).length;
-  const unbookedVisits = activeMemberships.filter((m) => {
-    const springUnbooked = !m.springVisit || m.springVisit.status === "Not Scheduled";
-    const fallUnbooked = !m.fallVisit || m.fallVisit.status === "Not Scheduled";
-    return springUnbooked || fallUnbooked;
-  }).length;
+  const unbookedVisits = membershipSummary(memberships).unbooked;
 
   const selectedCustomer = customers.find((c) => c.id === form.customer);
   const filteredCustomers = customers.filter((c) =>

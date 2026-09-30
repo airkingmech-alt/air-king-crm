@@ -10,7 +10,7 @@ export function receiptsThisMonth(payments:any[],now=new Date()){
 }
 export function membershipSummary(memberships:any[]){
   const active=memberships.filter(m=>m.status==="Active");
-  return {annualCents:active.reduce((n,m)=>n+membershipPriceCents(m)*(m.billingFrequency==="Monthly"?12:1),0),unbooked:active.reduce((n,m)=>n+[m.springVisit,m.fallVisit].filter(v=>v?.status==="Unscheduled").length,0)};
+  return {annualCents:active.reduce((n,m)=>n+membershipPriceCents(m)*(m.billingFrequency==="Monthly"?12:1),0),unbooked:active.reduce((n,m)=>n+[m.springVisit,m.fallVisit].filter(v=>!v || ["Unscheduled","Not Scheduled"].includes(v.status)).length,0)};
 }
 
 // Draft/void/settled invoices never belong in collections, even with stale balances.

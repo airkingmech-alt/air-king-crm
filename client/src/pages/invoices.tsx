@@ -1,4 +1,6 @@
 import { isUnpaidInvoice } from "../../../shared/dashboard";
+import { useQuery } from "@tanstack/react-query";
+import { canAccess } from "../../../shared/access";
 import { prepareInvoiceLines, saveInvoiceThenSend } from "../../../shared/invoice-workflow";
 import { guardSave } from "@/lib/confirmed-save";
 import { DocumentActions } from "@/components/document-actions";
@@ -88,6 +90,13 @@ const statusConfig: Record<InvoiceStatus, { color: string; badge: string }> = {
 export default function Invoices() {
   const { toast } = useToast();
   const { profile } = useAuth();
+  const reportsAllowed = canAccess(profile, "reports") && canAccess(profile, "invoices");
+  const receipts = useQuery({
+    queryKey: ["receipt-summary", profile?.id],
+    queryFn: () => crm("crm/reports/receipts"),
+    enabled: reportsAllowed,
+    refetchInterval: 30000,
+  });
   const { invoices, createInvoice, customers, workOrders } = useData();
   const [, navigate] = useLocation();
   const initialJobId = new URLSearchParams(window.location.hash.split("?")[1] || "").get("job");
@@ -143,9 +152,6 @@ export default function Invoices() {
   const totalOutstanding = invoices
     .filter((inv) => ["Sent", "Partial", "Overdue"].includes(inv.status))
     .reduce((sum, inv) => sum + (inv.amount - inv.paidAmount), 0);
-  const totalPaid = invoices
-    .filter((inv) => inv.status === "Paid")
-    .reduce((sum, inv) => sum + inv.paidAmount, 0);
   const overdueCount = invoices.filter(
     (inv) => inv.status === "Overdue",
   ).length;
@@ -279,7 +285,7 @@ export default function Invoices() {
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Collected (MTD)</p>
             <p className="text-xl font-bold text-emerald-600 mt-1">
-              {fmtCurrency(totalPaid)}
+              {!reportsAllowed ? "Restricted" : receipts.isError ? "Unavailable" : receipts.isPending ? "…" : fmtCurrency(receipts.data.monthToDateCents / 100)}
             </p>
           </CardContent>
         </Card>
