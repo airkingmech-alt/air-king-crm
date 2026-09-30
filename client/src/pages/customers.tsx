@@ -1,3 +1,4 @@
+import { UNKNOWN_LEAD_SOURCE } from "../../../shared/customer-lead-source";
 import { guardSave } from "@/lib/confirmed-save";
 import { useState } from "react";
 import { Link } from "wouter";
@@ -63,7 +64,7 @@ export default function Customers() {
     city: "Kansas City",
     state: "MO",
     zip: "",
-    leadSource: "Google Ads",
+    leadSource: UNKNOWN_LEAD_SOURCE,
   });
 
   const filtered = customers.filter((c) => {
@@ -108,7 +109,7 @@ export default function Customers() {
       city: "Kansas City",
       state: "MO",
       zip: "",
-      leadSource: "Google Ads",
+      leadSource: UNKNOWN_LEAD_SOURCE,
     });
   });
 
@@ -299,10 +300,11 @@ export default function Customers() {
                   value={form.leadSource}
                   onValueChange={(v) => setForm({ ...form, leadSource: v })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger data-testid="select-customer-lead-source">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={UNKNOWN_LEAD_SOURCE}>Unknown / not recorded</SelectItem>
                     <SelectItem value="Google Ads">Google Ads</SelectItem>
                     <SelectItem value="Referral">Referral</SelectItem>
                     <SelectItem value="Walk-in">Walk-in</SelectItem>

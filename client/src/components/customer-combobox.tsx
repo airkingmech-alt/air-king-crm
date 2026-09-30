@@ -1,3 +1,4 @@
+import { UNKNOWN_LEAD_SOURCE } from "../../../shared/customer-lead-source";
 import { guardSave } from "@/lib/confirmed-save";
 import { useState } from "react";
 import { ChevronDown, UserPlus } from "lucide-react";
@@ -57,7 +58,7 @@ export function CustomerCombobox({
     city: "Kansas City",
     state: "MO",
     zip: "",
-    leadSource: "Google Ads",
+    leadSource: UNKNOWN_LEAD_SOURCE,
   });
 
   const selected = customers.find((c) => c.id === value);
@@ -98,7 +99,7 @@ export function CustomerCombobox({
     onChange(created.id);
     setSearch(created.name);
     setShowNewForm(false);
-    setNewCustomer({ name: "", type: "Residential", phone: "", email: "", address: "", city: "Kansas City", state: "MO", zip: "", leadSource: "Google Ads" });
+    setNewCustomer({ name: "", type: "Residential", phone: "", email: "", address: "", city: "Kansas City", state: "MO", zip: "", leadSource: UNKNOWN_LEAD_SOURCE });
     setOpen(false);
     toast({ title: "Customer added", description: `${created.name} has been added and selected.` });
   });

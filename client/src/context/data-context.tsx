@@ -8,6 +8,9 @@ import {
   type ReactNode,
 } from "react";
 import { toast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
+import { cacheSavedCustomerNote, saveCustomerNote, type CustomerNote } from "../../../shared/customer-notes";
+import { normalizeLeadSource } from "../../../shared/customer-lead-source";
 import { useAuth } from "@/context/auth-context";
 import { canAccess } from "../../../shared/access";
 import { saveRecords, type RecordWrite } from "@/lib/confirmed-save";
@@ -20,16 +23,10 @@ import {
   type CrownCareMembership,
 } from "@/data/mock-data";
 import { pricebook } from "@/data/pricebook";
+import { crownVisitLink } from "../../../shared/crown-scheduling";
+import { saveCrownVisit } from "@/lib/crown-scheduling";
 
 // === Types ===
-export interface CustomerNote {
-  id: string;
-  customerId: string;
-  text: string;
-  author: string;
-  date: string;
-}
-
 export interface CustomerPhoto {
   id: string;
   customerId: string;
@@ -49,7 +46,7 @@ export interface NewCustomerData {
   city: string;
   state: string;
   zip: string;
-  leadSource: string;
+  leadSource?: string;
 }
 
 interface DataContextValue {
@@ -57,17 +54,17 @@ interface DataContextValue {
   workOrders: WorkOrder[];
   invoices: Invoice[];
   quotes: Quote[];
-  notes: CustomerNote[];
   photos: CustomerPhoto[];
   loading: boolean;
   loadError: string | null;
 
   addCustomer: (data: NewCustomerData, leadId?: string) => Promise<Customer>;
-  getNotes: (customerId: string) => CustomerNote[];
   addNote: (customerId: string, text: string) => Promise<void>;
   getPhotos: (customerId: string) => CustomerPhoto[];
   addPhoto: (customerId: string, file: File) => Promise<void>;
   createWorkOrder: (data: {
+    membershipId?: string;
+    membershipSeason?: "spring" | "fall";
     customerId: string;
     customerName: string;
     type: string;
@@ -122,9 +119,11 @@ const DataContext = createContext<DataContextValue | null>(null);
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const { profile } = useAuth();
+  const queryClient = useQueryClient();
   const [loadError,setLoadError]=useState<string|null>(null);
   const actor=profile?.full_name || "Staff member";
   const pendingCreates=useRef(new Map<string,string>());
+  const crownMutationVersion = useRef(0);
   const createId=(prefix:string,input:unknown)=>{const key=prefix+JSON.stringify(input);let id=pendingCreates.current.get(key);if(!id){id=uid(prefix);pendingCreates.current.set(key,id);}return id;};
   const finishCreate=(prefix:string,input:unknown)=>pendingCreates.current.delete(prefix+JSON.stringify(input));
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -133,10 +132,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [memberships, setMemberships] =
     useState<CrownCareMembership[]>([]);
-  const [notes, setNotes] = useState<CustomerNote[]>([]);
   const [photos, setPhotos] = useState<CustomerPhoto[]>([]);
   const [loading, setLoading] = useState(true);
-  const loadedNotes=useRef(new Set<string>());
   const loadedPhotos=useRef(new Set<string>());
 
   // Refs mirror latest state so update handlers can read the full entity
@@ -158,13 +155,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled=false;
     const load=async()=>{
+      const crownVersion = crownMutationVersion.current;
       const specs=[['customers','customers',setCustomers],['work_orders','schedule',setWorkOrders],['invoices','invoices',setInvoices],['quotes','quotes',setQuotes],['memberships','memberships',setMemberships]] as const;
       try {
         for(const [table,feature,setter] of specs){
           if(!canAccess(profile,feature)){if(!cancelled)(setter as any)([]);continue;}
           const rows:any[]=[];
           for(let start=0;;start+=500){const {data,error}=await supabase.from(table).select('data').order('id').range(start,start+499);if(error)throw error;rows.push(...(data || []));if(!data || data.length<500)break;}
-          if(!cancelled)(setter as any)(extractEntities(rows));
+          // Do not let a pre-save response undo a confirmed paired booking.
+          if(!cancelled && (!(table === "memberships" || table === "work_orders") || crownVersion === crownMutationVersion.current))
+            (setter as any)(extractEntities(rows));
         }
         if(!cancelled)setLoadError(null);
       }catch(e:any){if(!cancelled)setLoadError('Some records could not be refreshed. Reconnect and refresh before editing. '+e.message);}
@@ -173,32 +173,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     void load();const timer=setInterval(load,30000);window.addEventListener('crm-refresh',load);
     return()=>{cancelled=true;clearInterval(timer);window.removeEventListener('crm-refresh',load);};
   },[profile?.id,profile?.role,JSON.stringify(profile?.permissions)]);
-
-  const loadNotes = useCallback(async (customerId: string) => {
-    loadedNotes.current.add(customerId);
-    try {
-      const { data, error } = await supabase
-        .from("customer_notes")
-        .select("id, customer_id, text, author, date")
-        .eq("customer_id", customerId);
-      if (error) throw error;
-      if (Array.isArray(data)) {
-        const mapped: CustomerNote[] = data.map((n: any) => ({
-          id: n.id,
-          customerId: n.customer_id,
-          text: n.text,
-          author: n.author,
-          date: n.date,
-        }));
-        setNotes((prev) => {
-          const filtered = prev.filter((x) => x.customerId !== customerId);
-          return [...mapped, ...filtered];
-        });
-      }
-    } catch (err) {
-      toast({title:"Could not load customer notes",description:"Refresh the page to retry.",variant:"destructive"});
-    }
-  }, []);
 
   const loadPhotos = useCallback(async (customerId: string) => {
     loadedPhotos.current.add(customerId);
@@ -253,7 +227,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           gateCode: "",
         },
       ],
-      leadSource: data.leadSource,
+      leadSource: normalizeLeadSource(data.leadSource),
       leadStatus: "New",
       createdAt: new Date().toISOString().slice(0, 10),
       tags: [],
@@ -262,7 +236,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           id: `act-${id}`,
           type: "note",
           title: "Customer created",
-          description: `Added via CRM — lead source: ${data.leadSource}`,
+          description: `Added via CRM — lead source: ${normalizeLeadSource(data.leadSource)}`,
           date: new Date().toISOString().slice(0, 10),
           user: actor,
         },
@@ -279,23 +253,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return saved;
   }, [actor]);
 
-  const getNotes = useCallback(
-    (customerId: string): CustomerNote[] => {
-      const hasLoaded = loadedNotes.current.has(customerId);
-      if (!hasLoaded) loadNotes(customerId);
-      return notes.filter((n) => n.customerId === customerId);
-    },
-    [notes, loadNotes],
-  );
-
   const addNote = useCallback(async (customerId: string, text: string) => {
-    const id=createId('note-',{customerId,text});
-    const note:CustomerNote={id,customerId,text,author:actor,date:new Date().toISOString().slice(0,10)};
-    const {error}=await supabase.from('customer_notes').upsert({id,company_id:profile?.company_id,customer_id:customerId,text,author:actor,date:note.date},{onConflict:'id',ignoreDuplicates:true});
-    if(error)throw new Error(error.message);
-    finishCreate('note-',{customerId,text});
-    setNotes(prev=>[note,...prev.filter(n=>n.id!==id)]);
-  }, [actor,profile?.company_id]);
+    const input = { customerId, text: text.trim() };
+    const id = createId("note-", input);
+    const note: CustomerNote = { id, ...input, author: actor, date: new Date().toISOString().slice(0, 10) };
+    const saved = await saveCustomerNote(supabase, profile?.company_id || "", note);
+    await cacheSavedCustomerNote(queryClient, profile?.id || "", profile?.company_id || "", saved);
+    finishCreate("note-", input);
+  }, [actor, profile?.id, profile?.company_id, queryClient]);
 
   const getPhotos = useCallback(
     (customerId: string): CustomerPhoto[] => {
@@ -368,6 +333,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const createWorkOrder = useCallback(
     async (data: {
+      membershipId?: string;
+      membershipSeason?: "spring" | "fall";
       customerId: string;
       customerName: string;
       type: string;
@@ -377,6 +344,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       quoteId?: string;
       scheduledDate?:string; scheduledTime?:string; technician?:string; priority?:WorkOrder["priority"];
     }): Promise<WorkOrder> => {
+      const linked = data.membershipId !== undefined || data.membershipSeason !== undefined;
+      if (linked) crownVisitLink.parse(data);
       const wo: WorkOrder = {
         id: createId("WO-",data),
         customerId: data.customerId,
@@ -384,7 +353,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         property: data.property,
         type: data.type,
         projectName: data.projectName?.trim() || undefined,
-        status: data.technician ? "Scheduled" : "Unscheduled",
+        status: linked || data.technician ? "Scheduled" : "Unscheduled",
         scheduledDate: data.scheduledDate || new Date(Date.now() + 7 * 86400000)
           .toISOString()
           .slice(0, 10),
@@ -393,12 +362,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
         priority: data.priority || "Normal",
         description: data.description,
         quoteId: data.quoteId,
+        ...(linked ? { membershipId: data.membershipId, membershipSeason: data.membershipSeason } : {}),
       };
-      await saveRecords([{table:"work_orders",id:wo.id,data:wo}]);
+      let saved = wo;
+      if (linked) {
+        // This RPC commits the appointment and seasonal slot together. A missing
+        // migration fails here instead of claiming that only half was saved.
+        const result = await saveCrownVisit((name, args) => supabase.rpc(name, args), wo);
+        saved = result.workOrder;
+        crownMutationVersion.current++;
+        setMemberships(previous => [result.membership, ...previous.filter(m => m.id !== result.membership.id)]);
+      } else {
+        [saved] = await saveRecords([{table:"work_orders",id:wo.id,data:wo}]);
+      }
       finishCreate("WO-",data);
-      workOrdersRef.current=[wo,...workOrdersRef.current.filter(w=>w.id!==wo.id)];
+      workOrdersRef.current=[saved,...workOrdersRef.current.filter(w=>w.id!==saved.id)];
       setWorkOrders(workOrdersRef.current);
-      return wo;
+      return saved;
     },
     [],
   );
@@ -617,6 +597,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const [saved]=await saveRecords([{table:"work_orders",id:workOrderId,data:updated,previous:current}]);
       workOrdersRef.current=workOrdersRef.current.map(wo=>wo.id===workOrderId?saved:wo);
       setWorkOrders(workOrdersRef.current);
+      if (saved.membershipId) {
+        crownMutationVersion.current++;
+        window.dispatchEvent(new Event("crm-refresh"));
+      }
     },
     [],
   );
@@ -663,12 +647,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     workOrders,
     invoices,
     quotes,
-    notes,
     photos,
     loading,
     loadError,
     addCustomer,
-    getNotes,
     addNote,
     getPhotos,
     addPhoto,

@@ -1,3 +1,5 @@
+import { useCustomerNotes } from "@/lib/customer-notes";
+import { normalizeLeadSource } from "../../../shared/customer-lead-source";
 import { LaborDescriptionBuilder } from "@/components/labor-description-builder";
 import { DeleteRecord } from "@/components/delete-record";
 import { sellingPriceFromCost } from "@/lib/pricebook-utils";
@@ -105,7 +107,6 @@ export default function CustomerDetail() {
   const { toast } = useToast();
   const {
     customers,
-    notes: contextNotes,
     getPhotos,
     addNote,
     addPhoto,
@@ -152,7 +153,16 @@ export default function CustomerDetail() {
   const customerInvoices = invoices.filter(
     (invoice) => invoice.customerId === id,
   );
-  const customerNotes = contextNotes.filter((n) => n.customerId === id);
+  const notesQuery = useCustomerNotes(id || "");
+  const customerNotes = notesQuery.data || [];
+  const notesFeedback = notesQuery.isPending ? (
+    <p role="status" className="text-xs text-muted-foreground py-3">Loading customer notes…</p>
+  ) : notesQuery.isError ? (
+    <div role="alert" className="text-xs text-destructive py-3">
+      <p>Could not load customer notes. {notesQuery.error.message}</p>
+      <Button size="sm" variant="outline" className="mt-2" onClick={() => void notesQuery.refetch()}>Retry loading notes</Button>
+    </div>
+  ) : null;
   const customerPhotos = getPhotos(id || "");
 
   // Equipment filtering
@@ -357,7 +367,7 @@ export default function CustomerDetail() {
                 <Badge className="text-xs">{customer.leadStatus}</Badge>
               </div>
               <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
-                <span>Lead source: {customer.leadSource}</span>
+                <span>Lead source: {normalizeLeadSource(customer.leadSource)}</span>
                 <span>·</span>
                 <span>Customer since {customer.createdAt}</span>
               </div>
@@ -524,6 +534,7 @@ export default function CustomerDetail() {
               </Button>
             </CardHeader>
             <CardContent>
+              {notesFeedback}
               {customerNotes.length > 0 ? (
                 <div className="space-y-3">
                   {customerNotes.map((note) => (
@@ -558,11 +569,11 @@ export default function CustomerDetail() {
                     </div>
                   ))}
                 </div>
-              ) : (
+              ) : !notesQuery.isPending && !notesQuery.isError ? (
                 <p className="text-xs text-muted-foreground text-center py-4">
                   No notes yet. Add a note or scan a nameplate in Properties & Equipment.
                 </p>
-              )}
+              ) : null}
             </CardContent>
           </Card>
         </TabsContent>
@@ -869,6 +880,7 @@ export default function CustomerDetail() {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {notesFeedback}
               <div className="relative space-y-4">
                 {customerNotes.map((note) => (
                   <div key={note.id} className="flex gap-3">

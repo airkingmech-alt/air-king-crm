@@ -13,7 +13,7 @@ async function access(req: Request) {
   const profile = await result(db().from("profiles").select("permissions").eq("id", user.id).single());
   if (user.role !== "owner" && profile.permissions?.schedule === false)
     throw Object.assign(new Error("Schedule access is disabled. Ask the owner."), { status: 403 });
-  return user;
+  return { ...user, permissions: profile.permissions };
 }
 async function companyJobs(company: string) {
   const rows: any[] = [];
@@ -39,6 +39,8 @@ export function registerScheduling(app: Express) {
     const user = await access(req);
     const body = z.object({ change: scheduleChange, version: z.string(), allowConflict: z.boolean().default(false) }).parse(req.body);
     const row = await entity("work_orders", String(req.params.id), user.company);
+    if (row.data.membershipId && user.role !== "owner" && user.permissions?.memberships === false)
+      throw Object.assign(new Error("Crown Care access is disabled. Ask the owner."), { status: 403 });
     if (["Completed", "Cancelled"].includes(row.data.status)) throw new Error("Closed jobs cannot be moved.");
     if (hash(JSON.stringify(row.data)) !== body.version) throw Object.assign(new Error("This job changed. Refresh and try again."), { status: 409 });
     if (body.change.technicianId) {

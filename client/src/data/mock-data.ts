@@ -138,6 +138,8 @@ export interface Quote {
 }
 
 export interface WorkOrder {
+  membershipId?: string;
+  membershipSeason?: "spring" | "fall";
   projectName?: string;
   id: string;
   customerId: string;
@@ -190,8 +192,8 @@ export interface CrownCareMembership {
   autoRenew: boolean;
   visitsIncluded: number;
   visitsUsed: number;
-  springVisit?: { status: string; scheduledDate?: string };
-  fallVisit?: { status: string; scheduledDate?: string };
+  springVisit?: import("../../../shared/crown-scheduling").CrownVisit;
+  fallVisit?: import("../../../shared/crown-scheduling").CrownVisit;
   status: "Active" | "Expired" | "Cancelled";
 }
 
