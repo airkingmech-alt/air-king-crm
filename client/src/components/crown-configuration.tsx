@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import type { Customer } from "@/data/mock-data";
+import type { CustomerRecord as Customer } from "@/data/customer-record";
 import { coverageTypes,type CrownConfiguration,type CoveredEquipment } from "../../../shared/crown-care";
 const selectClass="block w-full rounded-md border bg-background p-2 text-sm";
 export const crownMoney=(cents:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(cents/100);

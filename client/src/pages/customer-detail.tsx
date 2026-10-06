@@ -1,3 +1,4 @@
+import { CustomerImportSummary, CustomerBillingAddress, CustomerContactChannels } from "@/components/customer-import-details";
 import { useCustomerNotes } from "@/lib/customer-notes";
 import { normalizeLeadSource } from "../../../shared/customer-lead-source";
 import { LaborDescriptionBuilder } from "@/components/labor-description-builder";
@@ -368,13 +369,15 @@ export default function CustomerDetail() {
                 <Badge variant="outline" className="text-xs">
                   {customer.type}
                 </Badge>
-                <Badge className="text-xs">{customer.leadStatus}</Badge>
+                {customer.leadStatus && <Badge className="text-xs">{customer.leadStatus}</Badge>}
+                {customer.sourceStatus && <Badge variant="outline" className="text-xs">{customer.sourceStatus}</Badge>}
               </div>
               <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
                 <span>Lead source: {normalizeLeadSource(customer.leadSource)}</span>
                 <span>·</span>
-                <span>Customer since {customer.createdAt}</span>
+                <span>Customer since {customer.createdAt || "Not recorded"}</span>
               </div>
+              <CustomerImportSummary customer={customer} />
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {customer.tags.map((tag) => (
                   <Badge
@@ -450,7 +453,7 @@ export default function CustomerDetail() {
                         .join("")}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{contact.name}</p>
+                      <p className="text-sm font-medium">{contact.name || contact.role || "Contact"}</p>
                       <p className="text-xs text-muted-foreground">
                         {contact.role}
                       </p>
@@ -467,24 +470,22 @@ export default function CustomerDetail() {
                 ))}
                 <div className="text-xs text-muted-foreground space-y-1 pt-2">
                   {customer.contacts.map((c, i) => (
-                    <div key={i} className="flex items-center gap-1.5">
-                      <Phone size={11} /> {c.phone}
-                      <span className="mx-1">·</span>
-                      <Mail size={11} /> {c.email}
-                    </div>
+                    <CustomerContactChannels key={i} contact={c} />
                   ))}
                 </div>
               </CardContent>
             </Card>
 
+            <CustomerBillingAddress customer={customer} />
             {/* Properties */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-semibold">
-                  Properties
+                  Service addresses
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                {customer.properties.length === 0 && <p className="text-sm text-muted-foreground">No service address recorded</p>}
                 {customer.properties.map((prop) => (
                   <div key={prop.id} className="space-y-1">
                     <div className="flex items-start gap-2">

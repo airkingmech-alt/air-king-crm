@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useData } from "@/context/data-context";
-import type { Customer } from "@/data/mock-data";
+import type { CustomerRecord as Customer } from "@/data/customer-record";
 
 interface CustomerComboboxProps {
   value: string;
