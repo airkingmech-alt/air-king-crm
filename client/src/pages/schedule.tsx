@@ -1,3 +1,5 @@
+import { ServiceAddressActions } from "@/components/service-address-actions";
+import { jobServiceAddress } from "../../../shared/service-address";
 import { jobDuration } from "../../../shared/scheduling";
 import { guardSave } from "@/lib/confirmed-save";
 import { useEffect, useRef, useState } from "react";
@@ -472,8 +474,9 @@ export default function Schedule() {
                     </Link>
                     <p className="text-xs text-muted-foreground">{wo.type}{wo.projectName ? ` · ${wo.projectName}` : ""}</p>
                     <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                      <MapPin size={11} /> {wo.property}
+                      <MapPin size={11} /> {jobServiceAddress(wo, customers.find(c => c.id === wo.customerId)?.properties) || wo.property}
                     </p>
+                    <ServiceAddressActions address={jobServiceAddress(wo, customers.find(c => c.id === wo.customerId)?.properties)} />
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {wo.description}
                     </p>
