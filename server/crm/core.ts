@@ -1,3 +1,4 @@
+import { addOnServices } from "../../shared/quote-addons";
 import {
   createClient,
   type SupabaseClient,
@@ -191,26 +192,32 @@ export function publicFields(kind: string, data: Row): Row {
   return {
     number: data.id,
     customerName: data.customerName,
-    title: data.title,
-    scope: data.laborDescription || data.title,
+    title: data.acceptedScope?.title || data.title,
+    scope: data.acceptedScope?.laborDescription || data.laborDescription || data.title,
     status: data.status,
     expiresAt: data.expiresAt,
     createdAt: data.createdAt,
     jobType: data.jobType,
-    selectedOption: data.selectedOption,
-    selectedAddOns: data.selectedAddOns || [],
+    selectedOption: data.acceptedScope?.selectedOption || data.selectedOption,
+    selectedAddOns: data.acceptedScope?.selectedAddOns || data.selectedAddOns || [],
+    addOnCatalog: data.status === "Won" ? (data.acceptedScope?.addOns || []) : (data.addOnCatalog || addOnServices),
+    acceptedAmount: data.acceptedScope?.amount,
+    legacyAcceptance: data.status === "Won" && !data.acceptedScope,
     equipmentItems: data.equipmentItems || [],
     equipmentSelectionMode: data.equipmentSelectionMode,
-    options: (data.options || []).map((o: Row) => ({
+    options: (data.options || []).map((original: Row) => {
+      const o = data.acceptedScope?.selectedOption === original.tier ? data.acceptedScope.option : original;
+      return ({
       tier: o.tier,
       label: o.label,
       equipment: o.equipment,
+      equipmentSummary: o.equipmentSummary,
       equipmentItems: o.equipmentItems,
       efficiency: o.efficiency,
       features: o.features,
       customerPrice: o.customerPrice,
       isPopular: o.isPopular,
-    })),
+    }); }),
   };
 }
 export const mergeFields = [

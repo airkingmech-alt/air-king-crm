@@ -73,7 +73,8 @@ test("actual AC options price each model with shared indoor equipment, labor, ma
   }
   assert.match(q.options[2].equipment,/4-ton, two-stage/);
   assert.match(q.options[2].features.join(),/3.5 to 4 tons/);
-  assert.doesNotMatch(JSON.stringify(q),/XC642|Wi-Fi/);
+  assert.doesNotMatch(JSON.stringify(q.options),/XC642|Wi-Fi/);
+  assert.deepEqual(q.selectedAddOns, [], "Optional catalog does not add unselected items to the package");
   const duplicateCoil=buildQuoteOptions(input,[...pricebook,{...pricebook.find(item=>item.id==="chp-ec48c")!,id:"duplicate-coil"}]);
   assert.deepEqual(duplicateCoil.options.map(o=>o.tier),["Good","Better"]);
   const noCoil=buildQuoteOptions(input,pricebook.filter(item=>item.id!=="chp-ec48c"));

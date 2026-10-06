@@ -3,7 +3,7 @@ import { guardSave } from "@/lib/confirmed-save";
 import { QuoteHeader, QuoteGuide, QuoteFooter } from "@/components/branded-quote";
 import { DocumentActions } from "@/components/document-actions";
 import { useLocation, useParams, Link } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   ArrowLeft,
   Check,
@@ -64,31 +64,26 @@ const addOnIcons: Record<string, typeof Wind> = {
 export default function Proposal() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
-  const { createInvoice, quotes, invoices, workOrders } = useData();
+  const { quotes, invoices, workOrders } = useData();
   const [, setLocation] = useLocation();
   const quote = quotes.find((q) => q.id === id);
   const [selectedTier, setSelectedTier] = useState<string | null>(null);
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([]);
-  const [accepted, setAccepted] = useState(false);
+  const [showRevisionDialog, setShowRevisionDialog] = useState(false);
+  const [revising, setRevising] = useState(false);
+  const activeQuoteId = useRef(id);
+  activeQuoteId.current = id;
+  const revisionRequest = useRef<{ quoteId: string; requestId: string }>();
   const [showSendDialog, setShowSendDialog] = useState(false);
   const [sendTarget, setSendTarget] = useState({ email: "", phone: "" });
   const [converting, setConverting] = useState(false);
 
-  // Sync accepted state and auto-select tier when quote loads
+  // A newly opened quote must not inherit the previous quote's local choices.
   useEffect(() => {
-    setSelectedAddOns(quote?.selectedAddOns || []);
-    if (quote?.status === "Won") {
-      setAccepted(true);
-      // Auto-select Better tier if none selected
-      setSelectedTier(
-        quote.selectedOption ||
-          quote.options.find((o) => o.tier === "Better")?.tier ||
-          quote.options[0]?.tier ||
-          null,
-      );
-      setSelectedAddOns(quote.selectedAddOns || []);
-    }
-  }, [quote?.id,quote?.status]);
+    setSelectedAddOns(quote?.acceptedScope?.selectedAddOns || quote?.selectedAddOns || []);
+    setSelectedTier(quote?.acceptedScope?.selectedOption || quote?.selectedOption || null);
+    setShowRevisionDialog(false);
+  }, [quote?.id, quote?.status, quote?.acceptedScope]);
 
   if (!quote) {
     return (
@@ -103,7 +98,11 @@ export default function Proposal() {
     );
   }
 
+  const accepted = quote.status === "Won";
+  const acceptedScope = quote.acceptedScope;
+  const quoteAddOns = accepted ? (acceptedScope?.addOns || []) : (quote.addOnCatalog || addOnServices);
   const toggleAddOn = (addonId: string) => {
+    if (accepted) return;
     setSelectedAddOns((prev) =>
       prev.includes(addonId)
         ? prev.filter((x) => x !== addonId)
@@ -121,23 +120,14 @@ export default function Proposal() {
   };
 
   const selectedOption = quote.options.find((o) => o.tier === selectedTier);
-  const quoteMoney = quote.pricingVersion === "purchase-tax-v1" ? fmtCurrencyExact : fmtCurrency;
+  const billingOption = acceptedScope?.option || selectedOption;
+  const quoteMoney = (accepted || quote.pricingVersion === "purchase-tax-v1") ? fmtCurrencyExact : fmtCurrency;
   const costOption = selectedOption || quote.options.find(o => o.equipmentItems?.join() === quote.equipmentItems?.join()) || quote.options[0];
-  const addOnTotal = addOnServices
-    .filter((a: (typeof addOnServices)[number]) =>
-      selectedAddOns.includes(a.id),
-    )
-    .reduce(
-      (sum: number, a: (typeof addOnServices)[number]) => sum + a.price,
-      0,
-    );
-  const grandTotal = (selectedOption?.customerPrice || 0) + addOnTotal;
-  const selectedAddOnDetails = addOnServices.filter((addOn) =>
-    selectedAddOns.includes(addOn.id),
-  );
+  const addOnTotal = quoteAddOns.filter(a => selectedAddOns.includes(a.id)).reduce((sum, a) => sum + a.price, 0);
+  const grandTotal = acceptedScope?.amount ?? ((selectedOption?.customerPrice || 0) + addOnTotal);
   const monthlyEstimate = Math.round(grandTotal / 60); // ~5 year financing estimate
   const invoiceForQuote = invoices.find(
-    (invoice) => invoice.quoteId === quote.id,
+    (invoice) => invoice.quoteId === quote.id || workOrders.some(job => job.quoteId === quote.id && job.id === invoice.workOrderId),
   );
   const workOrderForQuote = workOrders.find(
     (workOrder) => workOrder.quoteId === quote.id,
@@ -147,34 +137,27 @@ export default function Proposal() {
       setLocation(`/invoices/view/${invoiceForQuote.id}`);
       return;
     }
-    if (!selectedOption) return;
-    const equipmentItems = quote.equipmentItems
-      ? getQuoteEquipment(quote, selectedOption.tier).map((item) => item.id)
-      : [];
-    const invoice = await createInvoice({
-      customerId: quote.customerId,
-      customerName: quote.customerName,
-      amount: grandTotal,
-      description: `${quote.title} — ${selectedOption.label} package`,
-      items: [
-        {
-          description: `${selectedOption.label} package — ${quote.title}`,
-          amount: selectedOption.customerPrice,
-        },
-        ...selectedAddOnDetails.map((addOn) => ({
-          description: `Add-on — ${addOn.name}`,
-          amount: addOn.price,
-        })),
-      ],
-      quoteId: quote.id,
-      workOrderId: workOrderForQuote?.id,
-      equipmentItems,
-    });
+    const { invoice } = await crm(`crm/quotes/${quote.id}/invoice`, "POST", {});
+    window.dispatchEvent(new Event("crm-refresh"));
     toast({
       title: "Invoice created",
-      description: `${invoice.id} created for ${quote.customerName} — ${quoteMoney(grandTotal)}.`,
+      description: `${invoice.id} created for ${quote.customerName} — ${quoteMoney(invoice.amount)}.`,
     });
-    setLocation(`/invoices/view/${invoice.id}`);
+    if (activeQuoteId.current === quote.id) setLocation(`/invoices/view/${invoice.id}`);
+  });
+  const createRevision = guardSave("proposal:createRevision", async () => {
+    setRevising(true);
+    try {
+      if (revisionRequest.current?.quoteId !== quote.id) {
+        revisionRequest.current = { quoteId: quote.id, requestId: crypto.randomUUID() };
+      }
+      const { quote: revision } = await crm(`crm/quotes/${quote.id}/revise`, "POST", { requestId: revisionRequest.current.requestId });
+      window.dispatchEvent(new Event("crm-refresh"));
+      if (activeQuoteId.current !== quote.id) return;
+      setShowRevisionDialog(false);
+      toast({ title: "Draft revision created", description: "Review its scope and prices, then obtain fresh approval before invoicing." });
+      setLocation(`/proposals/${revision.id}`);
+    } finally { setRevising(false); }
   });
   const convertQuote = async () => {
     if (!selectedOption || converting) return;
@@ -184,7 +167,6 @@ export default function Proposal() {
         option: selectedOption.tier,
         addons: selectedAddOns,
       });
-      setAccepted(true);
       window.dispatchEvent(new Event("crm-refresh"));
       toast({
         title: "Quote accepted",
@@ -217,6 +199,15 @@ export default function Proposal() {
         }
       `}</style>
       <div className="quote-page max-w-5xl mx-auto px-4 sm:px-8 py-6 proposal-printable">
+        {accepted && <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-slate-900 no-print">
+          <p>{acceptedScope ? "Accepted scope and prices are locked for invoicing." : "This legacy acceptance has no verified price snapshot. Its existing invoice can still be opened; a new invoice requires a reviewed draft revision and fresh approval."}</p>
+          <Button variant="outline" size="sm" className="mt-2" onClick={() => setShowRevisionDialog(true)}>Create draft revision</Button>
+        </div>}
+        <Dialog open={showRevisionDialog} onOpenChange={open => { if (!revising) setShowRevisionDialog(open); }}>
+          <DialogContent><DialogHeader><DialogTitle>Create a draft revision?</DialogTitle>
+            <DialogDescription>Review the new draft's scope, option, add-ons and prices, then obtain fresh approval. The original acceptance, job and any invoice stay in place. Reconcile the existing job and invoice before approving replacement work.</DialogDescription>
+          </DialogHeader><DialogFooter><Button variant="outline" disabled={revising} onClick={() => setShowRevisionDialog(false)}>Cancel</Button><Button disabled={revising} onClick={createRevision}>{revising ? "Creating draft…" : "Create draft for review"}</Button></DialogFooter></DialogContent>
+        </Dialog>
         {/* Header */}
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3 no-print">
           <Link href="/quotes">
@@ -241,7 +232,7 @@ export default function Proposal() {
                   size="sm"
                   className="bg-emerald-600 text-white hover:bg-emerald-700"
                   onClick={createInvoiceFromQuote}
-                  disabled={!selectedOption}
+                  disabled={!invoiceForQuote && !acceptedScope}
                   data-testid="button-create-invoice-corner"
                 >
                   <Receipt size={14} className="mr-1.5" /> Create Invoice
@@ -338,7 +329,8 @@ export default function Proposal() {
                   : "Select a package below to see included equipment"}
               </p>
               <div className="space-y-2">
-                {getQuoteEquipment(quote, selectedTier).map((item) => {
+                {accepted && <p className="text-sm">{acceptedScope?.option.equipmentSummary || acceptedScope?.option.equipment || selectedOption?.equipmentSummary || selectedOption?.equipment || "See the original accepted proposal"}</p>}
+                {(accepted ? [] : getQuoteEquipment(quote, selectedTier)).map((item) => {
                   if (!item) return null;
                   return (
                     <div
@@ -369,7 +361,8 @@ export default function Proposal() {
 
         {/* Good/Better/Best Cards */}
         <div className="quote-options grid grid-cols-1 md:grid-cols-3 gap-5 mb-6 pt-3">
-          {quote.options.map((option) => {
+          {quote.options.map((savedOption) => {
+            const option = acceptedScope?.selectedOption === savedOption.tier ? { ...savedOption, ...acceptedScope.option } : savedOption;
             const isSelected = selectedTier === option.tier;
             return (
               <Card
@@ -429,6 +422,7 @@ export default function Proposal() {
                   <Button
                     className={`w-full ${isSelected ? "bg-primary text-primary-foreground" : ""}`}
                     variant={isSelected ? "default" : "outline"}
+                    disabled={accepted}
                     size="sm"
                   >
                     {isSelected ? (
@@ -450,16 +444,17 @@ export default function Proposal() {
           <CardContent className="p-5">
             <h2 className="text-sm font-semibold mb-1">Enhance Your System</h2>
             <p className="text-xs text-muted-foreground mb-4">
-              Optional add-ons — select to add to your package
+              {accepted ? "Accepted selections are locked. Create a draft revision to make changes." : "Optional add-ons — select to add to your package"}
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {addOnServices.map((addon) => {
+              {quoteAddOns.map((addon) => {
                 const selected = selectedAddOns.includes(addon.id);
                 const Icon = addOnIcons[addon.icon] || Zap;
                 return (
                   <button
                     key={addon.id}
                     onClick={() => toggleAddOn(addon.id)}
+                    disabled={accepted}
                     className={`flex items-start gap-3 p-3 rounded-lg border text-left transition-colors ${
                       selected
                         ? "border-primary bg-primary/5"
@@ -507,18 +502,18 @@ export default function Proposal() {
               <h2 className="text-sm font-semibold mb-3">Your Selection</h2>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span>{selectedOption?.label} Package</span>
+                  <span>{billingOption?.label} Package</span>
                   <span className="font-medium">
-                    {quoteMoney(selectedOption?.customerPrice || 0)}
+                    {quoteMoney(billingOption?.customerPrice || 0)}
                   </span>
                 </div>
                 {selectedAddOns.map((addonId) => {
-                  const addon = addOnServices.find((a) => a.id === addonId);
+                  const addon = quoteAddOns.find((a) => a.id === addonId);
                   return (
                     <div key={addonId} className="flex justify-between text-sm">
-                      <span>{addon?.name}</span>
+                      <span>{addon?.name || addonId}</span>
                       <span className="font-medium">
-                        {fmtCurrency(addon?.price || 0)}
+                        {addon ? quoteMoney(addon.price) : "Price not recorded"}
                       </span>
                     </div>
                   );
@@ -529,14 +524,14 @@ export default function Proposal() {
                     Total Installed Price
                   </span>
                   <span className="text-xl font-extrabold">
-                    {quoteMoney(grandTotal)}
+                    {accepted && !acceptedScope ? "Not verified" : quoteMoney(grandTotal)}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 p-2 rounded-lg bg-sky-50 dark:bg-sky-950/20 text-xs text-sky-700 dark:text-sky-400">
+                {(!accepted || acceptedScope) && <div className="flex items-center gap-2 p-2 rounded-lg bg-sky-50 dark:bg-sky-950/20 text-xs text-sky-700 dark:text-sky-400">
                   <TrendingUp size={14} />
                   Est. {fmtCurrency(monthlyEstimate)}/mo with financing ·
                   Subject to credit approval · Wisetack
-                </div>
+                </div>}
               </div>
 
               <div className="mt-4 space-y-2 no-print">
@@ -566,7 +561,7 @@ export default function Proposal() {
                       <Button
                         className="w-full"
                         onClick={createInvoiceFromQuote}
-                        disabled={!selectedOption}
+                        disabled={!invoiceForQuote && !acceptedScope}
                         data-testid="button-create-invoice-from-quote"
                       >
                         <FileText size={16} className="mr-2" />

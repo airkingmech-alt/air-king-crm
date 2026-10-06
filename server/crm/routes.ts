@@ -1,3 +1,4 @@
+import { registerAcceptedQuotes } from "./accepted-quotes";
 import { directCheckoutReady, invoiceFeeBps } from "./card-fee";
 import { registerCardCheckout, reconcileDirectPayments, settleDirectPayment } from "./card-checkout";
 import { surchargeReady, surchargeEnabled, surchargeCheckoutOptions, verifiedSurcharge, SURCHARGE_API_VERSION, type SurchargeSession } from "./surcharge";
@@ -95,6 +96,7 @@ function limit(req: Request, res: Response, next: () => void) {
 }
 
 export function registerCrm(app: Express) {
+  registerAcceptedQuotes(app);
   app.use("/api/public", limit);
   app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
   app.get("/api/webhooks/meta/leadgen", (req, res) => {
