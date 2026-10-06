@@ -1,3 +1,5 @@
+import { ServiceAddressActions } from "./service-address-actions";
+import { jobServiceAddress } from "../../../shared/service-address";
 import { useEffect, useRef, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -94,7 +96,8 @@ export function DispatchCalendar() {
         .map((j: any) => <Button key={j.id} variant="outline" onClick={() => open(j)}>{j.customerName} · {j.type}{!["Unscheduled", "Needs Follow-up"].includes(j.status) ? " · Review appointment details" : ""}</Button>)}
     </div></div>
     <Dialog open={!!selected} onOpenChange={v => !busy && !v && setSelected(null)}><DialogContent><DialogHeader><DialogTitle>{selected?.customerName} · {selected?.type}</DialogTitle></DialogHeader>
-      <p className="text-sm">{selected?.property}</p><p className="text-sm whitespace-pre-wrap">{selected?.description}</p>
+      <p className="text-sm">{jobServiceAddress(selected, customers.find(c => c.id === selected?.customerId)?.properties) || selected?.property}</p>
+      <ServiceAddressActions address={jobServiceAddress(selected, customers.find(c => c.id === selected?.customerId)?.properties)} /><p className="text-sm whitespace-pre-wrap">{selected?.description}</p>
       <p className="text-sm">Status: {selected?.status}</p>
       {customers.find(c=>c.id===selected?.customerId) && <EquipmentScanner customer={customers.find(c=>c.id===selected?.customerId)!} />}
       <div className="grid grid-cols-2 gap-3">

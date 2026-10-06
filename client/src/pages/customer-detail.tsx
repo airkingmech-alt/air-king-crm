@@ -1,3 +1,5 @@
+import { ServiceAddressActions } from "@/components/service-address-actions";
+import { formatServiceAddress } from "../../../shared/service-address";
 import { CustomerImportSummary, CustomerBillingAddress, CustomerContactChannels } from "@/components/customer-import-details";
 import { useCustomerNotes } from "@/lib/customer-notes";
 import { normalizeLeadSource } from "../../../shared/customer-lead-source";
@@ -494,12 +496,10 @@ export default function CustomerDetail() {
                         className="text-muted-foreground mt-0.5 shrink-0"
                       />
                       <div>
-                        <p className="text-sm font-medium">{prop.address}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {prop.city}, {prop.state} {prop.zip}
-                        </p>
+                        <p className="text-sm font-medium break-words">{formatServiceAddress(prop) || "No service address recorded"}</p>
                       </div>
                     </div>
+                    <ServiceAddressActions address={formatServiceAddress(prop)} />
                     {prop.accessNotes && (
                       <p className="text-xs text-amber-600 dark:text-amber-500 pl-5">
                         ⚠ {prop.accessNotes}
@@ -591,8 +591,9 @@ export default function CustomerDetail() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <MapPin size={14} className="text-muted-foreground" />
-                  {prop.address}, {prop.city}, {prop.state} {prop.zip}
+                  {formatServiceAddress(prop)}
                 </CardTitle>
+                <ServiceAddressActions address={formatServiceAddress(prop)} />
               </CardHeader>
               <CardContent>
                 {prop.accessNotes && (
