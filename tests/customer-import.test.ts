@@ -50,10 +50,11 @@ before(async()=>{
  const enqueue=original.slice(original.indexOf("create function crm_private.enqueue_event()"),original.indexOf("-- Restrict existing helper"));
  await pg.exec(capture);await pg.exec(enqueue);
  await pg.exec(await readFile("supabase/migrations/20261006001150_markate_customer_only_import.sql","utf8"));
+ await pg.exec(await readFile("supabase/migrations/20261006012920_reviewed_customer_import_approval.sql","utf8"));
 });
 after(()=>pg.close());
 beforeEach(async()=>{
- await pg.exec(`truncate crm_import.customer_import_rows,crm_import.customer_import_batches,customers,communication_events,automation_runs,automations,profiles;
+ await pg.exec(`truncate crm_import.customer_import_approvals,crm_import.customer_import_rows,crm_import.customer_import_batches,customers,communication_events,automation_runs,automations,profiles;
  insert into profiles values('${owner}','test-company','owner','{}');
  insert into automations(company_id,enabled,trigger,steps) values('test-company',true,'customer.created','[{"send_email":true}]'),('test-company',true,'lead.created','[{"send_email":true}]');`);
  await pg.query("insert into customers(id,company_id,data) values('existing','test-company',$1)",[JSON.stringify(existing())]);
@@ -121,4 +122,61 @@ test("ordinary creation still triggers automation even if source metadata or ses
  const c={...importedCustomer(source(),batch),leadStatus:'New'};
  await pg.transaction(async tx=>{await tx.exec("set local role authenticated;set local app.customer_import='true'");await tx.query("insert into customers(id,company_id,data) values($1,'test-company',$2)",[c.id,JSON.stringify(c)]);});
  assert.equal(await count('communication_events'),2);assert.equal(await count('automation_runs'),2);
+});
+
+async function approve(r:any, raw:any[] = r.records, corrections:any[] = []) {
+ await pg.query(`insert into crm_import.customer_import_approvals
+  (company_id,batch_id,actor_id,expected_snapshot,records,raw_source_records,email_corrections,approval_note)
+  values('test-company',$1,$2,$3,$4,$5,$6,'Explicitly approved separate source records')`,
+  [r.batchId,owner,r.expectedSnapshot,JSON.stringify(r.records),JSON.stringify(raw),JSON.stringify(corrections)]);
+}
+test("reviewed exact batch permits separate collisions with audit and no sends",async()=>{
+ const records=[{mode:'create',source:source('101',{email:'existing@example.test'})},
+  {mode:'create',source:source('102',{email:'existing@example.test'})}];
+ const r=await request(records);const before=(await pg.query<any>("select to_jsonb(c) value from customers c")).rows[0].value;
+ await approve(r);const result=await run(r);assert.equal(result.inserted,2);assert.equal(result.linked,0);
+ assert.equal(await count('customers'),3);assert.equal(await count('communication_events'),0);assert.equal(await count('automation_runs'),0);
+ assert.deepEqual((await pg.query<any>("select to_jsonb(c) value from customers c where id='existing'")).rows[0].value,before);
+ assert.deepEqual((await pg.query<any>("select before_snapshot from crm_import.customer_import_batches")).rows[0].before_snapshot,[before]);
+ assert.equal((await run(r)).replayed,true);assert.equal(await count('customers'),3);
+ const other=await request([{mode:'create',source:source('103',{email:'existing@example.test'})}]);
+ other.batchId='33333333-3333-4333-8333-333333333333';other.records[0].customer.sourceReferences.markate.batchId=other.batchId;
+ await assert.rejects(run(other),/Possible duplicate/);
+});
+test("reviewed approval rejects changed source IDs, fields, snapshots, actors and destination links",async()=>{
+ const r=await request([{mode:'create',source:source('101',{email:'existing@example.test'})}]);await approve(r);
+ for(const modify of [(x:any)=>x.records[0].customer.name='Changed',
+  (x:any)=>{x.records[0].sourceId='999';x.records[0].customer.id='cust-markate-999';x.records[0].customer.sourceReferences.markate.customerId='999';},
+  (x:any)=>x.expectedSnapshot='b'.repeat(32),
+  (x:any)=>{x.records[0].mode='link';x.records[0].customerId='existing';x.expectedNew=0;x.expectedLinks=1;}]){
+  const changed=structuredClone(r);modify(changed);await assert.rejects(run(changed),/Reviewed approval does not match/);
+ }
+ const admin='44444444-4444-4444-8444-444444444444';await pg.query("insert into profiles values($1,'test-company','admin','{}')",[admin]);
+ await assert.rejects(run(r,admin),/Reviewed approval does not match/);assert.equal(await count('customers'),1);
+ const changedCount=structuredClone(r);changedCount.expectedNew=2;await assert.rejects(run(changedCount),/Reviewed counts changed/);
+});
+test("approved collisions still enforce validation, source uniqueness and rollback",async()=>{
+ const invalid=await request([{mode:'create',source:source('101',{email:'existing@example.test'})}]);
+ invalid.records[0].customer.contacts[0].email='bad@example.con';await approve(invalid);
+ await assert.rejects(run(invalid),/validation/);assert.equal(await count('customers'),1);assert.equal(await count('crm_import.customer_import_batches'),0);
+ await pg.exec('truncate crm_import.customer_import_approvals');
+ const r=await request([{mode:'create',source:source('101',{email:'existing@example.test'})}]);await approve(r);await run(r);
+ const again=structuredClone(r);again.batchId='33333333-3333-4333-8333-333333333333';again.expectedSnapshot=(await state()).snapshot;
+ again.records[0].customer.sourceReferences.markate.batchId=again.batchId;await approve(again);
+ await assert.rejects(run(again),/already linked/);assert.equal(await count('customers'),2);
+});
+test("email corrections retain exact raw source and correction audit without changing existing rows",async()=>{
+ const raw=source('101',{email:'contact@example.con'});const corrected={...raw,email:'contact@example.com'};
+ const r=await request([{mode:'create',source:corrected}]);const corrections=[{sourceId:'101',field:'email',before:raw.email,after:corrected.email}];
+ await approve(r,[raw],corrections);await run(r);
+ const audit=(await pg.query<any>('select raw_source_records,email_corrections from crm_import.customer_import_approvals')).rows[0];
+ assert.deepEqual(audit.raw_source_records,[raw]);assert.deepEqual(audit.email_corrections,corrections);
+ assert.equal((await pg.query<any>("select data#>>'{contacts,0,email}' email from customers where id='cust-markate-101'")).rows[0].email,corrected.email);
+});
+test("no client or service role can manufacture or mutate a reviewed approval",async()=>{
+ for(const role of ['anon','authenticated','service_role']){
+  await assert.rejects(roleQuery(role,"insert into crm_import.customer_import_approvals(company_id,batch_id,actor_id,expected_snapshot,records,raw_source_records,email_corrections,approval_note) values('test-company',$1,$2,$3,'[]','[]','[]','forged')",[batch,owner,'a'.repeat(32)]),/permission denied/);
+  await assert.rejects(roleQuery(role,'delete from crm_import.customer_import_approvals'),/permission denied/);
+  await assert.rejects(roleQuery(role,"update crm_import.customer_import_approvals set approval_note='changed'"),/permission denied/);
+ }
 });
