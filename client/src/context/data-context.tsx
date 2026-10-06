@@ -1,4 +1,5 @@
 import { crm } from "@/lib/crm-api";
+import type { CustomerRecord as Customer } from "@/data/customer-record";
 import { buildQuoteDraft, type QuoteDraftInput } from "@/lib/quote-pricing";
 import {
   createContext,
@@ -18,7 +19,6 @@ import { canAccess } from "../../../shared/access";
 import { saveRecords, type RecordWrite } from "@/lib/confirmed-save";
 import { supabase, extractEntities } from "@/lib/supabase";
 import {
-  type Customer,
   type WorkOrder,
   type Invoice,
   type Quote,

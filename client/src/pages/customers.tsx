@@ -70,9 +70,13 @@ export default function Customers() {
   const filtered = customers.filter((c) => {
     const matchesSearch =
       c.name.toLowerCase().includes(search.toLowerCase()) ||
+      (c.companyName || "").toLowerCase().includes(search.toLowerCase()) ||
+      (c.sourceReferences?.markate?.customerId || "").includes(search) ||
+      Object.values(c.billingAddress || {}).some(value => value.toLowerCase().includes(search.toLowerCase())) ||
       c.contacts.some(
         (cnt) =>
           cnt.phone.includes(search) ||
+          (cnt.phoneNumbers || []).some(p => p.value.includes(search)) ||
           cnt.email.toLowerCase().includes(search.toLowerCase()),
       ) ||
       c.properties.some(
@@ -187,16 +191,15 @@ export default function Customers() {
                       {customer.name}
                     </p>
                     <p className="text-xs text-muted-foreground truncate">
-                      {customer.properties[0]?.address},{" "}
-                      {customer.properties[0]?.city},{" "}
-                      {customer.properties[0]?.state}
+                      {[customer.properties[0]?.address || customer.billingAddress?.street, customer.properties[0]?.city || customer.billingAddress?.city, customer.properties[0]?.state || customer.billingAddress?.state].filter(Boolean).join(", ")}
                     </p>
                     <div className="flex items-center gap-1.5 mt-1.5">
-                      <span
+                      {customer.leadStatus && <span
                         className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium ${leadStatusColors[customer.leadStatus]}`}
                       >
                         {customer.leadStatus}
-                      </span>
+                      </span>}
+                      {customer.sourceStatus && <span className="text-[10px] font-medium">{customer.sourceStatus}</span>}
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground">
                         {customer.type}
                       </span>

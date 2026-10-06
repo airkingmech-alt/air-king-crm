@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { crm } from "@/lib/crm-api";
-import type { Customer } from "@/data/mock-data";
+import type { CustomerRecord as Customer } from "@/data/customer-record";
 const labels: Record<string,string> = {brand:"Manufacturer",model:"Model",serial:"Serial",capacity:"Capacity / tonnage (with units)",manufactureYear:"Manufacture year (approximate if inferred)",efficiency:"Efficiency (rating and units)",refrigerant:"Refrigerant",notes:"Notes"};
 const fieldMap:Record<string,string>={brand:"manufacturer",manufactureYear:"manufactureYear"};
 export function EquipmentScanner({customer}:{customer:Customer}) {
