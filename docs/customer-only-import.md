@@ -36,3 +36,11 @@ Failed batches roll back fully. Recovery after a successful batch requires a sep
 ## Verification
 
 Run `npm run release:check`. Synthetic API/PostgreSQL tests cover authorization, strict fields, complete snapshots, stale-state rejection, rollback, exact linkage, source uniqueness, replay, enabled automation fixtures, and ordinary-event behavior. Never use live customer data in committed tests or fixtures.
+
+## Explicitly reviewed separate records
+
+If the user reviews collisions and explicitly chooses separate customer records, an operational database owner may register a private `crm_import.customer_import_approvals` manifest. It binds the company, actor, batch UUID, complete pre-write snapshot, and exact ordered create payload (including every source ID and field). Record the raw source contact records, any explicitly authorized corrections, and the approval explanation there. Never commit this manifest or contact data to source control.
+
+The application service can read these approvals but cannot create, alter, or remove them. Browser roles have no access. An approval allows only the exact create batch to pass name/email/phone collision checks; it cannot authorize links or overwrites. Altering any payload field, source ID, actor, snapshot, or operation rejects the approved batch. All original field validation, source-ID uniqueness, count checks, replay protection, full snapshot backup, and narrowly scoped no-send logic still apply. A different unapproved batch continues to reject collisions.
+
+Email corrections are performed only when the user authorizes the exact rule. Preserve original source values and before/after corrections in the private approval audit. The ordinary importer continues to reject uncorrected questionable addresses. Neither this approval nor an import changes the source system, existing CRM customers, or communications consent.
