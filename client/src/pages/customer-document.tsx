@@ -111,10 +111,11 @@ export default function CustomerDocument() {
     (o: any) => o.tier === chosenTier,
   );
   const displayedAddOns: string[] = closed ? (d.selectedAddOns || []) : selectedAddOns;
-  const addOnTotal = addOnServices
-    .filter((a) => displayedAddOns.includes(a.id))
-    .reduce((sum, a) => sum + a.price, 0);
-  const proposalTotal = (selectedQuoteOption?.customerPrice || 0) + addOnTotal;
+  const quoteAddOns = d.addOnCatalog || addOnServices;
+  const addOnTotal = quoteAddOns
+    .filter((a: { id: string }) => displayedAddOns.includes(a.id))
+    .reduce((sum: number, a: { price: number }) => sum + a.price, 0);
+  const proposalTotal = d.acceptedAmount ?? ((selectedQuoteOption?.customerPrice || 0) + addOnTotal);
   return (
     <div className={data.kind === "quote" ? "quote-surface min-h-screen bg-slate-50 dark:bg-slate-950" : "min-h-screen bg-gradient-to-b from-sky-50 to-background"}>
       <div className={`${data.kind === "quote" ? "quote-page max-w-5xl" : "max-w-3xl"} mx-auto p-4 sm:p-8 space-y-6`}>
@@ -125,6 +126,7 @@ export default function CustomerDocument() {
               <>
                 <QuoteHeader number={d.number} title={d.title} customerName={d.customerName} status={d.status} createdAt={d.createdAt} />
                 {!closed && <QuoteGuide />}
+                {d.legacyAcceptance && <p className="rounded-lg border bg-amber-50 p-4 text-sm text-slate-900">This legacy proposal does not have a verified itemized total in this view. Please refer to the original accepted copy.</p>}
                 <section className="rounded-xl border bg-muted/20 p-5 sm:p-6">
                   <h2 className="font-bold text-sm mb-2">Scope of work</h2>
                   <p className="whitespace-pre-wrap text-sm text-muted-foreground leading-7">{d.scope}</p>
@@ -132,7 +134,8 @@ export default function CustomerDocument() {
                 {d.equipmentItems?.length > 0 && (
                   <section className="rounded-xl border p-5 space-y-3">
                     <h2 className="font-semibold">Equipment Included</h2>
-                    {getQuoteEquipment(d, chosenTier).map((item: any) => (
+                    {d.status === "Won" && <p className="text-sm">{selectedQuoteOption?.equipmentSummary || selectedQuoteOption?.equipment || "See the original accepted proposal"}</p>}
+                    {(d.status === "Won" ? [] : getQuoteEquipment(d, chosenTier)).map((item: any) => (
                       <div
                         key={item.id}
                         className="flex items-center gap-3 rounded-lg border p-3"
@@ -218,7 +221,7 @@ export default function CustomerDocument() {
                     Optional add-ons — select to add to your package
                   </p>
                   <div className="grid sm:grid-cols-2 gap-3">
-                    {addOnServices.map((addon) => {
+                    {quoteAddOns.map((addon: (typeof addOnServices)[number]) => {
                       const selected = displayedAddOns.includes(addon.id);
                       const Icon = addOnIcons[addon.icon] || Zap;
                       return (
@@ -265,24 +268,24 @@ export default function CustomerDocument() {
                       <span>{money(selectedQuoteOption?.customerPrice)}</span>
                     </div>
                     {displayedAddOns.map((id) => {
-                      const addon = addOnServices.find((a) => a.id === id);
+                      const addon = quoteAddOns.find((a: { id: string }) => a.id === id);
                       return addon ? (
                         <div key={id} className="flex justify-between text-sm">
                           <span>{addon.name}</span>
                           <span>{money(addon.price)}</span>
                         </div>
-                      ) : null;
+                      ) : <div key={id} className="flex justify-between text-sm"><span>{id}</span><span>Price not recorded</span></div>;
                     })}
                     <Separator />
                     <div className="flex justify-between text-lg font-bold">
                       <span>Total Installed Price</span>
-                      <span>{money(proposalTotal)}</span>
+                      <span>{d.legacyAcceptance ? "See original acceptance" : money(proposalTotal)}</span>
                     </div>
-                    <p className="flex items-center gap-2 rounded-lg bg-sky-50 p-2 text-xs text-sky-700">
+                    {!d.legacyAcceptance && <p className="flex items-center gap-2 rounded-lg bg-sky-50 p-2 text-xs text-sky-700">
                       <TrendingUp size={14} /> Est.{" "}
                       {money(Math.round(proposalTotal / 60))}/mo with financing
                       · Subject to credit approval · Wisetack
-                    </p>
+                    </p>}
                   </section>
                 )}
                 {!closed && (

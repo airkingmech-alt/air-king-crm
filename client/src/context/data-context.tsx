@@ -1,3 +1,4 @@
+import { crm } from "@/lib/crm-api";
 import { buildQuoteDraft, type QuoteDraftInput } from "@/lib/quote-pricing";
 import {
   createContext,
@@ -73,7 +74,7 @@ interface DataContextValue {
     property: string;
     description: string;
     quoteId?: string;
-    scheduledDate?:string; scheduledTime?:string; technician?:string; priority?:WorkOrder["priority"];
+    scheduledDate?:string; scheduledTime?:string; technician?:string; technicianId?:string; durationMinutes?:number; priority?:WorkOrder["priority"];
   }) => Promise<WorkOrder>;
   createInvoice: (data: {
     customerId: string;
@@ -333,7 +334,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       property: string;
       description: string;
       quoteId?: string;
-      scheduledDate?:string; scheduledTime?:string; technician?:string; priority?:WorkOrder["priority"];
+      scheduledDate?:string; scheduledTime?:string; technician?:string; technicianId?:string; durationMinutes?:number; priority?:WorkOrder["priority"];
     }): Promise<WorkOrder> => {
       const linked = data.membershipId !== undefined || data.membershipSeason !== undefined;
       if (linked) crownVisitLink.parse(data);
@@ -344,12 +345,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
         property: data.property,
         type: data.type,
         projectName: data.projectName?.trim() || undefined,
-        status: linked || data.technician ? "Scheduled" : "Unscheduled",
-        scheduledDate: data.scheduledDate || new Date(Date.now() + 7 * 86400000)
-          .toISOString()
-          .slice(0, 10),
-        scheduledTime: data.scheduledTime || "09:00",
+        status: linked || data.technician || data.technicianId ? "Scheduled" : "Unscheduled",
+        scheduledDate: data.scheduledDate,
+        scheduledTime: data.scheduledTime,
+        durationMinutes: data.durationMinutes ?? 60,
         technician: data.technician,
+        technicianId: data.technicianId,
         priority: data.priority || "Normal",
         description: data.description,
         quoteId: data.quoteId,
@@ -364,11 +365,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
         crownMutationVersion.current++;
         setMemberships(previous => [result.membership, ...previous.filter(m => m.id !== result.membership.id)]);
       } else {
-        [saved] = await saveRecords([{table:"work_orders",id:wo.id,data:wo}]);
+        const result = await crm("scheduling", "POST", { workOrder: wo });
+        saved = result.job.data;
       }
       finishCreate("WO-",data);
       workOrdersRef.current=[saved,...workOrdersRef.current.filter(w=>w.id!==saved.id)];
       setWorkOrders(workOrdersRef.current);
+      window.dispatchEvent(new Event("crm-refresh"));
       return saved;
     },
     [],

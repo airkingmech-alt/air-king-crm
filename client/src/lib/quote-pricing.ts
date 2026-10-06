@@ -1,5 +1,6 @@
+import { addOnServices } from "../../../shared/quote-addons";
 import { reviewedQuoteMatches } from "./quote-matches";
-import { pricebook, type PricebookItem } from "../data/pricebook";
+import { pricebook, formatEquipmentDescription, type PricebookItem } from "../data/pricebook";
 import type { Quote, QuoteOption } from "../data/mock-data";
 import { dollarsToCents, AIR_KING_MARGIN } from "./pricebook-utils";
 
@@ -52,6 +53,7 @@ export function buildQuoteOptions(input: QuoteDraftInput, catalog: PricebookItem
     return {
       tier, label, equipment: items.map(item => item.model).join(" + "),
       equipmentItems: items.map(item => item.id),
+      equipmentSummary: items.map(item => `${formatEquipmentDescription(item.category === "Condenser" ? { ...item, tier: undefined } : item)} — ${item.model}`).join("\n"),
       efficiency: "Matched-system efficiency to be verified",
       features: ["Installation as described in the scope of work", "10-year parts and labor warranty"],
       equipmentCost: pricing.equipmentCost, purchaseTax: pricing.purchaseTax,
@@ -109,6 +111,7 @@ export function buildQuoteDraft(input: QuoteDraftInput, id: string, createdAt: s
     equipmentItems: [...input.equipmentItems], equipmentSelectionMode: "explicit",
     laborDescription: input.laborDescription,
     selectedAddOns: [...(input.selectedAddOns || [])],
+    addOnCatalog: addOnServices.map(addOn => ({ ...addOn })),
     equipmentCost: pricing.equipmentCost, laborCost: pricing.laborCost,
     materialsCost: pricing.materialsCost, taxRate: pricing.taxRate,
     purchaseTax: pricing.purchaseTax, pricingVersion: "purchase-tax-v1",

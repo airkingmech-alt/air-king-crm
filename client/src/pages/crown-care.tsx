@@ -75,7 +75,7 @@ export default function CrownCare() {
   const { customers, memberships, addCustomer, createWorkOrder } = useData();
   const {profile}=useAuth();
   const {data:staff}=useQuery({queryKey:["crown-care-team",profile?.id],queryFn:()=>crm("scheduling"),enabled:canAccess(profile,"schedule")});
-  const teamMembers: {name:string}[]=(staff?.people || []).filter((p:any)=>p.full_name).map((p:any)=>({name:p.full_name}));
+  const teamMembers: {id:string;name:string}[]=(staff?.people || []).filter((p:any)=>p.full_name).map((p:any)=>({id:p.id,name:p.full_name}));
   const [showEnrollDialog, setShowEnrollDialog] = useState(false);
   const [configuration,setConfiguration]=useState<CrownConfiguration>(()=>({...configurationFor({}),coveredEquipment:[]}));
   const [editing,setEditing]=useState<any>(null);
@@ -220,12 +220,13 @@ export default function CrownCare() {
         description: `Crown Care ${scheduleForm.visitType.toLowerCase()} — precision tune-up\nMembership: ${enrolledMembershipId}\n\n${serviceDetails(savedMembership || {})}`,
         scheduledDate: scheduleForm.date,
         scheduledTime: scheduleForm.time,
-        technician: scheduleForm.technician || undefined,
+        technicianId: scheduleForm.technician || undefined,
+        technician: teamMembers.find(person => person.id === scheduleForm.technician)?.name,
         priority: scheduleForm.priority as any,
       });
       toast({
         title: "Visit scheduled",
-        description: `${scheduleForm.visitType} for ${enrolledCustomerName} on ${scheduleForm.date} at ${scheduleForm.time}${scheduleForm.technician ? ` with ${scheduleForm.technician}` : " (technician unassigned)"}.`,
+        description: `${scheduleForm.visitType} for ${enrolledCustomerName} on ${scheduleForm.date} at ${scheduleForm.time}${scheduleForm.technician ? ` with ${teamMembers.find(person => person.id === scheduleForm.technician)?.name || "the selected technician"}` : " (technician unassigned)"}.`,
       });
       // Release the synchronous dismissal guard only after both records commit.
       saveLock.current = false;
@@ -756,7 +757,7 @@ export default function CrownCare() {
                     </SelectTrigger>
                     <SelectContent>
                       {teamMembers.map((t) => (
-                        <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>
+                        <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

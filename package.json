@@ -9,11 +9,14 @@
   "scripts": {
     "dev": "NODE_ENV=development node --import tsx server/index.ts",
     "build": "node --import tsx script/build.ts",
+    "postbuild": "node script/deployment.mjs postbuild",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "db:push": "drizzle-kit push",
     "test": "node script/test.mjs",
-    "release:check": "npm run check && npm test && npm audit --omit=dev && npm run build"
+    "release:check": "npm run check && npm test && npm audit --omit=dev && npm run build",
+    "build:deploy": "node script/deployment.mjs build",
+    "smoke:production": "node script/smoke-production.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
@@ -83,7 +86,6 @@
     "resend": "6.27.0",
     "stripe": "22.6.2",
     "tailwind-merge": "^2.6.0",
-    "tailwindcss-animate": "^1.0.7",
     "tw-animate-css": "^1.2.5",
     "twilio": "6.1.0",
     "vaul": "^1.1.2",
@@ -111,6 +113,7 @@
     "esbuild": "^0.25.0",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.17",
+    "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.20.5",
     "typescript": "5.6.3",
     "vite": "^7.3.0"

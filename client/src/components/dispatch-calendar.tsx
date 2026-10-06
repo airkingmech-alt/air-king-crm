@@ -33,14 +33,17 @@ export function DispatchCalendar() {
   const jobs = (data?.jobs || []).map((r: any) => ({ ...r.data, id: r.id, version: r.version }));
   const open = (job: any) => {
     setSelected(job); setNotice("");
-    setForm({ scheduledDate: job.scheduledDate || businessNow().slice(0,10), scheduledTime: job.scheduledTime || "09:00", durationMinutes: jobDuration(job), technician: job.technician || "", technicianId: job.technicianId || null });
+    const draft = ["Unscheduled", "Needs Follow-up"].includes(job.status);
+    setForm({ scheduledDate: job.scheduledDate || (draft ? businessNow().slice(0,10) : ""), scheduledTime: job.scheduledTime || (draft ? "09:00" : ""), durationMinutes: jobDuration(job), technician: job.technician || "", technicianId: job.technicianId || null });
   };
   async function save(job: any, change: any) {
     if (lock.current) throw new Error("Wait for the current change to finish.");
     lock.current = true; setBusy(true); setNotice("");
     try {
-      const conflicts = conflictingJobs({ ...job, ...change }, jobs);
+      const conflicts = conflictingJobs({ ...job, ...change, status: ["Unscheduled", "Needs Follow-up"].includes(job.status) ? "Scheduled" : job.status }, jobs);
       let allowConflict = false;
+      const incomplete = conflicts.filter(conflict => !Number.isFinite(jobStart(conflict)));
+      if (incomplete.length) throw new Error(`Review the missing or invalid appointment time for ${incomplete.map(c => c.customerName).join(", ")} before booking this technician on that date.`);
       if (conflicts.length) {
         allowConflict = window.confirm(`Schedule conflict with ${conflicts.map(c => c.customerName).join(", ")}. Save this overlapping appointment anyway?`);
         if (!allowConflict) throw new Error("Change cancelled. Appointment was not moved.");
@@ -82,11 +85,13 @@ export function DispatchCalendar() {
       slotMinTime="00:00:00" slotMaxTime="24:00:00" scrollTime="07:00:00" slotDuration="00:15:00" dayMaxEvents={4}
       longPressDelay={500} eventDrop={move} eventResize={move}
       eventClick={info => open(jobs.find((j: any) => j.id === info.event.id))}
-      events={jobs.filter((j: any) => j.scheduledDate && Number.isFinite(jobStart(j)) && !["Cancelled", "Unscheduled"].includes(j.status)
+      events={jobs.filter((j: any) => j.scheduledDate && Number.isFinite(jobStart(j)) && !["Cancelled", "Unscheduled", "Needs Follow-up"].includes(j.status)
         && (filter === "all" || (filter === "unassigned" ? !j.technician : j.technician === filter)))
         .map((j: any) => ({ id: j.id, title: `${j.customerName} · ${j.type}${j.technician ? " · " + j.technician : " · Unassigned"}`, start: new Date(jobStart(j)).toISOString(), end: new Date(jobStart(j) + jobDuration(j) * 60000).toISOString(), backgroundColor: colors[j.status] || "#475569", borderColor: colors[j.status] || "#475569", editable: !busy && !["Completed", "Cancelled"].includes(j.status) }))} />
     <div className="rounded-lg border p-3"><h3 className="font-semibold">Ready to schedule</h3><div className="flex flex-wrap gap-2 mt-2">
-      {jobs.filter((j: any) => ["Unscheduled", "Needs Follow-up"].includes(j.status)).map((j: any) => <Button key={j.id} variant="outline" onClick={() => open(j)}>{j.customerName} · {j.type}</Button>)}
+      {jobs.filter((j: any) => ["Unscheduled", "Needs Follow-up"].includes(j.status) ||
+        (!["Completed", "Cancelled"].includes(j.status) && !Number.isFinite(jobStart(j))))
+        .map((j: any) => <Button key={j.id} variant="outline" onClick={() => open(j)}>{j.customerName} · {j.type}{!["Unscheduled", "Needs Follow-up"].includes(j.status) ? " · Review appointment details" : ""}</Button>)}
     </div></div>
     <Dialog open={!!selected} onOpenChange={v => !busy && !v && setSelected(null)}><DialogContent><DialogHeader><DialogTitle>{selected?.customerName} · {selected?.type}</DialogTitle></DialogHeader>
       <p className="text-sm">{selected?.property}</p><p className="text-sm whitespace-pre-wrap">{selected?.description}</p>

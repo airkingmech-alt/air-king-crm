@@ -19,11 +19,17 @@ globalThis.fetch=async(input:any,init?:any)=>{
   if(url.pathname==="/auth/v1/user")return reply({id:employee,aud:"authenticated"});
   if(url.pathname==="/rest/v1/profiles") {
     if(url.searchParams.get("select")==="id,full_name,role") {assert.equal(url.searchParams.get("company_id"),"eq.airking");return reply([{id:employee,full_name:"Test",role:"technician"}]);}
+    if(url.searchParams.get("select")==="id,full_name")return reply([{id:employee,full_name:"Test"}]);
     return reply({id:employee,company_id:"airking",role:"technician",permissions:{schedule:permission,customers:permission,memberships:membershipPermission},full_name:"Test"});
+  }
+  if(url.pathname==="/rest/v1/rpc/crm_write_scheduled_work_order") {
+    const args=JSON.parse(init.body);assert.equal(args.p_company_id,"airking");assert.equal(args.p_actor_id,employee);
+    if(stale || (collision && !args.p_allow_conflict)) return new Response(JSON.stringify({code:stale?"40001":"23P01",message:stale?"This job changed":"This technician already has an overlapping job"}),{status:409,headers:{"content-type":"application/json"}});
+    written={data:args.p_work_order};return reply({...job,id:args.p_work_order.id,...written});
   }
   assert.equal(url.searchParams.get("company_id"),"eq.airking");
   if(url.pathname==="/rest/v1/work_orders") {
-    if(init?.method==="PATCH") {assert.equal(url.searchParams.get("updated_at"),"eq."+job.updated_at);written=JSON.parse(init.body);return reply(stale?null:{...job,...written});}
+    assert.notEqual(init?.method,"PATCH","All schedule writes must use the guarded transaction RPC");
     if(url.searchParams.has("id"))return reply(job);
     return reply([job,...(collision?[{...job,id:"job-two",data:{...job.data,id:"job-two"}}]:[])]);
   }
@@ -77,4 +83,34 @@ test("linked Crown Care scheduling enforces membership access and preserves the 
     delete data.membershipId;
     delete data.membershipSeason;
   }
+});
+
+const newJob=()=>({id:"new-job",customerId:"customer",customerName:"Test",property:"Test address",type:"Service Call",description:"Scope",status:"Scheduled",scheduledDate:"2026-09-17",scheduledTime:"09:15",technicianId:employee,technician:"Spoofed name",durationMinutes:60});
+const create=(workOrder:any)=>nativeFetch(base+"/api/scheduling",{method:"POST",headers:{Authorization:"Bearer test","content-type":"application/json"},body:JSON.stringify({workOrder})});
+test("New Job uses guarded creation, validates input, and resolves canonical technician identity",async()=>{
+ assert.equal((await create(newJob())).status,201);
+ assert.equal(written.data.technician,"Test");assert.equal(written.data.technicianId,employee);
+ for(const patch of [{durationMinutes:0},{scheduledDate:"2026-02-30"},{scheduledTime:"24:01"},{technicianId:null,technician:"Unknown"}])assert.equal((await create({...newJob(),...patch})).status,400);
+ collision=true;try{assert.equal((await create(newJob())).status,409);}finally{collision=false;}
+ permission=false;try{assert.equal((await create(newJob())).status,403);}finally{permission=true;}
+});
+test("an unassigned draft can be created without inventing appointment details",async()=>{
+ const draft:any={...newJob(),status:"Unscheduled"};delete draft.technician;delete draft.technicianId;delete draft.scheduledDate;delete draft.scheduledTime;
+ assert.equal((await create(draft)).status,201);assert.equal(written.data.scheduledDate,undefined);assert.equal(written.data.technicianId,null);
+});
+
+test("new job API rejects unsupported link fields rather than silently losing them",async()=>{
+ assert.equal((await create({...newJob(),membershipId:"member",membershipSeason:"spring"})).status,400);
+ assert.equal((await create({...newJob(),quoteId:"quote"})).status,400);
+});
+
+test("calendar omits deleted records while malformed falsey legacy markers remain live",async()=>{
+ const data=job.data as typeof job.data & {deletedAt?:unknown};
+ try{
+  for(const marker of ["2026-10-01T00:00:00Z",false,0,""]){
+   data.deletedAt=marker;
+   const response=await nativeFetch(base+"/api/scheduling",{headers:{Authorization:"Bearer test"}});
+   assert.equal(response.status,200);assert.equal((await response.json()).jobs.length,marker?0:1);
+  }
+ }finally{delete data.deletedAt;}
 });

@@ -17,16 +17,24 @@ export function jobDuration(job: Record<string, any>) {
 }
 // Floating business-local time: never shift an appointment with the viewer's timezone.
 export function jobStart(job: Record<string, any>) {
-  return Date.parse(`${job.scheduledDate}T${job.scheduledTime || "09:00"}:00Z`);
+  if (!scheduleChange.shape.scheduledDate.safeParse(job.scheduledDate).success ||
+      !scheduleChange.shape.scheduledTime.safeParse(job.scheduledTime).success) return NaN;
+  return Date.parse(`${job.scheduledDate}T${job.scheduledTime}:00Z`);
 }
 export function conflictingJobs(job: Record<string, any>, others: Record<string, any>[]) {
-  if (!job.technician && !job.technicianId) return [];
+  if ((!job.technician && !job.technicianId) || job.deletedAt || ["Cancelled", "Completed", "Unscheduled", "Needs Follow-up"].includes(job.status)) return [];
   const start = jobStart(job), end = start + jobDuration(job) * 60000;
   return others.filter(other => {
-    if (other.id === job.id || ["Cancelled", "Completed", "Unscheduled"].includes(other.status)) return false;
+    if (other.id === job.id || ["Cancelled", "Completed", "Unscheduled", "Needs Follow-up"].includes(other.status) || other.deletedAt) return false;
     const same = job.technicianId && other.technicianId ? job.technicianId === other.technicianId
-      : job.technician?.toLowerCase() === other.technician?.toLowerCase();
+      : job.technician?.trim().toLowerCase() === other.technician?.trim().toLowerCase();
     const otherStart = jobStart(other);
+    if (!Number.isFinite(otherStart) && scheduleChange.shape.scheduledDate.safeParse(other.scheduledDate).success) {
+      // This is an uncertainty window, not an inferred appointment time. A
+      // date-only historical booking must be reviewed before adding work that day.
+      const day = Date.parse(`${other.scheduledDate}T00:00:00Z`);
+      return same && start < day + 86400000 && end > day;
+    }
     return same && start < otherStart + jobDuration(other) * 60000 && end > otherStart;
   });
 }

@@ -114,7 +114,7 @@ function buildWeekDays(weekStart: Date) {
 
 export default function Schedule() {
   const { data: scheduling, refetch:refreshSchedule } = useQuery({ queryKey:["dispatch-calendar"], queryFn:()=>crm("scheduling") });
-  const teamMembers: {name:string;role:string;initials:string;color:string}[] = (scheduling?.people || []).filter((person:any)=>person.full_name).map((person:any)=>({name:person.full_name,role:person.role,initials:person.full_name.split(" ").map((part:string)=>part[0]).join("").slice(0,2),color:"bg-sky-700"}));
+  const teamMembers: {id:string;name:string;role:string;initials:string;color:string}[] = (scheduling?.people || []).filter((person:any)=>person.full_name).map((person:any)=>({id:person.id,name:person.full_name,role:person.role,initials:person.full_name.split(" ").map((part:string)=>part[0]).join("").slice(0,2),color:"bg-sky-700"}));
   const { toast } = useToast();
   const {
     workOrders,
@@ -129,6 +129,7 @@ export default function Schedule() {
   const openedLinkedJob = useRef(false);
   const [view, setView] = useState<"week" | "list">("week");
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [creatingJob, setCreatingJob] = useState(false);
   const [weekStart, setWeekStart] = useState(getWeekStart(new Date()));
   const [showAssignDialog, setShowAssignDialog] = useState(false);
   const [assignTarget, setAssignTarget] = useState<string | null>(null);
@@ -148,6 +149,7 @@ export default function Schedule() {
     technician: "",
     priority: "Normal",
     description: "",
+    durationMinutes: 60,
   });
 
   const weekDays = buildWeekDays(weekStart);
@@ -181,33 +183,39 @@ export default function Schedule() {
     const custName = selectedCustomer?.name || "Customer";
     const propertyAddress = selectedCustomer?.properties?.[0]?.address || "TBD";
     if (form.jobType.startsWith("New Construction") && !form.projectName.trim()) throw new Error("Enter the house address or project / lot name.");
-    const wo = await createWorkOrder({
-      customerId: form.customer,
-      customerName: custName,
-      type: form.jobType,
-      property: form.projectName.trim() || propertyAddress,
-      projectName: form.projectName,
-      description: form.description,
-      scheduledDate: form.date,
-      scheduledTime: form.time,
-      technician: form.technician || undefined,
-      priority: form.priority as any,
-    });
-    toast({
-      title: "Job scheduled",
-      description: `${form.jobType} for ${custName} on ${form.date} at ${form.time}.`,
-    });
-    setShowScheduleDialog(false);
-    setForm({
-      customer: "",
-      jobType: "Service Call",
-    projectName: "",
-      date: formatDate(new Date(Date.now() + 86400000)),
-      time: "09:00",
-      technician: "",
-      priority: "Normal",
-      description: "",
-    });
+    setCreatingJob(true);
+    try {
+      const wo = await createWorkOrder({
+        customerId: form.customer,
+        customerName: custName,
+        type: form.jobType,
+        property: form.projectName.trim() || propertyAddress,
+        projectName: form.projectName,
+        description: form.description,
+        scheduledDate: form.date,
+        scheduledTime: form.time,
+        technicianId: form.technician || undefined,
+        technician: teamMembers.find(person => person.id === form.technician)?.name,
+        durationMinutes: form.durationMinutes,
+        priority: form.priority as any,
+      });
+      toast({
+        title: wo.status === "Unscheduled" ? "Unassigned job saved" : "Job scheduled",
+        description: `${form.jobType} for ${custName} on ${form.date} at ${form.time}${wo.status === "Unscheduled" ? ". Assign a technician to schedule it" : ""}.`,
+      });
+      setShowScheduleDialog(false);
+      setForm({
+        customer: "",
+        jobType: "Service Call",
+      projectName: "",
+        date: formatDate(new Date(Date.now() + 86400000)),
+        time: "09:00",
+        technician: "",
+        priority: "Normal",
+        description: "",
+        durationMinutes: 60,
+      });
+    } finally { setCreatingJob(false); }
   });
 
   const handleAssign = guardSave("pages/schedule.tsx:handleAssign", async (e: React.FormEvent) => {
@@ -222,8 +230,8 @@ export default function Schedule() {
       return;
     }
     const wo = workOrders.find((w) => w.id === assignTarget);
-    const people=(scheduling?.people || []).filter((person:any)=>person.full_name===assignForm.technician);
-    if(people.length!==1)throw new Error("Choose a current team member. If names are duplicated, assign from the calendar.");
+    const people=(scheduling?.people || []).filter((person:any)=>person.id===assignForm.technician);
+    if(people.length!==1)throw new Error("Choose a current team member.");
     if(!assignVersion)throw new Error("Refresh the schedule and reopen this job before assigning it.");
     await crm(`scheduling/${assignTarget}`,"PATCH",{
       version:assignVersion,
@@ -234,7 +242,7 @@ export default function Schedule() {
     window.dispatchEvent(new Event("crm-refresh"));
     toast({
       title: "Job assigned",
-      description: `${wo?.customerName || "Job"} assigned to ${assignForm.technician} on ${assignForm.date} at ${assignForm.time}.`,
+      description: `${wo?.customerName || "Job"} assigned to ${people[0].full_name} on ${assignForm.date} at ${assignForm.time}.`,
     });
     setShowAssignDialog(false);
     setAssignTarget(null);
@@ -250,10 +258,11 @@ export default function Schedule() {
     const wo = workOrders.find((w) => w.id === woId);
     setAssignTarget(woId);
     setAssignVersion(scheduling?.jobs.find((job:any)=>job.id===woId)?.version || "");
+    const legacyMatches = teamMembers.filter(person => person.name === wo?.technician);
     setAssignForm({
-      technician: wo?.technician || "",
+      technician: wo?.technicianId || (legacyMatches.length === 1 ? legacyMatches[0].id : ""),
       date: wo?.scheduledDate || formatDate(new Date(Date.now() + 86400000)),
-      time: wo?.scheduledTime || "09:00",
+      time: wo?.scheduledTime || (wo && !["Unscheduled", "Needs Follow-up"].includes(wo.status) ? "" : "09:00"),
       priority: wo?.priority || "Normal",
     });
     setShowAssignDialog(true);
@@ -613,7 +622,7 @@ export default function Schedule() {
       {/* Team */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {teamMembers.map((member) => (
-          <Card key={member.name}>
+          <Card key={member.id}>
             <CardContent className="p-4 flex items-center gap-3">
               <div
                 className={`flex h-10 w-10 items-center justify-center rounded-full ${member.color} text-white text-sm font-bold`}
@@ -636,7 +645,7 @@ export default function Schedule() {
       </div>
 
       {/* Schedule Job Dialog */}
-      <Dialog open={showScheduleDialog} onOpenChange={setShowScheduleDialog}>
+      <Dialog open={showScheduleDialog} onOpenChange={open => !creatingJob && setShowScheduleDialog(open)}>
         <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
             <DialogTitle>Schedule New Job</DialogTitle>
@@ -644,7 +653,7 @@ export default function Schedule() {
               Create a work order and assign it to a technician.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit}><fieldset disabled={creatingJob} className="space-y-4">
             <div className="space-y-2">
               <Label>Customer *</Label>
               <CustomerCombobox
@@ -682,6 +691,7 @@ export default function Schedule() {
                 <Input
                   id="job-date"
                   type="date"
+                  required
                   value={form.date}
                   onChange={(e) => setForm({ ...form, date: e.target.value })}
                 />
@@ -691,6 +701,7 @@ export default function Schedule() {
                 <Input
                   id="job-time"
                   type="time"
+                  required
                   value={form.time}
                   onChange={(e) => setForm({ ...form, time: e.target.value })}
                 />
@@ -700,15 +711,16 @@ export default function Schedule() {
               <div className="space-y-2">
                 <Label>Technician</Label>
                 <Select
-                  value={form.technician}
-                  onValueChange={(v) => setForm({ ...form, technician: v })}
+                  value={form.technician || "unassigned"}
+                  onValueChange={(v) => setForm({ ...form, technician: v === "unassigned" ? "" : v })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Assign to..." />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
                     {teamMembers.map((t) => (
-                      <SelectItem key={t.name} value={t.name}>
+                      <SelectItem key={t.id} value={t.id}>
                         {t.name}
                       </SelectItem>
                     ))}
@@ -734,6 +746,11 @@ export default function Schedule() {
               </div>
             </div>
             <div className="space-y-2">
+              <Label htmlFor="job-duration">Duration (minutes)</Label>
+              <Input id="job-duration" type="number" min={15} max={1440} step={15} required value={form.durationMinutes}
+                onChange={e => setForm({ ...form, durationMinutes: Number(e.target.value) })} />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="job-desc">Description</Label>
               <Input
                 id="job-desc"
@@ -753,10 +770,10 @@ export default function Schedule() {
                 Cancel
               </Button>
               <Button type="submit" data-testid="button-submit-schedule">
-                Schedule Job
+                {creatingJob ? "Saving…" : "Schedule Job"}
               </Button>
             </DialogFooter>
-          </form>
+          </fieldset></form>
         </DialogContent>
       </Dialog>
 
@@ -783,7 +800,7 @@ export default function Schedule() {
                 </SelectTrigger>
                 <SelectContent>
                   {teamMembers.map((t) => (
-                    <SelectItem key={t.name} value={t.name}>
+                    <SelectItem key={t.id} value={t.id}>
                       {t.name}
                     </SelectItem>
                   ))}
