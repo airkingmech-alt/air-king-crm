@@ -36,6 +36,10 @@ export function jobServiceAddress(job?: { property?: string; projectName?: strin
     .some(address => !!clean(address) && key(address) === key(saved)));
   if (matches.length === 1) return formatServiceAddress(matches[0]);
   // A street shared by two properties is not enough to infer the unit or locality.
-  if (matches.length > 1 || key(saved) === key(job?.projectName)) return "";
+  if (matches.length > 1) return "";
+  // New Construction accepts either an address or a project/lot name in this field.
+  // A numbered street address remains usable even before a property is recorded.
+  const numberedAddress = /^\d+[a-z]?(?:[-/]\d+)?\s+(?!(?:lot|project|phase|unit|building)\b)\S+/i.test(saved);
+  if (key(saved) === key(job?.projectName) && !numberedAddress) return "";
   return saved;
 }

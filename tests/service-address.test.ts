@@ -33,6 +33,11 @@ test("jobs enrich only the uniquely matching service property and never choose t
   assert.equal(jobServiceAddress({ property: "  TBD " }, [first]), "");
   assert.equal(jobServiceAddress({}, [first]), "");
   assert.equal(jobServiceAddress({ property: "Lot 10", projectName: "Lot 10" }, [first]), "");
+  assert.equal(jobServiceAddress({ property: "Sunset Ridge", projectName: "Sunset Ridge" }, [first]), "");
+  assert.equal(jobServiceAddress({ property: "12 Lot A", projectName: "12 Lot A" }, [first]), "");
+  const constructionAddress = "123 Main St, Kansas City, MO 64101";
+  assert.equal(jobServiceAddress({ property: constructionAddress, projectName: constructionAddress }, [first]), constructionAddress);
+  assert.equal(jobServiceAddress({ property: "123 Broadway", projectName: "123 Broadway" }), "123 Broadway");
   assert.equal(jobServiceAddress({ property: "300 Saved St, Test City, MO" }, [first]), "300 Saved St, Test City, MO");
 });
 test("actions render explicit touch-friendly buttons, accessible grouped links, and nothing for missing addresses", () => {
