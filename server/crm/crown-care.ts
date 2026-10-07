@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
+import { crownTierSnapshot } from "../../shared/crown-tiers";
 import { caller,db,result,entity,hash } from "./core";
 import { crownConfiguration,renewalFrom,type CrownConfiguration } from "../../shared/crown-care";
 import { checklistSchema, completionErrors, templates } from "../../shared/crown-checklists";
@@ -22,7 +23,7 @@ function validatedConfiguration(configuration:CrownConfiguration,customer:any){
     if(equipment.systemId && (!property || !property.systems?.some((s:any)=>s.id===equipment.systemId)))throw fail("The selected equipment does not belong to this customer property.");
     if(equipment.systemId && equipment.quantity!==1)throw fail("Saved equipment is one unit. Add additional units separately.");
   }
-  return {...configuration,pricing:{...configuration.pricing,totalAmountCents:configuration.pricing.baseAmountCents+configuration.pricing.adjustmentCents,currency:"usd"},
+  return {...configuration,draftTier:configuration.draftTier?crownTierSnapshot(configuration.draftTier):null,pricing:{...configuration.pricing,totalAmountCents:configuration.pricing.baseAmountCents+configuration.pricing.adjustmentCents,currency:"usd"},
     systemDescription:configuration.coveredEquipment.map(e=>`${e.quantity} × ${e.type}${e.description?" — "+e.description:""}`).join("; "),
     systemId:configuration.coveredEquipment[0].systemId || "",
     propertyAddress:Array.from(new Set(configuration.coveredEquipment.map(e=>properties.find((p:any)=>p.id===e.propertyId)).filter(Boolean).map((p:any)=>[p.address,p.city,p.state,p.zip].filter(Boolean).join(", ")))).join("; ")};
@@ -57,6 +58,7 @@ export function registerCrownCare(app:Express){
   app.post("/api/crm/memberships",wrap(async(req,res)=>{
     const user=await access(req),key=z.string().uuid().parse(req.headers["idempotency-key"]);
     const input=z.object({customerId:z.string().min(1),startDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),autoRenew:z.boolean(),configuration:crownConfiguration}).strict().parse(req.body);
+    if(input.configuration.draftTier)throw fail("Crown Care tiers are draft pricing pending cost review. New tier enrollment is not available.",409);
     const renewalDate=renewalFrom(input.startDate),customer=await entity("customers",input.customerId,user.company);
     const config=validatedConfiguration(input.configuration,customer),requestHash=hash(JSON.stringify(input)),id="CC-"+key;
     const data={...config,id,customerId:customer.id,customerName:customer.data.name,startDate:input.startDate,renewalDate,autoRenew:input.autoRenew,
@@ -83,7 +85,7 @@ export function registerCrownCare(app:Express){
     if(row.data.stripeSubscriptionId || row.data.stripe_subscription_id)throw fail("This membership has linked billing. Its pricing must be updated through the billing workflow.",409);
     const customer=await entity("customers",row.customer_id,user.company),config=validatedConfiguration(input.configuration,customer);
     if(!config.propertyAddress)config.propertyAddress=row.data.propertyAddress || "";
-    const data={...row.data,...config,configurationHistory:[...(row.data.configurationHistory || []),{at:new Date().toISOString(),actorId:user.id,requestKey:key,requestHash,before:{coveredEquipment:row.data.coveredEquipment,pricing:row.data.pricing,notes:row.data.notes,billingFrequency:row.data.billingFrequency,visitsIncluded:row.data.visitsIncluded,systemDescription:row.data.systemDescription},after:config}]};
+    const data={...row.data,...config,configurationHistory:[...(row.data.configurationHistory || []),{at:new Date().toISOString(),actorId:user.id,requestKey:key,requestHash,before:{draftTier:row.data.draftTier,coveredEquipment:row.data.coveredEquipment,pricing:row.data.pricing,notes:row.data.notes,billingFrequency:row.data.billingFrequency,visitsIncluded:row.data.visitsIncluded,systemDescription:row.data.systemDescription},after:config}]};
     const saved=await result(db().from("memberships").update({data}).eq("id",row.id).eq("company_id",user.company).eq("updated_at",input.version).select("data,updated_at").maybeSingle());
     if(!saved)throw fail("Someone changed this membership. Reopen it and try again.",409);
     res.json({membership:saved.data,version:saved.updated_at});

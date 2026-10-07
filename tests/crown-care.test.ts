@@ -94,3 +94,17 @@ test("checklist saves are scoped, versioned, idempotent and preserve membership 
   assert.equal(row.data.checklists[0].savedBy,employee);assert.ok(row.data.checklists[0].completedAt);
   assert.equal((await save({...checklist,work:"overwrite completed"})).status,409);
 });
+
+test("draft tier interest saves trusted snapshot without altering existing terms; new tier enrollment is gated",async()=>{
+ reset();const originalPrice=configuration.pricing.baseAmountCents+configuration.pricing.adjustmentCents;
+ const draftTier={tier:"silver",catalogVersion:"2026-10-draft-1",systemCount:2};
+ const body={version:row.updated_at,configuration:{...configuration,draftTier}};
+ assert.equal((await send("/api/crm/memberships/CC-test",body)).status,200);
+ assert.equal(row.data.draftTier.name,"Silver");assert.equal(row.data.draftTier.status,"draft");assert.equal(row.data.draftTier.annualTotalCents,55800);
+ assert.equal(row.data.pricing.totalAmountCents,originalPrice);assert.equal(row.data.paymentStatus,"Paid");assert.equal(row.data.springVisit.status,"Completed");
+ const count=writes;
+ assert.equal((await send("/api/crm/memberships",{customerId:"customer",startDate:"2026-10-07",autoRenew:false,configuration:{...configuration,draftTier}})).status,409);
+ assert.equal(writes,count);
+ assert.equal((await send("/api/crm/memberships/CC-test",{version:row.updated_at,configuration})).status,200);
+ assert.equal(row.data.draftTier,null);assert.equal(row.data.pricing.totalAmountCents,originalPrice);
+});

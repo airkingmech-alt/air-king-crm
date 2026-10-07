@@ -1,3 +1,4 @@
+import { crownTierIds, crownTierSnapshot, crownCatalogVersion } from "../../../shared/crown-tiers";
 import { canBookCrownVisit } from "../../../shared/crown-scheduling";
 import { UNKNOWN_LEAD_SOURCE } from "../../../shared/customer-lead-source";
 import { CrownChecklists } from "@/components/crown-checklists";
@@ -191,6 +192,7 @@ export default function CrownCare() {
       toast({ title: "Select a customer", description: "Please choose or create a customer to enroll.", variant: "destructive" });
       return;
     }
+    if(configuration.draftTier){toast({title:"Draft tier enrollment unavailable",description:"Pricing is pending cost review. Use an existing membership’s editor to record draft tier interest without changing its agreed terms.",variant:"destructive"});return;}
     if(saveLock.current)return;saveLock.current=true;setSaving(true);
     const custName = selectedCustomer?.name || "Customer";
     try {
@@ -316,32 +318,10 @@ export default function CrownCare() {
         </Card>
       </div>
 
-      {/* Plan Info Card */}
-      <Card className="bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-950/20 dark:to-amber-950/20 border-yellow-200 dark:border-yellow-900/30">
-        <CardContent className="p-5">
-          <div className="flex items-start gap-4 flex-wrap">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-yellow-500 text-white shrink-0">
-              <Crown size={24} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h2 className="text-sm font-bold">Crown Care Membership</h2>
-              <p className="text-xs text-muted-foreground mt-1">
-                Default starting plan: two seasonal precision tune-ups per year and priority service. Customize equipment, visit allowance, and price for each customer.
-              </p>
-              <div className="flex gap-4 mt-3">
-                <div>
-                  <p className="text-lg font-bold">{fmtCurrency(189)}</p>
-                  <p className="text-[10px] text-muted-foreground">Starting annual price (2 visits)</p>
-                </div>
-                <div>
-                  <p className="text-lg font-bold">{crownMoney(1575)}</p>
-                  <p className="text-[10px] text-muted-foreground">Monthly equivalent</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <section className="space-y-3" aria-label="Crown Care draft tier catalog">
+        <div><h2 className="font-semibold">Crown Care tiers · Draft pricing</h2><p className="text-sm text-muted-foreground">Annual pricing per covered system. Cost review is pending; tier enrollment is unavailable. Existing membership terms and prices remain in place.</p></div>
+        <div className="grid gap-3 md:grid-cols-3">{crownTierIds.map(tier=>{const plan=crownTierSnapshot({tier,catalogVersion:crownCatalogVersion});return <Card key={tier}><CardContent className="p-4 space-y-3"><h3 className="font-bold">{plan.name}</h3><p className="text-xl font-semibold">{crownMoney(plan.annualPerSystemCents)}<span className="text-xs font-normal"> / system / year · draft</span></p><ul className="text-sm list-disc pl-4 space-y-1">{plan.benefits.map(b=><li key={b}>{b}</li>)}</ul><p className="text-xs text-muted-foreground">{plan.filterPolicy}. Four-inch and five-inch filter supply excluded.</p></CardContent></Card>})}</div>
+      </section>
 
       {/* Memberships List */}
       <Card>
@@ -361,6 +341,7 @@ export default function CrownCare() {
                 </Link>
                 <p className="text-xs text-muted-foreground">{m.propertyAddress}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{m.systemDescription}</p>
+                <p className="text-xs text-muted-foreground mt-1">Legacy / individually agreed membership{m.draftTier ? ` · Draft interest: ${m.draftTier.name} (${m.draftTier.catalogVersion})` : ""}</p>
                 <p className="text-sm font-semibold mt-1">{crownMoney(membershipPriceCents(m))} / {m.billingFrequency==="Monthly"?"month":"year"} · {m.visitsIncluded} visits/year</p>
                 {!m.pricing&&<p className="text-xs text-muted-foreground">Legacy standard price — review when editing</p>}
                 {m.coveredEquipment?.map(e=><p key={e.id} className="text-xs mt-1 whitespace-pre-wrap">{e.type}{e.filterSize?` · Filter: ${e.filterSize} (${e.filterQuantity})`:""}{e.filterNotes?` · ${e.filterNotes}`:""}{e.notes?` · ${e.notes}`:""}</p>)}
@@ -686,7 +667,7 @@ export default function CrownCare() {
               <div className="rounded-lg bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-900/30 p-3 text-xs text-muted-foreground">
                 <p className="flex items-center gap-1.5 font-medium text-yellow-700 dark:text-yellow-400">
                   <CheckCircle2 size={14} />
-                  Starting plan benefits — customize coverage below:
+                  Legacy / individually agreed plan — confirm coverage below:
                 </p>
                 <ul className="mt-1.5 space-y-0.5 ml-5 list-disc">
                   <li>{configuration.visitsIncluded} maintenance visits per year for the selected equipment</li>
@@ -698,7 +679,7 @@ export default function CrownCare() {
               <CrownConfigurationFields key={form.customer} customer={selectedCustomer} value={configuration} onChange={setConfiguration}/>
               <DialogFooter className="gap-2">
                 <Button type="button" variant="outline" onClick={closeEnrollDialog}>Cancel</Button>
-                <Button type="submit" disabled={saving} data-testid="button-submit-enroll">{saving?"Saving…":"Save Membership"}</Button>
+                <Button type="submit" disabled={saving || !!configuration.draftTier} data-testid="button-submit-enroll">{saving?"Saving…":"Save Membership"}</Button>
               </DialogFooter>
             </fieldset></form>
           )}
