@@ -1,3 +1,4 @@
+import { crownInquiryMetadata } from "../../shared/crown-tiers";
 import { registerAcceptedQuotes } from "./accepted-quotes";
 import { registerCustomerImport } from "./customer-import";
 import { directCheckoutReady, invoiceFeeBps } from "./card-fee";
@@ -203,6 +204,7 @@ export function registerCrm(app: Express) {
         .from("leads")
         .insert({
           ...lead,
+          metadata: crownInquiryMetadata(lead.metadata),
           email: lead.email || null,
           source_ref: lead.source_ref || null,
           company_id: leadSource.company_id,

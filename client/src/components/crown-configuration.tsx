@@ -1,3 +1,4 @@
+import { crownCatalogVersion, crownTierIds, crownTiers, crownTierSnapshot, type CrownTierId } from "../../../shared/crown-tiers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,6 +13,17 @@ export function CrownConfigurationFields({customer,value,onChange}:{customer?:Cu
     onChange({...value,coveredEquipment:[...value.coveredEquipment,{id:crypto.randomUUID(),propertyId,systemId:system?.id,type:system?type:"Furnace",description:system?[system.brand,system.model].filter(Boolean).join(" "):"",quantity:1,filterSize:system?.filterSize || "",filterQuantity:system?.filterSize?1:0,filterNotes:"",notes:""}]});
   }
   return <div className="space-y-5">
+    <section className="space-y-3 rounded-lg border border-amber-300 p-3">
+      <h3 className="font-semibold">Draft tier planning</h3>
+      <p className="text-xs text-muted-foreground">Bronze, Silver and Gold pricing is pending cost review. Save a draft selection on an existing membership for planning only; it does not change its agreed price, benefits, or billing. New tier enrollment is unavailable.</p>
+      <label className="block text-sm">Draft tier<select className={selectClass} value={value.draftTier?.tier || ""} onChange={e=>onChange({...value,draftTier:e.target.value?{tier:e.target.value as CrownTierId,catalogVersion:crownCatalogVersion,systemCount:value.draftTier?.systemCount || 1}:undefined})}>
+        <option value="">No draft tier selected</option>{crownTierIds.map(id=><option key={id} value={id}>{crownTiers[id].name} · {crownMoney(crownTiers[id].annualPerSystemCents)} / system / year (draft)</option>)}
+      </select></label>
+      {value.draftTier&&<><label className="block text-sm">Covered systems for draft estimate<Input type="number" required min={1} max={100} value={value.draftTier.systemCount ?? 1} onChange={e=>onChange({...value,draftTier:{...value.draftTier!,systemCount:Number(e.target.value)}})}/></label>
+      <p className="text-xs text-muted-foreground">Count complete covered systems, not individual equipment components.</p>
+      <ul className="list-disc pl-5 text-sm">{crownTierSnapshot({...value.draftTier,systemCount:undefined}).benefits.map(benefit=><li key={benefit}>{benefit}</li>)}</ul>
+      <p className="text-xs">Four-inch and five-inch filter supply is excluded. Draft selection does not activate these benefits.</p></>}
+    </section>
     <section className="space-y-3"><h3 className="font-semibold">Covered equipment</h3><p className="text-xs text-muted-foreground">Select the customer's saved equipment or add a coverage item. Filter details and notes here belong to this membership.</p>
       {customer&&<label className="block text-sm">Add saved equipment<select className={selectClass} value="" onChange={e=>{if(!e.target.value)return;const [propertyId,systemId]=JSON.parse(e.target.value);const system=customer.properties.find(p=>p.id===propertyId)?.systems.find(s=>s.id===systemId);if(system)add(system,propertyId);}}>
         <option value="">Choose equipment from customer profile…</option>{customer.properties.flatMap(p=>p.systems.filter(s=>!value.coveredEquipment.some(e=>e.systemId===s.id&&e.propertyId===p.id)).map(s=><option key={p.id+":"+s.id} value={JSON.stringify([p.id,s.id])}>{p.address} · {s.brand} {s.type} {s.model}</option>))}

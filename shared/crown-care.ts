@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { crownTierSelection } from "./crown-tiers";
 
 export const coverageTypes = ["AC", "Heat Pump", "Furnace", "Mini-Split", "Air Handler", "Coil", "Package Unit", "Boiler", "Humidifier", "Dehumidifier", "Other"] as const;
 export const coverageSchema = z.object({
@@ -8,6 +9,7 @@ export const coverageSchema = z.object({
   filterNotes:z.string().trim().max(500), notes:z.string().trim().max(2000),
 }).refine(v=>v.type!=="Other" || !!v.description,"Describe the other equipment.");
 export const crownConfiguration = z.object({
+  draftTier:crownTierSelection.optional(),
   coveredEquipment:z.array(coverageSchema).min(1).max(100),
   notes:z.string().trim().max(5000), billingFrequency:z.enum(["Annual","Monthly"]),
   visitsIncluded:z.number().int().min(1).max(52),
@@ -24,7 +26,7 @@ export function membershipPriceCents(m: any):number {
   return Number.isSafeInteger(m.pricing?.totalAmountCents) && m.pricing.totalAmountCents>=0 ? m.pricing.totalAmountCents : m.billingFrequency==="Monthly"?1575:18900;
 }
 export function configurationFor(m:any):CrownConfiguration {
-  return {coveredEquipment:m.coveredEquipment || [{id:crypto.randomUUID(),propertyId:"",type:"Other",description:m.systemDescription || "Existing coverage — confirm equipment",quantity:1,filterSize:"",filterQuantity:0,filterNotes:"",notes:""}],notes:m.notes || "",billingFrequency:m.billingFrequency || "Annual",visitsIncluded:m.visitsIncluded || 2,
+  return {...(m.draftTier?{draftTier:{tier:m.draftTier.tier,catalogVersion:m.draftTier.catalogVersion,...(m.draftTier.systemCount?{systemCount:m.draftTier.systemCount}:{})}}:{}),coveredEquipment:m.coveredEquipment || [{id:crypto.randomUUID(),propertyId:"",type:"Other",description:m.systemDescription || "Existing coverage — confirm equipment",quantity:1,filterSize:"",filterQuantity:0,filterNotes:"",notes:""}],notes:m.notes || "",billingFrequency:m.billingFrequency || "Annual",visitsIncluded:m.visitsIncluded || 2,
     pricing:{baseAmountCents:m.pricing?.baseAmountCents ?? membershipPriceCents(m),adjustmentCents:m.pricing?.adjustmentCents ?? 0,adjustmentReason:m.pricing?.adjustmentReason || ""}};
 }
 export function serviceDetails(m:any):string {
