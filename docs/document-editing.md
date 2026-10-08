@@ -20,7 +20,7 @@ Forms remain open on failures. Duplicate pending submits are suppressed; Cancel 
 
 ## Release order
 
-Apply `20261008211535_document_edit_guards.sql` before deploying the editor UI. The separate optional-address migration is documented in `address-autocomplete.md`. No automatic schema deployment is added. Keep the existing accepted-quote, balance, and checkout migrations in place.
+Apply `20261008220958_document_edit_guards.sql` before deploying the editor UI. The separate optional-address migration is documented in `address-autocomplete.md`. No automatic schema deployment is added. Keep the existing accepted-quote, balance, and checkout migrations in place.
 
 ## Verification
 

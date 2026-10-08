@@ -58,7 +58,7 @@ invoice views do not render customer addresses.
 
 ## Durable free-allowance guard
 
-Apply the reviewed migration `20261008211631_address_autocomplete_quota.sql`
+Apply the reviewed migration `20261008221059_address_autocomplete_quota.sql`
 through the project's normal authorized migration process before activation.
 It adds an RLS-enabled private timestamp-only ledger and a service-role-only,
 security-invoker `crm_reserve_address_request()` RPC. Browser/anonymous roles

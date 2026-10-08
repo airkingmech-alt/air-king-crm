@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 
 const pg = new PGlite();
-const migration = "supabase/migrations/20261008211631_address_autocomplete_quota.sql";
+const migration = "supabase/migrations/20261008221059_address_autocomplete_quota.sql";
 before(async () => {
   await pg.exec("create role anon; create role authenticated; create role service_role bypassrls;");
   await pg.exec(await readFile(migration, "utf8"));
