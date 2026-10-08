@@ -4,7 +4,8 @@ export function canAccess(profile: {role?: string; permissions?: Record<string, 
 }
 // Feature flags apply to server operations, including routes outside the sidebar.
 export function requestFeatures(path: string, method = "GET"): string[] {
-  const p = path.split("?")[0];
+  // Express route matching is case-insensitive by default; authorization must be too.
+  const p = path.split("?")[0].toLowerCase();
   if (p.startsWith("/api/time-clock")) return ["time_clock"];
   if (p.startsWith("/api/scheduling")) return ["schedule"];
   if (p.startsWith("/api/equipment")) return ["customers"];

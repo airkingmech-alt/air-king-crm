@@ -1,4 +1,5 @@
 import { registerLaborDescription } from "./crm/labor-description";
+import { registerAddressAutocomplete } from "./crm/address-autocomplete";
 import "dotenv/config";
 import express, { Response, NextFunction } from 'express';
 import type { Request } from 'express';
@@ -70,15 +71,20 @@ app.use((req, res, next) => {
   registerScheduling(app);
   registerEquipmentAnalysis(app);
   registerLaborDescription(app);
+  registerAddressAutocomplete(app);
   registerCrownCare(app);
   registerReports(app);
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    // JSON parser errors can include the submitted body. Never log or echo typed
+    // addresses, even when an autocomplete request is malformed before its handler.
+    const addressRequest = _req.path.toLowerCase().replace(/\/+$/, "") === "/api/crm/customers/address-suggestions";
+    const message = addressRequest ? "Address suggestions are unavailable. Enter the address manually." : err.message || "Internal Server Error";
 
-    console.error("Internal Server Error:", err);
+    if (addressRequest) console.error("Address suggestion request failed:", status);
+    else console.error("Internal Server Error:", err);
 
     if (res.headersSent) {
       return next(err);

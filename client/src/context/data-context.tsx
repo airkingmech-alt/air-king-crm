@@ -1,3 +1,4 @@
+import type { AddressProvenance } from "../../../shared/address-autocomplete";
 import { crm } from "@/lib/crm-api";
 import type { CustomerRecord as Customer } from "@/data/customer-record";
 import { buildQuoteDraft, type QuoteDraftInput } from "@/lib/quote-pricing";
@@ -45,6 +46,8 @@ export interface NewCustomerData {
   phone: string;
   email: string;
   address: string;
+  unit?: string;
+  addressProvenance?: AddressProvenance;
   city: string;
   state: string;
   zip: string;
@@ -60,6 +63,7 @@ interface DataContextValue {
   loading: boolean;
   loadError: string | null;
 
+  acceptSavedRecord: (table: "customers" | "quotes" | "invoices", record: any) => void;
   addCustomer: (data: NewCustomerData, leadId?: string) => Promise<Customer>;
   addNote: (customerId: string, text: string) => Promise<void>;
   getPhotos: (customerId: string) => CustomerPhoto[];
@@ -116,6 +120,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const actor=profile?.full_name || "Staff member";
   const pendingCreates=useRef(new Map<string,string>());
   const crownMutationVersion = useRef(0);
+  const editVersions = useRef({customers: 0, quotes: 0, invoices: 0});
   const createId=(prefix:string,input:unknown)=>{const key=prefix+JSON.stringify(input);let id=pendingCreates.current.get(key);if(!id){id=uid(prefix);pendingCreates.current.set(key,id);}return id;};
   const finishCreate=(prefix:string,input:unknown)=>pendingCreates.current.delete(prefix+JSON.stringify(input));
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -148,6 +153,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     let cancelled=false;
     const load=async()=>{
       const crownVersion = crownMutationVersion.current;
+      const beforeEdits = {...editVersions.current};
       const specs=[['customers','customers',setCustomers],['work_orders','schedule',setWorkOrders],['invoices','invoices',setInvoices],['quotes','quotes',setQuotes],['memberships','memberships',setMemberships]] as const;
       try {
         for(const [table,feature,setter] of specs){
@@ -155,7 +161,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           const rows:any[]=[];
           for(let start=0;;start+=500){const {data,error}=await supabase.from(table).select('data').order('id').range(start,start+499);if(error)throw error;rows.push(...(data || []));if(!data || data.length<500)break;}
           // Do not let a pre-save response undo a confirmed paired booking.
-          if(!cancelled && (!(table === "memberships" || table === "work_orders") || crownVersion === crownMutationVersion.current))
+          if(!cancelled && (!(table in beforeEdits) || beforeEdits[table as keyof typeof beforeEdits] === editVersions.current[table as keyof typeof beforeEdits]) && (!(table === "memberships" || table === "work_orders") || crownVersion === crownMutationVersion.current))
             (setter as any)(extractEntities(rows));
         }
         if(!cancelled)setLoadError(null);
@@ -210,7 +216,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       properties: [
         {
           id: `prop-${id}`,
-          address: data.address || "TBD",
+          street: data.address || "",
+          unit: data.unit || "",
+          address: [data.address, data.unit].filter(Boolean).join(", ") || "TBD",
+          ...(data.addressProvenance ? { addressProvenance: data.addressProvenance } : {}),
           city: data.city,
           state: data.state,
           zip: data.zip || "",
@@ -575,6 +584,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const acceptSavedRecord = useCallback((table: "customers" | "quotes" | "invoices", record: any) => {
+    editVersions.current[table]++;
+    const replace = (rows: any[]) => rows.map(row => row.id === record.id ? record : row);
+    if (table === "customers") { customersRef.current = replace(customersRef.current); setCustomers(replace); }
+    if (table === "quotes") { quotesRef.current = replace(quotesRef.current); setQuotes(replace); }
+    if (table === "invoices") setInvoices(replace);
+  }, []);
+
   const value: DataContextValue = {
     customers,
     workOrders,
@@ -583,6 +600,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     photos,
     loading,
     loadError,
+    acceptSavedRecord,
     addCustomer,
     addNote,
     getPhotos,

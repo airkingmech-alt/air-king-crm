@@ -7,3 +7,9 @@ test('imported fields render separately, safely, and without inventing empty add
  assert.match(html,/Billing address/);assert.match(html,/Unit A/);assert.match(html,/00123/);assert.match(html,/Customer 101/);assert.match(html,/Mobile: 2025550101/);assert.match(html,/Phone: 2025550102/);assert.ok(!html.includes('<script>'));
  assert.equal(renderToStaticMarkup(React.createElement(CustomerBillingAddress,{customer:{}})),'');
 });
+
+test('saved billing addresses retain visible provider attribution after manual correction',()=>{
+ const customer={billingAddress:{street:'Corrected Billing Street',unit:'Unit B',city:'Example',state:'MO',postalCode:'00123'},billingAddressProvenance:{provider:'geoapify' as const,selectedAt:'2026-10-08T00:00:00Z',source:{attribution:'Example map attribution',url:'javascript:alert(1)'}}};
+ const html=renderToStaticMarkup(React.createElement(CustomerBillingAddress,{customer}));
+ assert.match(html,/Corrected Billing Street/);assert.match(html,/Powered by Geoapify/);assert.match(html,/OpenStreetMap contributors/);assert.match(html,/Example map attribution/);assert.doesNotMatch(html,/javascript:/);
+});

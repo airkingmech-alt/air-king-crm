@@ -1,4 +1,6 @@
 import React from "react";
+import { AddressAttribution } from "./address-attribution";
+import type { AddressProvenance } from "../../../shared/address-autocomplete";
 import { Mail, Phone } from "lucide-react";
 import type { CustomerImportFields } from "../../../shared/customer-import";
 import type { Contact } from "../data/mock-data";
@@ -12,7 +14,7 @@ export function CustomerImportSummary({ customer }: { customer: CustomerImportFi
     </p>}
   </>;
 }
-export function CustomerBillingAddress({ customer }: { customer: CustomerImportFields }) {
+export function CustomerBillingAddress({ customer }: { customer: CustomerImportFields & { billingAddressProvenance?: AddressProvenance } }) {
   const a = customer.billingAddress;
   if (!a || !Object.values(a).some(Boolean)) return null;
   return <Card>
@@ -20,6 +22,7 @@ export function CustomerBillingAddress({ customer }: { customer: CustomerImportF
     <CardContent className="text-sm space-y-1" data-testid="customer-billing-address">
       <p>{[a.street, a.unit].filter(Boolean).join(", ")}</p>
       <p>{[a.city, a.state, a.postalCode].filter(Boolean).join(", ")}</p>
+      <AddressAttribution provenance={customer.billingAddressProvenance} />
     </CardContent>
   </Card>;
 }

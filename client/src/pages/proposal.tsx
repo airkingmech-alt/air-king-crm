@@ -1,3 +1,4 @@
+import { QuoteEditor } from "@/components/document-editors";
 import { DeleteRecord } from "@/components/delete-record";
 import { guardSave } from "@/lib/confirmed-save";
 import { QuoteHeader, QuoteGuide, QuoteFooter } from "@/components/branded-quote";
@@ -83,7 +84,10 @@ export default function Proposal() {
     setSelectedAddOns(quote?.acceptedScope?.selectedAddOns || quote?.selectedAddOns || []);
     setSelectedTier(quote?.acceptedScope?.selectedOption || quote?.selectedOption || null);
     setShowRevisionDialog(false);
-  }, [quote?.id, quote?.status, quote?.acceptedScope]);
+  }, [quote?.id, quote?.status, JSON.stringify(quote?.acceptedScope), JSON.stringify(quote?.selectedAddOns), quote?.selectedOption]);
+  useEffect(() => {
+    setSelectedTier(current => current && !quote?.options.some(option => option.tier === current) ? null : current);
+  }, [JSON.stringify(quote?.options.map(option => option.tier))]);
 
   if (!quote) {
     return (
@@ -121,7 +125,7 @@ export default function Proposal() {
 
   const selectedOption = quote.options.find((o) => o.tier === selectedTier);
   const billingOption = acceptedScope?.option || selectedOption;
-  const quoteMoney = (accepted || quote.pricingVersion === "purchase-tax-v1") ? fmtCurrencyExact : fmtCurrency;
+  const quoteMoney = fmtCurrencyExact;
   const costOption = selectedOption || quote.options.find(o => o.equipmentItems?.join() === quote.equipmentItems?.join()) || quote.options[0];
   const addOnTotal = quoteAddOns.filter(a => selectedAddOns.includes(a.id)).reduce((sum, a) => sum + a.price, 0);
   const grandTotal = acceptedScope?.amount ?? ((selectedOption?.customerPrice || 0) + addOnTotal);
@@ -215,7 +219,8 @@ export default function Proposal() {
               <ArrowLeft size={16} className="mr-1.5" /> Back to Quotes
             </Button>
           </Link>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <QuoteEditor key={quote.id} quote={quote} />
               <DeleteRecord kind="quote" record={quote} destination="/quotes" />
             {quote.status === "Won" &&
               (invoiceForQuote ? (
@@ -310,7 +315,7 @@ export default function Proposal() {
             <p>Equipment: {fmtCurrencyExact(costOption?.equipmentCost ?? quote.equipmentCost ?? 0)} · Materials: {fmtCurrencyExact(quote.materialsCost)}</p>
             <p>Purchase tax (9% equipment + materials): {fmtCurrencyExact(costOption?.purchaseTax ?? quote.purchaseTax ?? 0)}</p>
             <p>Labor (no purchase tax): {fmtCurrencyExact(quote.laborCost)}</p>
-            <p>Total internal cost: {fmtCurrencyExact(costOption?.totalCost || 0)} · Price at 20% margin: {fmtCurrencyExact(costOption?.customerPrice || 0)}</p>
+            <p>Total internal cost: {fmtCurrencyExact(costOption?.totalCost || 0)} · Quoted customer price: {fmtCurrencyExact(costOption?.customerPrice || 0)}</p>
           </div>}
           <section className="rounded-xl border bg-card p-5 sm:p-6">
             <h2 className="text-sm font-bold mb-2">Scope of work</h2>
@@ -319,7 +324,7 @@ export default function Proposal() {
         </div>
 
         {/* Equipment List */}
-        {quote.equipmentItems && quote.equipmentItems.length > 0 && (
+        {(quote.equipmentItems?.length || quote.options.some(option => option.equipmentItems?.length)) ? (
           <Card className="mb-6">
             <CardContent className="p-5">
               <h2 className="text-sm font-semibold mb-1">Equipment Included</h2>
@@ -330,7 +335,7 @@ export default function Proposal() {
               </p>
               <div className="space-y-2">
                 {accepted && <p className="text-sm">{acceptedScope?.option.equipmentSummary || acceptedScope?.option.equipment || selectedOption?.equipmentSummary || selectedOption?.equipment || "See the original accepted proposal"}</p>}
-                {(accepted ? [] : getQuoteEquipment(quote, selectedTier)).map((item) => {
+                {(accepted || !selectedTier ? [] : getQuoteEquipment(quote, selectedTier)).map((item) => {
                   if (!item) return null;
                   return (
                     <div
@@ -357,7 +362,7 @@ export default function Proposal() {
               </div>
             </CardContent>
           </Card>
-        )}
+        ) : null}
 
         {/* Good/Better/Best Cards */}
         <div className="quote-options grid grid-cols-1 md:grid-cols-3 gap-5 mb-6 pt-3">
