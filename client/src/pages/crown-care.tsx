@@ -1,11 +1,12 @@
-import { crownTierIds, crownTierSnapshot, crownCatalogVersion } from "../../../shared/crown-tiers";
+import { CrownTierCatalog, type CrownCatalogResponse } from "@/components/crown-tier-catalog";
+import { enrollmentProblem, type EnrollmentAgreement, type EnrollmentMode } from "@/lib/crown-enrollment";
 import { canBookCrownVisit } from "../../../shared/crown-scheduling";
 import { UNKNOWN_LEAD_SOURCE } from "../../../shared/customer-lead-source";
 import { CrownChecklists } from "@/components/crown-checklists";
 import { membershipSummary } from "../../../shared/dashboard";
 import { guardSave } from "@/lib/confirmed-save";
 import { useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/auth-context";
 import { canAccess } from "../../../shared/access";
 import { crm } from "@/lib/crm-api";
@@ -36,6 +37,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -75,6 +77,11 @@ export default function CrownCare() {
   const { toast } = useToast();
   const { customers, memberships, addCustomer, createWorkOrder } = useData();
   const {profile}=useAuth();
+  const queryClient=useQueryClient();
+  const catalogQueryKey=["crown-care-catalog",profile?.company_id,profile?.id];
+  const catalogQuery=useQuery<CrownCatalogResponse,Error>({queryKey:catalogQueryKey,queryFn:()=>crm("crm/crown-care/catalog"),enabled:canAccess(profile,"memberships"),staleTime:0});
+  const [enrollmentMode,setEnrollmentMode]=useState<EnrollmentMode>("tier");
+  const [agreement,setAgreement]=useState<EnrollmentAgreement>({accepted:false,acceptedOn:new Date().toISOString().slice(0,10),reference:""});
   const {data:staff}=useQuery({queryKey:["crown-care-team",profile?.id],queryFn:()=>crm("scheduling"),enabled:canAccess(profile,"schedule")});
   const teamMembers: {id:string;name:string}[]=(staff?.people || []).filter((p:any)=>p.full_name).map((p:any)=>({id:p.id,name:p.full_name}));
   const [showEnrollDialog, setShowEnrollDialog] = useState(false);
@@ -92,14 +99,14 @@ export default function CrownCare() {
   }
   async function saveEdit(e:React.FormEvent){
     e.preventDefault();if(saveLock.current)return;saveLock.current=true;setSaving(true);
-    try{await crm(`crm/memberships/${encodeURIComponent(editing.membership.id)}`,"PATCH",{version:editing.version,configuration:editing.configuration},requestKey.current);window.dispatchEvent(new Event("crm-refresh"));setEditing(null);toast({title:"Crown Care saved",description:"Equipment, filter details, notes, and price have been saved."});}
+    try{await crm(`crm/memberships/${encodeURIComponent(editing.membership.id)}`,"PATCH",{version:editing.version,configuration:editing.configuration},requestKey.current);window.dispatchEvent(new Event("crm-refresh"));setEditing(null);toast({title:"Crown Care saved",description:editing.membership.tierPlan?"Coverage details and notes saved. The agreed tier and price were preserved.":"Equipment, filter details, notes, and price have been saved."});}
     catch(error:any){toast({title:"Could not save membership",description:error.message,variant:"destructive"});}
     finally{saveLock.current=false;setSaving(false);}
   }
   const [form, setForm] = useState({
     customer: "",
     billingFrequency: "Annual",
-    autoRenew: "Yes",
+    autoRenew: "No",
     startDate: new Date().toISOString().slice(0, 10),
   });
 
@@ -153,7 +160,8 @@ export default function CrownCare() {
 
   const handleSelectCustomer = (customerId: string) => {
     const c = customers.find((x) => x.id === customerId);
-    setForm({ ...form, customer: customerId });
+    setForm({ ...form, customer: customerId, autoRenew:"No" });
+    setAgreement({accepted:false,acceptedOn:new Date().toISOString().slice(0,10),reference:""});
     setConfiguration({...configurationFor({}),coveredEquipment:[]});
     setCustomerSearch(c?.name || "");
     setComboboxOpen(false);
@@ -178,7 +186,8 @@ export default function CrownCare() {
       zip: newCustomer.zip,
       leadSource: newCustomer.leadSource,
     });
-    setForm({ ...form, customer: created.id });
+    setForm({ ...form, customer: created.id, autoRenew:"No" });
+    setAgreement({accepted:false,acceptedOn:new Date().toISOString().slice(0,10),reference:""});
     setConfiguration({...configurationFor({}),coveredEquipment:[]});
     setCustomerSearch(created.name);
     setShowNewCustomerForm(false);
@@ -192,16 +201,17 @@ export default function CrownCare() {
       toast({ title: "Select a customer", description: "Please choose or create a customer to enroll.", variant: "destructive" });
       return;
     }
-    if(configuration.draftTier){toast({title:"Draft tier enrollment unavailable",description:"Pricing is pending cost review. Use an existing membership’s editor to record draft tier interest without changing its agreed terms.",variant:"destructive"});return;}
+    const problem=enrollmentProblem(enrollmentMode,configuration,catalogQuery.isError?undefined:catalogQuery.data?.catalog,agreement);
+    if(problem){toast({title:"Check enrollment details",description:problem,variant:"destructive"});return;}
     if(saveLock.current)return;saveLock.current=true;setSaving(true);
     const custName = selectedCustomer?.name || "Customer";
     try {
-      const {membership}=await crm("crm/memberships","POST",{customerId:form.customer,startDate:form.startDate,autoRenew:form.autoRenew==="Yes",configuration},requestKey.current);
+      const {membership}=await crm("crm/memberships","POST",{customerId:form.customer,startDate:form.startDate,autoRenew:form.autoRenew==="Yes",configuration,...(enrollmentMode==="tier"?{agreement:{accepted:true,acceptedOn:agreement.acceptedOn,...(agreement.reference.trim()?{reference:agreement.reference.trim()}:{})}}:{})},requestKey.current);
       setSavedMembership(membership);
       window.dispatchEvent(new Event("crm-refresh"));
       toast({title:"Crown Care membership saved",description:`${custName} — ${crownMoney(membershipPriceCents(membership))} / ${membership.billingFrequency.toLowerCase()}. No payment was charged.`});
       setEnrolledMembershipId(membership.id);setEnrolledCustomerName(custName);
-    } catch(error:any) {toast({title:"Enrollment could not be saved",description:error.message,variant:"destructive"});}
+    } catch(error:any) {toast({title:"Enrollment could not be saved",description:error.message,variant:"destructive"});void catalogQuery.refetch();}
     finally{saveLock.current=false;setSaving(false);}
   };
 
@@ -254,9 +264,10 @@ export default function CrownCare() {
     if(saveLock.current)return;
     setConfiguration({...configurationFor({}),coveredEquipment:[]});setSavedMembership(null);requestKey.current=crypto.randomUUID();
     setShowEnrollDialog(false);
+    setEnrollmentMode("tier");setAgreement({accepted:false,acceptedOn:new Date().toISOString().slice(0,10),reference:""});
     setEnrolledMembershipId(null);
     setEnrolledCustomerName("");
-    setForm({ customer: "", billingFrequency: "Annual", autoRenew: "Yes", startDate: new Date().toISOString().slice(0, 10) });
+    setForm({ customer: "", billingFrequency: "Annual", autoRenew: "No", startDate: new Date().toISOString().slice(0, 10) });
     setCustomerSearch("");
     setShowNewCustomerForm(false);
     setComboboxOpen(false);
@@ -272,7 +283,7 @@ export default function CrownCare() {
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">Maintenance membership program</p>
         </div>
-        <Button size="sm" className="bg-primary text-primary-foreground" onClick={() => setShowEnrollDialog(true)} data-testid="button-enroll-customer">
+        <Button size="sm" className="bg-primary text-primary-foreground" onClick={() => {void catalogQuery.refetch();setShowEnrollDialog(true);}} data-testid="button-enroll-customer">
           <Plus size={16} className="mr-1.5" />
           Enroll Customer
         </Button>
@@ -318,10 +329,7 @@ export default function CrownCare() {
         </Card>
       </div>
 
-      <section className="space-y-3" aria-label="Crown Care draft tier catalog">
-        <div><h2 className="font-semibold">Crown Care tiers · Draft pricing</h2><p className="text-sm text-muted-foreground">Annual pricing per covered system. Cost review is pending; tier enrollment is unavailable. Existing membership terms and prices remain in place.</p></div>
-        <div className="grid gap-3 md:grid-cols-3">{crownTierIds.map(tier=>{const plan=crownTierSnapshot({tier,catalogVersion:crownCatalogVersion});return <Card key={tier}><CardContent className="p-4 space-y-3"><h3 className="font-bold">{plan.name}</h3><p className="text-xl font-semibold">{crownMoney(plan.annualPerSystemCents)}<span className="text-xs font-normal"> / system / year · draft</span></p><ul className="text-sm list-disc pl-4 space-y-1">{plan.benefits.map(b=><li key={b}>{b}</li>)}</ul><p className="text-xs text-muted-foreground">{plan.filterPolicy}. Four-inch and five-inch filter supply excluded.</p></CardContent></Card>})}</div>
-      </section>
+      <CrownTierCatalog data={catalogQuery.data} loading={catalogQuery.isLoading} error={catalogQuery.error} isOwner={profile?.role==="owner"} reload={()=>{void catalogQuery.refetch();}} onSaved={data=>queryClient.setQueryData(catalogQueryKey,data)}/>
 
       {/* Memberships List */}
       <Card>
@@ -341,14 +349,15 @@ export default function CrownCare() {
                 </Link>
                 <p className="text-xs text-muted-foreground">{m.propertyAddress}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{m.systemDescription}</p>
-                <p className="text-xs text-muted-foreground mt-1">Legacy / individually agreed membership{m.draftTier ? ` · Draft interest: ${m.draftTier.name} (${m.draftTier.catalogVersion})` : ""}</p>
+                <p className="text-xs text-muted-foreground mt-1">{m.tierPlan?`${m.tierPlan.name} · ${m.tierPlan.systemCount} covered complete ${m.tierPlan.systemCount===1?"system":"systems"} · Agreed price version ${m.tierPlan.catalogVersion}`:"Legacy / individually agreed membership"}{m.draftTier ? ` · Historical draft interest: ${m.draftTier.name} (${m.draftTier.catalogVersion})` : ""}</p>
+                {m.tierPlan&&<details className="text-xs mt-1"><summary className="cursor-pointer">Saved tier benefits & agreement</summary><p className="mt-1">{crownMoney(m.tierPlan.annualPerSystemCents)} per complete system / year. This agreed price is protected from later catalog changes.</p><ul className="list-disc pl-5">{m.tierPlan.benefits.map(benefit=><li key={benefit}>{benefit}</li>)}</ul><p>{m.tierPlan.excludedFilterSupply}.</p>{m.agreement&&<p className="mt-1 whitespace-pre-wrap">Customer acceptance recorded: {m.agreement.acceptedOn}{m.agreement.reference?` · ${m.agreement.reference}`:""}</p>}</details>}
                 <p className="text-sm font-semibold mt-1">{crownMoney(membershipPriceCents(m))} / {m.billingFrequency==="Monthly"?"month":"year"} · {m.visitsIncluded} visits/year</p>
                 {!m.pricing&&<p className="text-xs text-muted-foreground">Legacy standard price — review when editing</p>}
                 {m.coveredEquipment?.map(e=><p key={e.id} className="text-xs mt-1 whitespace-pre-wrap">{e.type}{e.filterSize?` · Filter: ${e.filterSize} (${e.filterQuantity})`:""}{e.filterNotes?` · ${e.filterNotes}`:""}{e.notes?` · ${e.notes}`:""}</p>)}
                 {m.notes&&<p className="text-xs mt-2 whitespace-pre-wrap">Notes: {m.notes}</p>}
                 {m.pricing?.adjustmentReason&&<p className="text-xs text-muted-foreground mt-1">Price adjustment: {crownMoney(m.pricing.adjustmentCents)} — {m.pricing.adjustmentReason}</p>}
                 <Button size="sm" variant="outline" className="mt-2 mr-2" onClick={()=>setChecklistMembership(m.id)}>Maintenance checklists</Button>
-                <Button size="sm" variant="outline" className="mt-2 mr-2" disabled={saving} onClick={()=>openEdit(m.id)}>Edit Coverage & Price</Button>
+                <Button size="sm" variant="outline" className="mt-2 mr-2" disabled={saving} onClick={()=>openEdit(m.id)}>{m.tierPlan?"Edit Coverage & Notes":"Edit Coverage & Price"}</Button>
                 {m.status === "Active" && (canBookCrownVisit(m.springVisit) || canBookCrownVisit(m.fallVisit)) && (
                   <Button size="sm" variant="outline" className="mt-2" disabled={saving || !canAccess(profile, "schedule")} onClick={() => openScheduleVisit(m)}>Schedule Visit</Button>
                 )}
@@ -447,7 +456,7 @@ export default function CrownCare() {
                       return;
                     }
                     const subject = "Your Crown Care Membership Renewal - Air King Mechanical Services";
-                    const renewalBody = `Dear ${m.customerName},\n\nThis is a friendly reminder that your Crown Care membership is due for renewal on ${m.renewalDate} (${m.billingFrequency} billing).\n\nPlease contact us at your earliest convenience to renew your Crown Care membership and continue receiving your seasonal tune-ups and priority service.\n\nBest regards,\nAir King Mechanical Services LLC, Kansas City, MO`;
+                    const renewalBody = `Dear ${m.customerName},\n\nThis is a friendly reminder that your Crown Care membership is due for renewal on ${m.renewalDate} (${m.billingFrequency} billing).\n\nPlease contact us at your earliest convenience to renew your Crown Care membership and continue receiving the benefits recorded in your membership agreement.\n\nBest regards,\nAir King Mechanical Services LLC, Kansas City, MO`;
                     window.location.href = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(renewalBody)}`;
                     toast({
                       title: "Renewal notice opened",
@@ -466,9 +475,10 @@ export default function CrownCare() {
 
       {checklistMembership&&<CrownChecklists id={checklistMembership} onClose={()=>setChecklistMembership(null)}/>}
       <Dialog open={!!editing} onOpenChange={open=>!open&&!saving&&setEditing(null)}>
-        <DialogContent className="sm:max-w-[760px] max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>Edit Crown Care — {editing?.membership.customerName}</DialogTitle><DialogDescription>Update coverage and the agreed price while preserving payment status and completed visits.</DialogDescription></DialogHeader>
+        <DialogContent className="sm:max-w-[760px] max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>Edit Crown Care — {editing?.membership.customerName}</DialogTitle><DialogDescription>{editing?.membership.tierPlan?"Update equipment details and notes. Saved tier, system count, visits, and agreed price remain protected.":"Update coverage and the agreed price while preserving payment status and completed visits."}</DialogDescription></DialogHeader>
           {editing&&<form onSubmit={saveEdit} className="space-y-4"><fieldset disabled={saving} className="space-y-4">
-            <CrownConfigurationFields key={editing.membership.id} customer={customers.find(c=>c.id===editing.membership.customerId)} value={editing.configuration} onChange={configuration=>setEditing({...editing,configuration})}/>
+            <CrownConfigurationFields key={editing.membership.id} customer={customers.find(c=>c.id===editing.membership.customerId)} value={editing.configuration} lockedPlan={editing.membership.tierPlan} historicalDraft={editing.membership.draftTier} onChange={configuration=>setEditing({...editing,configuration})}/>
+            {editing.membership.agreement&&<p className="text-xs whitespace-pre-wrap">Customer acceptance recorded: {editing.membership.agreement.acceptedOn}{editing.membership.agreement.reference?` · ${editing.membership.agreement.reference}`:""}</p>}
             {(editing.membership.configurationHistory || []).length>0&&<details className="text-xs"><summary className="cursor-pointer">Change history</summary><div className="space-y-2 mt-2">{[...(editing.membership.configurationHistory || [])].reverse().map((h:any,i:number)=><p key={i}>{new Date(h.at).toLocaleString()} · {h.before?"Updated":"Created"} · {h.after?.pricing?.totalAmountCents!==undefined?crownMoney(h.after.pricing.totalAmountCents):""} / {h.after?.billingFrequency?.toLowerCase()}</p>)}</div></details>}
             <DialogFooter><Button type="button" variant="outline" onClick={()=>setEditing(null)}>Cancel</Button><Button type="submit">{saving?"Saving…":"Save Changes"}</Button></DialogFooter>
           </fieldset></form>}
@@ -486,7 +496,7 @@ export default function CrownCare() {
             <DialogDescription>
               {enrolledMembershipId
                 ? `${enrolledCustomerName} is enrolled. Schedule a precision tune-up below, or return to this membership’s Schedule Visit button later.`
-                : "Choose covered equipment, record service requirements, and set this customer's membership price."}
+                : "Select a tier and covered systems, then record the customer’s acceptance. An individually agreed plan is also available."}
             </DialogDescription>
           </DialogHeader>
 
@@ -498,6 +508,7 @@ export default function CrownCare() {
                 <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
                   <PopoverTrigger asChild>
                     <Button
+                      type="button"
                       variant="outline"
                       role="combobox"
                       data-testid="select-enroll-customer"
@@ -640,6 +651,7 @@ export default function CrownCare() {
                 </div>
               )}
 
+              <label className="block text-sm">Plan type<select className="block w-full rounded-md border bg-background p-2 text-sm" value={enrollmentMode} data-testid="select-enrollment-mode" onChange={e=>{setEnrollmentMode(e.target.value as EnrollmentMode);setConfiguration({...configurationFor({}),coveredEquipment:configuration.coveredEquipment,notes:configuration.notes});setAgreement({...agreement,accepted:false});setForm({...form,autoRenew:"No"});}}><option value="tier">Annual Bronze / Silver / Gold plan</option><option value="manual">Legacy / individually agreed plan</option></select></label>
               <div className="grid grid-cols-2 gap-3">
                 <p className="text-xs text-muted-foreground">Renewal preference is recorded here. Automatic card billing is not activated by saving.</p>
                 <div className="space-y-2">
@@ -649,7 +661,7 @@ export default function CrownCare() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Yes">Yes</SelectItem>
+                      <SelectItem value="Yes" disabled={enrollmentMode==="tier"&&!agreement.accepted}>Yes</SelectItem>
                       <SelectItem value="No">No</SelectItem>
                     </SelectContent>
                   </Select>
@@ -660,11 +672,12 @@ export default function CrownCare() {
                 <Input
                   id="enroll-start"
                   type="date"
+                  required
                   value={form.startDate}
-                  onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                  onChange={(e) => {setForm({ ...form, startDate: e.target.value,autoRenew:"No" });setAgreement({...agreement,accepted:false});}}
                 />
               </div>
-              <div className="rounded-lg bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-900/30 p-3 text-xs text-muted-foreground">
+              {enrollmentMode==="manual"&&<div className="rounded-lg bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-900/30 p-3 text-xs text-muted-foreground">
                 <p className="flex items-center gap-1.5 font-medium text-yellow-700 dark:text-yellow-400">
                   <CheckCircle2 size={14} />
                   Legacy / individually agreed plan — confirm coverage below:
@@ -675,11 +688,19 @@ export default function CrownCare() {
                   <li>15% discount on repairs</li>
                   <li>Record seasonal service preferences in membership notes</li>
                 </ul>
-              </div>
-              <CrownConfigurationFields key={form.customer} customer={selectedCustomer} value={configuration} onChange={setConfiguration}/>
+              </div>}
+              {enrollmentMode==="tier"&&catalogQuery.error&&<p role="alert" className="text-sm text-destructive">Could not load current prices. <Button type="button" variant="outline" size="sm" onClick={()=>{void catalogQuery.refetch();}}>Retry prices</Button></p>}
+              <CrownConfigurationFields key={form.customer} customer={selectedCustomer} value={configuration} enrollment={enrollmentMode==="tier"} catalog={catalogQuery.data?.catalog} onChange={next=>{setConfiguration(next);setAgreement({...agreement,accepted:false});setForm({...form,autoRenew:"No"});}}/>
+              {enrollmentMode==="tier"&&<section className="rounded-lg border p-3 space-y-3" aria-label="Customer acceptance">
+                <h3 className="font-semibold">Customer acceptance</h3>
+                <p className="text-xs text-muted-foreground">Record acceptance already obtained from the customer. Saving does not send an agreement or collect a payment.</p>
+                <label className="flex items-start gap-2 text-sm"><input type="checkbox" required checked={agreement.accepted} data-testid="checkbox-enrollment-accepted" onChange={e=>{setAgreement({...agreement,accepted:e.target.checked});if(!e.target.checked)setForm({...form,autoRenew:"No"});}} className="mt-1"/><span>I verified the customer accepted this plan, displayed benefits, annual price, and covered complete systems.</span></label>
+                <label className="block text-sm">Customer acceptance date<Input type="date" required max={new Date().toISOString().slice(0,10)} value={agreement.acceptedOn} onChange={e=>setAgreement({...agreement,acceptedOn:e.target.value})} data-testid="input-enrollment-accepted-on"/></label>
+                <label className="block text-sm">Agreement reference / notes (optional)<Textarea value={agreement.reference} maxLength={5000} placeholder="Signed agreement location, reference, or notes about accepted terms" onChange={e=>setAgreement({...agreement,reference:e.target.value})}/></label>
+              </section>}
               <DialogFooter className="gap-2">
                 <Button type="button" variant="outline" onClick={closeEnrollDialog}>Cancel</Button>
-                <Button type="submit" disabled={saving || !!configuration.draftTier} data-testid="button-submit-enroll">{saving?"Saving…":"Save Membership"}</Button>
+                <Button type="submit" disabled={saving || (enrollmentMode==="tier"&&(!configuration.enrollmentTier || !agreement.accepted || !catalogQuery.data || catalogQuery.isError || configuration.enrollmentTier.catalogVersion!==catalogQuery.data.catalog.version))} data-testid="button-submit-enroll">{saving?"Saving…":"Save Membership"}</Button>
               </DialogFooter>
             </fieldset></form>
           )}

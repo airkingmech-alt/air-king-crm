@@ -1,4 +1,5 @@
-import { crownInquiryMetadata } from "../../shared/crown-tiers";
+import { currentCrownInquiryMetadata, publicCrownCatalog } from "../../shared/crown-tiers";
+import { loadCrownCatalog, registerCrownCatalog } from "./crown-catalog";
 import { registerAcceptedQuotes } from "./accepted-quotes";
 import { registerCustomerImport } from "./customer-import";
 import { directCheckoutReady, invoiceFeeBps } from "./card-fee";
@@ -58,6 +59,7 @@ const wrap =
       await fn(req, res);
     } catch (e: any) {
       res.status(e.status || 400).json({
+        ...(e.code === "CROWN_CATALOG_STALE" ? { code: e.code } : {}),
         error:
           e instanceof z.ZodError
             ? "Please check the form fields."
@@ -97,11 +99,34 @@ function limit(req: Request, res: Response, next: () => void) {
   next();
 }
 
+async function authorizedLeadSource(req: Request, source: string) {
+  const leadSources: Row[] = await result(db().from("lead_sources")
+    .select("id,company_id,source_key,secret,enabled").eq("source_key", source).eq("enabled", true));
+  const provided = Buffer.from(String(req.headers["x-lead-token"] || req.headers.authorization?.replace(/^Bearer /i, "") || ""));
+  const leadSource = leadSources.find(candidate => {
+    const expected = Buffer.from(String(candidate.secret || ""));
+    return expected.length > 0 && provided.length === expected.length && timingSafeEqual(provided, expected);
+  });
+  if (!leadSource) throw Object.assign(new Error("Invalid lead intake token."), { status: 401 });
+  return leadSource;
+}
+
 export function registerCrm(app: Express) {
   registerAcceptedQuotes(app);
   registerCustomerImport(app);
   app.use("/api/public", limit);
-  app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
+  registerCrownCatalog(app);
+  app.options("/api/public/crown-care/catalog", (_req, res) => {
+    res.set({ "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Lead-Token" });
+    res.sendStatus(204);
+  });
+  app.get("/api/public/crown-care/catalog", wrap(async (req, res) => {
+    res.set({ "Access-Control-Allow-Origin": "*", "Cache-Control": "no-store" });
+    const source = await authorizedLeadSource(req, "website");
+    res.json(publicCrownCatalog(await loadCrownCatalog(source.company_id)));
+  }));
+  app.get("/api/health", (_req, res) => res.set("Cache-Control", "no-store").json({ status: "ok", commit: process.env.RENDER_GIT_COMMIT || null }));
   app.get("/api/webhooks/meta/leadgen", (req, res) => {
     const mode = String(req.query["hub.mode"] || "");
     const token = String(req.query["hub.verify_token"] || "");
@@ -170,21 +195,7 @@ export function registerCrm(app: Express) {
     wrap(async (req, res) => {
       res.set("Access-Control-Allow-Origin", "*");
       const source = z.string().min(1).max(80).regex(/^[a-z0-9_-]+$/).parse(req.params.source);
-      const leadSources: Row[] = await result(
-        db()
-          .from("lead_sources")
-          .select("id,company_id,source_key,secret,enabled")
-          .eq("source_key", source)
-          .eq("enabled", true),
-      );
-      const provided = String(
-        req.headers["x-lead-token"] || req.headers.authorization?.replace(/^Bearer /i, "") || "",
-      );
-      const leadSource = leadSources.find((candidate) => {
-        const expected = String(candidate.secret || "");
-        return provided.length === expected.length && timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
-      });
-      if (!leadSource) throw Object.assign(new Error("Invalid lead intake token."), { status: 401 });
+      const leadSource = await authorizedLeadSource(req, source);
       const payload = z.object({
         name: z.string().trim().min(1).max(160),
         email: z.union([z.email(), z.literal("")]).optional(),
@@ -200,11 +211,13 @@ export function registerCrm(app: Express) {
         metadata: z.record(z.string(), z.unknown()).optional(),
       }).parse(req.body);
       const { website: _honeypot, ...lead } = payload;
+      const metadata = lead.metadata?.crownCare === undefined ? lead.metadata
+        : currentCrownInquiryMetadata(lead.metadata, await loadCrownCatalog(leadSource.company_id));
       const inserted = await db()
         .from("leads")
         .insert({
           ...lead,
-          metadata: crownInquiryMetadata(lead.metadata),
+          metadata,
           email: lead.email || null,
           source_ref: lead.source_ref || null,
           company_id: leadSource.company_id,

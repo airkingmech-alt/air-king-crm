@@ -183,6 +183,8 @@ export interface Invoice {
 }
 
 export interface CrownCareMembership {
+  tierPlan?: import("../../../shared/crown-tiers").CrownEnrollmentSnapshot | null;
+  agreement?: {accepted:boolean;acceptedOn:string;reference?:string;recordedAt?:string;recordedBy?:string} | null;
   draftTier?: import("../../../shared/crown-tiers").CrownTierSnapshot | null;
   coveredEquipment?: import("../../../shared/crown-care").CoveredEquipment[];
   notes?: string;

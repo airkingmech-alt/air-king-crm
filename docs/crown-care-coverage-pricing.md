@@ -4,7 +4,7 @@
 
 Open Crown Care, find the customer, and choose **Edit Coverage & Price**. Add saved equipment from the customer profile or a membership-specific equipment/service item. Save equipment type, description, quantity, filter size/quantity/instructions, equipment notes, and general membership notes. Set the base price and an optional positive surcharge or negative discount, with its reason. The displayed total is the agreed price for the selected annual or monthly period.
 
-New enrollments use the same editor. The original starting rates remain $189 annually or $15.75 monthly. Adding equipment does not silently increase the price. Annual value totals use each membership's actual saved price. Search includes equipment and service notes. New first-visit jobs include coverage/filter notes in their description; existing jobs are not rewritten.
+New enrollments now default to selecting a published Bronze, Silver, or Gold annual tier from the current company catalog. See [tier enrollment and pricing](crown-care-tiers.md). The explicit legacy / individually agreed option retains the original $189 annual or $15.75 monthly starting values. Existing tier members keep their accepted tier, system count, benefits, visits, and price; their equipment details and notes remain editable. Adding equipment does not silently increase the covered-system count or price. Annual value totals use each membership's actual saved price. Search includes equipment and service notes. New first-visit jobs include coverage/filter notes in their description; existing jobs are not rewritten.
 
 ## Design references
 

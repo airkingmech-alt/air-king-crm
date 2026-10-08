@@ -1,4 +1,4 @@
-import { crownTierIds, crownTiers, crownTierSnapshot, crownCatalogVersion, type CrownTierId } from "../../../shared/crown-tiers";
+import { crownTierIds, crownTiers, currentCrownInquiryMetadata, type CrownCatalog, type CrownTierId } from "../../../shared/crown-tiers";
 import { updateVersioned } from "../../../shared/versioned-save";
 import { guardSave } from "@/lib/confirmed-save";
 import { useState, useEffect } from "react";
@@ -34,6 +34,7 @@ export default function Leads(){
  const {data:leads=[],isLoading,error:loadError}=useQuery({queryKey:key,enabled:!!profile,refetchInterval:30000,queryFn:async()=>{const {data,error}=await supabase.from("leads").select("*").eq("company_id",profile!.company_id).order("created_at",{ascending:false});if(error)throw error;return data as Lead[]}});
  const {data:sources=[]}=useQuery({queryKey:["crm-lead-sources"],enabled:profile?.role==="owner"||profile?.role==="admin",queryFn:()=>crm("crm/lead-sources") as Promise<LeadSource[]>});
  const {data:config}=useQuery({queryKey:["crm-config"],enabled:!!profile,queryFn:()=>crm("crm/config") as Promise<CrmConfig>});
+ const {data:tierCatalog,error:tierCatalogError}=useQuery({queryKey:["crown-care-catalog",profile?.company_id],enabled:!!profile,queryFn:()=>crm("crm/crown-care/catalog") as Promise<{catalog:CrownCatalog;version:string}>});
  const save=useMutation({mutationFn:async()=>{if(!form.name.trim())throw new Error("Lead name is required.");const {error}=await supabase.from("leads").insert({...form,company_id:profile!.company_id,status:"new"});if(error)throw error;},onSuccess:()=>{qc.invalidateQueries({queryKey:key});setOpen(false);setForm(blank);toast({title:"Lead added to inbox"});},onError:(e:Error)=>toast({title:"Could not add lead",description:e.message,variant:"destructive"})});
  const update=guardSave("lead-status",async(l:Lead,status:LeadStatus)=>{
   await updateVersioned(supabase,"leads",l,{status,...(status==="contacted"?{last_contact_at:new Date().toISOString()}: {})});
@@ -45,7 +46,8 @@ export default function Leads(){
   try {
    const previous=l.metadata?.crownCare as Record<string,unknown>|undefined;
    const count=Number(previous?.systemCount);
-   const snapshot=tier?{...crownTierSnapshot({tier,catalogVersion:crownCatalogVersion,...(Number.isInteger(count)&&count>=1&&count<=100?{systemCount:count}:{})}),intent:"inquiry",reviewedBy:profile!.id,reviewedAt:new Date().toISOString()}:null;
+   const current=tier?await crm("crm/crown-care/catalog") as {catalog:CrownCatalog}:null;
+   const snapshot=tier?{...(currentCrownInquiryMetadata({crownCare:{tier,catalogVersion:current!.catalog.version,...(Number.isInteger(count)&&count>=1&&count<=100?{systemCount:count}:{})}},current!.catalog)!.crownCare as Record<string,unknown>),reviewedBy:profile!.id,reviewedAt:new Date().toISOString()}:null;
    await updateVersioned(supabase,"leads",l,{metadata:{...l.metadata,crownCare:snapshot}});
    await qc.invalidateQueries({queryKey:key});
    toast({title:"Tier interest saved",description:"This lead has not been enrolled or billed."});
@@ -79,8 +81,9 @@ export default function Leads(){
         {selected.email&&<Button size="sm" variant="outline" asChild><a href={`mailto:${selected.email}`}><Mail size={14} className="mr-2"/>Email</a></Button>}
       </div>
       <section className="space-y-2 rounded-lg border p-3"><h3 className="font-semibold">Crown Care tier interest</h3>
-        <label className="block text-sm">Proposed tier<select aria-label="Proposed Crown Care tier" disabled={tierSaving} className="block w-full rounded-md border bg-background p-2 mt-1" value={crownLeadTier(selected)?.toLowerCase() || ""} onChange={e=>{void saveTier(selected,e.target.value as CrownTierId|"");}}><option value="">No tier selected</option>{crownTierIds.map(id=><option key={id} value={id}>{crownTiers[id].name} · ${(crownTiers[id].annualPerSystemCents/100).toFixed(0)} / system / year · draft</option>)}</select></label>
-        <p className="text-xs text-muted-foreground">Next: review the request, confirm covered systems and service needs, then finalize pricing and agreement terms before enrollment. Creating a customer does not enroll them. Tier enrollment remains unavailable pending cost review.</p>
+        <label className="block text-sm">Proposed tier<select aria-label="Proposed Crown Care tier" disabled={tierSaving||!tierCatalog} className="block w-full rounded-md border bg-background p-2 mt-1" value={crownLeadTier(selected)?.toLowerCase() || ""} onChange={e=>{void saveTier(selected,e.target.value as CrownTierId|"");}}><option value="">No tier selected</option>{crownTierIds.map(id=><option key={id} value={id}>{crownTiers[id].name}{tierCatalog?` · $${(tierCatalog.catalog.tiers[id].annualPerSystemCents/100).toFixed(2)} / system / year`:""}</option>)}</select></label>
+        {tierCatalogError&&<p role="alert" className="text-xs text-destructive">Current Crown Care prices could not be loaded. The saved inquiry details below are unchanged.</p>}
+        <p className="text-xs text-muted-foreground">Options show current prices. The original inquiry snapshot remains in the form answers below until you change the selection. Confirm covered systems and the customer’s acceptance, then use Crown Care to enroll them. Creating a customer or recording tier interest does not enroll or bill them.</p>
       </section>
       <section className="space-y-3"><h3 className="font-semibold">Contact & service</h3><dl className="grid sm:grid-cols-2 gap-4">
         <Detail label="Name" value={selected.name}/><Detail label="Service needed" value={selected.service_type}/>
