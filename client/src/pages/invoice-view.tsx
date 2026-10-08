@@ -1,3 +1,4 @@
+import { InvoiceEditor } from "@/components/document-editors";
 import { DeleteRecord } from "@/components/delete-record";
 import {
   DocumentActions,
@@ -41,6 +42,7 @@ export default function InvoiceView() {
             </Button>
           </Link>
           <div className="flex flex-wrap gap-2">
+            <InvoiceEditor key={invoice.id} invoice={invoice} />
               <DeleteRecord kind="invoice" record={invoice} destination="/invoices" />
             {invoice.quoteId && (
               <Link href={`/proposals/${invoice.quoteId}`}>

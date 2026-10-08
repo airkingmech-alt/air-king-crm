@@ -1,3 +1,5 @@
+import { AddressAutocomplete } from "@/components/address-autocomplete";
+import type { AddressProvenance } from "../../../shared/address-autocomplete";
 import { UNKNOWN_LEAD_SOURCE } from "../../../shared/customer-lead-source";
 import { guardSave } from "@/lib/confirmed-save";
 import { useState } from "react";
@@ -61,6 +63,8 @@ export default function Customers() {
     phone: "",
     email: "",
     address: "",
+    unit: "",
+    addressProvenance: undefined as AddressProvenance | undefined,
     city: "Kansas City",
     state: "MO",
     zip: "",
@@ -110,6 +114,8 @@ export default function Customers() {
       phone: "",
       email: "",
       address: "",
+      unit: "",
+      addressProvenance: undefined,
       city: "Kansas City",
       state: "MO",
       zip: "",
@@ -342,13 +348,16 @@ export default function Customers() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="cust-address">Service Address</Label>
-              <Input
+              <AddressAutocomplete
                 id="cust-address"
                 placeholder="123 Main St"
                 value={form.address}
-                onChange={(e) => setForm({ ...form, address: e.target.value })}
+                onChange={(address) => setForm({ ...form, address })}
+                provenance={form.addressProvenance}
+                onSelect={(suggestion) => setForm({ ...form, address: suggestion.street, city: suggestion.city, state: suggestion.state, zip: suggestion.postalCode, addressProvenance: suggestion.provenance })}
               />
             </div>
+            <div className="space-y-2"><Label htmlFor="cust-unit">Apartment / unit</Label><Input id="cust-unit" value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} /></div>
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="cust-city">City</Label>
@@ -359,19 +368,8 @@ export default function Customers() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>State</Label>
-                <Select
-                  value={form.state}
-                  onValueChange={(v) => setForm({ ...form, state: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="MO">MO</SelectItem>
-                    <SelectItem value="KS">KS</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="cust-state">State</Label>
+                <Input id="cust-state" value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} maxLength={30} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cust-zip">Zip</Label>

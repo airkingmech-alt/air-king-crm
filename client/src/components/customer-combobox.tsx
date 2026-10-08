@@ -1,3 +1,5 @@
+import { AddressAutocomplete } from "./address-autocomplete";
+import type { AddressProvenance } from "../../../shared/address-autocomplete";
 import { UNKNOWN_LEAD_SOURCE } from "../../../shared/customer-lead-source";
 import { guardSave } from "@/lib/confirmed-save";
 import { useState } from "react";
@@ -55,6 +57,8 @@ export function CustomerCombobox({
     phone: "",
     email: "",
     address: "",
+    unit: "",
+    addressProvenance: undefined as AddressProvenance | undefined,
     city: "Kansas City",
     state: "MO",
     zip: "",
@@ -91,6 +95,8 @@ export function CustomerCombobox({
       phone: newCustomer.phone,
       email: newCustomer.email,
       address: newCustomer.address,
+      unit: newCustomer.unit,
+      addressProvenance: newCustomer.addressProvenance,
       city: newCustomer.city,
       state: newCustomer.state,
       zip: newCustomer.zip,
@@ -99,7 +105,7 @@ export function CustomerCombobox({
     onChange(created.id);
     setSearch(created.name);
     setShowNewForm(false);
-    setNewCustomer({ name: "", type: "Residential", phone: "", email: "", address: "", city: "Kansas City", state: "MO", zip: "", leadSource: UNKNOWN_LEAD_SOURCE });
+    setNewCustomer({ name: "", type: "Residential", phone: "", email: "", address: "", unit: "", addressProvenance: undefined, city: "Kansas City", state: "MO", zip: "", leadSource: UNKNOWN_LEAD_SOURCE });
     setOpen(false);
     toast({ title: "Customer added", description: `${created.name} has been added and selected.` });
   });
@@ -211,14 +217,19 @@ export function CustomerCombobox({
                 />
               </div>
               <div className="space-y-1 col-span-2">
-                <Label className="text-xs">Address</Label>
-                <Input
+                <Label htmlFor={`${testId}-new-address`} className="text-xs">Address</Label>
+                <AddressAutocomplete
+                  id={`${testId}-new-address`}
                   value={newCustomer.address}
-                  onChange={(e) => setNewCustomer({ ...newCustomer, address: e.target.value })}
+                  onChange={(address) => setNewCustomer({ ...newCustomer, address })}
+                  provenance={newCustomer.addressProvenance}
+                  onSelect={(suggestion) => setNewCustomer({ ...newCustomer, address: suggestion.street, city: suggestion.city, state: suggestion.state, zip: suggestion.postalCode, addressProvenance: suggestion.provenance })}
                   placeholder="Street address"
                   data-testid="input-new-customer-address"
                 />
               </div>
+              <div className="space-y-1 col-span-2"><Label htmlFor={`${testId}-new-unit`} className="text-xs">Apartment / unit</Label><Input id={`${testId}-new-unit`} value={newCustomer.unit} onChange={e => setNewCustomer({ ...newCustomer, unit: e.target.value })} /></div>
+              <div className="space-y-1"><Label htmlFor={`${testId}-new-state`} className="text-xs">State</Label><Input id={`${testId}-new-state`} value={newCustomer.state} onChange={e => setNewCustomer({ ...newCustomer, state: e.target.value })} maxLength={30} /></div>
               <div className="space-y-1">
                 <Label className="text-xs">City</Label>
                 <Input

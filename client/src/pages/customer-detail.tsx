@@ -1,3 +1,5 @@
+import { AddressAttribution } from "@/components/address-attribution";
+import { CustomerEditor } from "@/components/customer-editor";
 import { ServiceAddressActions } from "@/components/service-address-actions";
 import { formatServiceAddress } from "../../../shared/service-address";
 import { CustomerImportSummary, CustomerBillingAddress, CustomerContactChannels } from "@/components/customer-import-details";
@@ -392,7 +394,8 @@ export default function CustomerDetail() {
                 ))}
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <CustomerEditor key={customer.id} customer={customer} />
               <DeleteRecord kind="customer" record={customer} destination="/customers" />
               <Button
                 size="sm"
@@ -500,6 +503,7 @@ export default function CustomerDetail() {
                       </div>
                     </div>
                     <ServiceAddressActions address={formatServiceAddress(prop)} />
+                    <AddressAttribution provenance={prop.addressProvenance} />
                     {prop.accessNotes && (
                       <p className="text-xs text-amber-600 dark:text-amber-500 pl-5">
                         ⚠ {prop.accessNotes}
@@ -594,6 +598,7 @@ export default function CustomerDetail() {
                   {formatServiceAddress(prop)}
                 </CardTitle>
                 <ServiceAddressActions address={formatServiceAddress(prop)} />
+                <AddressAttribution provenance={prop.addressProvenance} />
               </CardHeader>
               <CardContent>
                 {prop.accessNotes && (

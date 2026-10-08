@@ -337,8 +337,9 @@ export { addOnServices, type AddOnService } from "../../../shared/quote-addons";
 // New selected-system drafts use exactly the selected SKUs. Legacy tiered
 // quotes retain their historical resolver until deliberately revised.
 export function getQuoteEquipment(quote: { equipmentItems?: string[]; equipmentSelectionMode?: string; options?: { tier: string; equipmentItems?: string[] }[] }, tier?: string | null): PricebookItem[] {
-  const ids = quote.options?.find(option => option.tier === tier)?.equipmentItems || quote.equipmentItems || [];
-  if (quote.equipmentSelectionMode === "explicit" || !tier)
+  const optionIds = quote.options?.find(option => option.tier === tier)?.equipmentItems;
+  const ids = optionIds || quote.equipmentItems || [];
+  if (optionIds !== undefined || quote.equipmentSelectionMode === "explicit" || !tier)
     return ids.map(id => pricebook.find(item => item.id === id)).filter((item): item is PricebookItem => Boolean(item));
   return getTieredEquipment(ids, tier as "Good" | "Better" | "Best");
 }

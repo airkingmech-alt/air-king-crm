@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth, type AppRole } from "@/context/auth-context";
+import { AddressAttributionFooter } from "../address-attribution-footer";
 
 const ROLE_LABELS: Record<AppRole, string> = {
   owner: "Owner",
@@ -263,6 +264,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto">{children}</main>
+        <AddressAttributionFooter />
       </div>
     </div>
   );
