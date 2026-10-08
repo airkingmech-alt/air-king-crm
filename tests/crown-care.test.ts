@@ -5,12 +5,13 @@ import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { registerCrownCare } from "../server/crm/crown-care";
 import { crownConfiguration,configurationFor,membershipPriceCents,renewalFrom,serviceDetails } from "../shared/crown-care";
+import { defaultCrownCatalog } from "../shared/crown-tiers";
 process.env.SUPABASE_URL="https://crown-test.supabase.invalid";process.env.SUPABASE_SERVICE_ROLE_KEY="test-only";
 const nativeFetch=globalThis.fetch;
 const employee="11111111-1111-4111-8111-111111111111";
 const equipment={id:"22222222-2222-4222-8222-222222222222",propertyId:"property",systemId:"system",type:"Furnace",description:"Champion upstairs",quantity:1,filterSize:"20x25x4",filterQuantity:1,filterNotes:"MERV 11",notes:"Attic access"};
 const configuration={coveredEquipment:[equipment],notes:"Customer supplies filter",billingFrequency:"Annual",visitsIncluded:2,pricing:{baseAmountCents:18900,adjustmentCents:6000,adjustmentReason:"Additional service"}};
-let row:any,inserted:any,permission=true,foreign=false,writes=0;
+let row:any,inserted:any,catalogRow:any=null,permission=true,foreign=false,writes=0;
 const reset=()=>{row={id:"CC-test",company_id:"airking",customer_id:"customer",updated_at:"2026-09-17T00:00:00Z",data:{id:"CC-test",customerId:"customer",customerName:"Test",status:"Active",paymentStatus:"Paid",visitsUsed:1,visitsIncluded:2,springVisit:{status:"Completed"},renewalDate:"2027-01-01",autoRenew:false,systemDescription:"Old coverage",billingFrequency:"Annual"}};};reset();
 globalThis.fetch=async(input:any,init?:any)=>{
   const url=new URL(typeof input==="string"?input:input.url||String(input));assert.equal(url.hostname,"crown-test.supabase.invalid","Only mocked external requests allowed");
@@ -18,6 +19,7 @@ globalThis.fetch=async(input:any,init?:any)=>{
   if(url.pathname==="/auth/v1/user")return reply({id:employee,aud:"authenticated"});
   if(url.pathname==="/rest/v1/profiles")return reply({id:employee,role:"technician",company_id:"airking",permissions:{memberships:permission}});
   if(url.pathname==="/rest/v1/customers"){assert.equal(url.searchParams.get("company_id"),"eq.airking");return reply(foreign?null:{id:"customer",data:{name:"Test",properties:[{id:"property",address:"Test address",systems:[{id:"system"}]}]}});}
+  if(url.pathname==="/rest/v1/crown_care_catalogs"){assert.equal(url.searchParams.get("company_id"),"eq.airking");return reply(catalogRow);}
   if(url.pathname==="/rest/v1/memberships"){
     if(init?.method==="POST"){
       const body=JSON.parse(init.body);assert.equal(body.company_id,"airking");assert.equal(body.customer_id,"customer");
@@ -27,7 +29,7 @@ globalThis.fetch=async(input:any,init?:any)=>{
     if(init?.method==="PATCH"){
       assert.equal(url.searchParams.get("updated_at"),"eq."+row.updated_at);row={...row,...JSON.parse(init.body),updated_at:"2026-09-17T01:00:00Z"};writes++;return reply(row);
     }
-    return reply(foreign?null:url.searchParams.get("id")==="eq.CC-test"?row:inserted);
+    return reply(foreign?null:url.searchParams.get("id")==="eq.CC-test"?row:url.searchParams.get("id")==="eq."+inserted?.id?inserted:null);
   }
   throw new Error("Unexpected request");
 };
@@ -107,4 +109,56 @@ test("draft tier interest saves trusted snapshot without altering existing terms
  assert.equal(writes,count);
  assert.equal((await send("/api/crm/memberships/CC-test",{version:row.updated_at,configuration})).status,200);
  assert.equal(row.data.draftTier,null);assert.equal(row.data.pricing.totalAmountCents,originalPrice);
+});
+
+const tierConfiguration=(tier="silver",count=2)=>({...configuration,enrollmentTier:{tier,catalogVersion:defaultCrownCatalog.version,systemCount:count},pricing:{baseAmountCents:defaultCrownCatalog.tiers[tier as keyof typeof defaultCrownCatalog.tiers].annualPerSystemCents*count,adjustmentCents:0,adjustmentReason:""}});
+const tierEnrollment=(extra:any={})=>({customerId:"customer",startDate:"2026-10-08",autoRenew:false,configuration:tierConfiguration(),agreement:{accepted:true,acceptedOn:"2026-10-07"},...extra});
+test("tier enrollment requires verified prior customer acceptance and authoritative annual pricing",async()=>{
+  inserted=null;catalogRow=null;const count=writes;
+  for(const extra of [
+    {agreement:undefined}, {agreement:{accepted:false,acceptedOn:"2026-10-07"}},
+    {agreement:{accepted:true,acceptedOn:"2026-02-30"}}, {agreement:{accepted:true,acceptedOn:"2099-01-01"}},
+    {configuration:{...tierConfiguration(),pricing:{baseAmountCents:1,adjustmentCents:0,adjustmentReason:""}}},
+    {configuration:{...tierConfiguration(),billingFrequency:"Monthly"}},
+    {configuration:{...tierConfiguration(),visitsIncluded:3}},
+    {configuration:{...tierConfiguration(),enrollmentTier:{...tierConfiguration().enrollmentTier,catalogVersion:"stale"}}},
+  ])assert.ok((await send("/api/crm/memberships",tierEnrollment(extra))).status>=400);
+  assert.equal(writes,count);
+  assert.equal((await send("/api/crm/memberships",tierEnrollment())).status,200);
+  assert.equal(inserted.data.tierPlan.name,"Silver");
+  assert.equal(inserted.data.tierPlan.annualTotalCents,55800);
+  assert.equal(inserted.data.pricing.totalAmountCents,55800);
+  assert.equal(inserted.data.agreement.recordedBy,employee);
+  assert.equal(inserted.data.agreement.method,"staff_attestation");
+  assert.deepEqual(inserted.data.agreement.planSnapshot,inserted.data.tierPlan);
+  assert.equal(inserted.data.paymentStatus,"Pending");assert.equal(inserted.data.autoRenew,false);
+});
+test("saved tier enrollment is retry-safe across catalog changes and keeps original accepted snapshot",async()=>{
+  inserted=null;catalogRow=null;const key=crypto.randomUUID(),body=tierEnrollment();
+  assert.equal((await send("/api/crm/memberships",body,key)).status,200);
+  const original=structuredClone(inserted.data),count=writes;
+  catalogRow={company_id:"airking",version:"changed",catalog:{...defaultCrownCatalog,version:"changed",tiers:{...defaultCrownCatalog.tiers,silver:{...defaultCrownCatalog.tiers.silver,annualPerSystemCents:39900}}}};
+  assert.equal((await send("/api/crm/memberships",body,key)).status,200);
+  assert.equal(writes,count);assert.deepEqual(inserted.data,original);
+  assert.equal((await send("/api/crm/memberships",tierEnrollment({autoRenew:true}),key)).status,409);
+  catalogRow=null;
+});
+test("editing a tier membership preserves its accepted snapshot, agreement and price",async()=>{
+  inserted=null;catalogRow=null;assert.equal((await send("/api/crm/memberships",tierEnrollment())).status,200);
+  reset();row.data={...inserted.data,id:row.id};
+  const originalPlan=structuredClone(row.data.tierPlan),originalAgreement=structuredClone(row.data.agreement);
+  const c=configurationFor(row.data);
+  const count=writes;
+  for(const patch of [
+    {enrollmentTier:undefined},
+    {enrollmentTier:{...c.enrollmentTier,tier:"gold"}},
+    {enrollmentTier:{...c.enrollmentTier,systemCount:3}},
+    {pricing:{...c.pricing,baseAmountCents:1}},
+    {billingFrequency:"Monthly"}, {visitsIncluded:3},
+  ])assert.equal((await send("/api/crm/memberships/CC-test",{version:row.updated_at,configuration:{...c,...patch}})).status,409);
+  assert.equal(writes,count);
+  assert.equal((await send("/api/crm/memberships/CC-test",{version:row.updated_at,configuration:{...c,notes:"Updated access instructions"}})).status,200);
+  assert.deepEqual(row.data.tierPlan,originalPlan);assert.deepEqual(row.data.agreement,originalAgreement);
+  assert.equal(row.data.pricing.totalAmountCents,55800);
+  reset();assert.equal((await send("/api/crm/memberships/CC-test",{version:row.updated_at,configuration:tierConfiguration()})).status,409);
 });
