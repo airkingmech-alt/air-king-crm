@@ -7,7 +7,7 @@ import { PGlite } from "@electric-sql/pglite";
 import WebSocket from "ws";
 import {
   cacheSavedCustomerNote, customerNotesKey, customerNotesQueryOptions,
-  loadCustomerNotes, saveCustomerNote, type CustomerNote,
+  loadCustomerNotes, saveCustomerNote, updateCustomerNote, cacheUpdatedCustomerNote, type CustomerNote,
 } from "../shared/customer-notes";
 
 const pg = new PGlite();
@@ -54,10 +54,10 @@ const fetchNotes: typeof fetch = async (input, init) => {
       if (mode === "write-response-lost") return response({ message: "Response interrupted" }, 503);
       return new Response(null, { status: 201 });
     }
-    if (mode === "read-error") return response({ message: "Read unavailable" }, 503);
+    if (init?.method !== "PATCH" && mode === "read-error") return response({ message: "Read unavailable" }, 503);
     const filters: string[] = [];
     const params: any[] = [];
-    for (const field of ["company_id", "customer_id", "id"]) {
+    for (const field of ["company_id", "customer_id", "id", "text"]) {
       const filter = url.searchParams.get(field);
       if (filter) {
         assert.ok(filter.startsWith("eq."));
@@ -67,6 +67,17 @@ const fetchNotes: typeof fetch = async (input, init) => {
     }
     assert.ok(url.searchParams.has("company_id"), "Every read must be company scoped");
     assert.ok(url.searchParams.has("customer_id"), "Every read must be customer scoped");
+    if (init?.method === "PATCH") {
+      assert.ok(url.searchParams.has("id"), "Every edit must be note scoped");
+      assert.ok(url.searchParams.has("text"), "Every edit must compare original text atomically");
+      const body = JSON.parse(String(init.body));
+      assert.deepEqual(Object.keys(body), ["text"], "Edits must never write note metadata");
+      if (mode === "write-error") return response({ message: "Write unavailable" }, 503);
+      const rows = mode === "silent-noop" ? [] : await query(
+        `update customer_notes set text=$${params.length + 1} where ${filters.join(" and ")} returning id,customer_id,text,author,date`, [...params, body.text]);
+      if (mode === "write-response-lost") return response({ message: "Response interrupted" }, 503);
+      return response(rows);
+    }
     const rows = await query(`select id,customer_id,text,author,date from customer_notes where ${filters.join(" and ")} order by created_at desc,id desc limit $${params.length + 1} offset $${params.length + 2}`, [
       ...params, Number(url.searchParams.get("limit") || 1000), Number(url.searchParams.get("offset") || 0),
     ]);
@@ -212,4 +223,92 @@ test("customer detail mounts the query, shows read failures with retry, and awai
   assert.match(detail, /Retry loading notes/);
   assert.ok(detail.indexOf("await addNote(") < detail.indexOf('title: "Note added"'));
   assert.ok(detail.indexOf('title: "Note added"') < detail.indexOf('setNoteText("")'));
+});
+
+test("text-only edits survive reload and preserve metadata and ordering", async () => {
+  await saveCustomerNote(client(), company, note);
+  const newer = { ...note, id: "newer-note", text: "Another synthetic note" };
+  await saveCustomerNote(client(), company, newer);
+  const before = (await pg.query("select * from customer_notes where id=$1", [note.id])).rows[0];
+  const updated = await updateCustomerNote(client(), company, note, "Edited synthetic text\nSecond line");
+  assert.deepEqual(updated, { ...note, text: "Edited synthetic text\nSecond line" });
+  const after = (await pg.query("select * from customer_notes where id=$1", [note.id])).rows[0];
+  assert.deepEqual({ ...after, text: before.text }, before);
+  assert.deepEqual(await loadCustomerNotes(client(), company, note.customerId), [newer, updated]);
+});
+
+test("stale edits, hidden notes, and wrong customer/company cannot overwrite a note", async () => {
+  await saveCustomerNote(client(), company, note);
+  const edited = await updateCustomerNote(client(), company, note, "Concurrent winner");
+  await assert.rejects(updateCustomerNote(client(), company, note, "Stale draft"), /changed or is no longer available/);
+  await assert.rejects(updateCustomerNote(client(), "other-company", edited, "Unauthorized"), /changed or is no longer available/);
+  await assert.rejects(updateCustomerNote(client(), company, { ...edited, customerId: "different-customer" }, "Wrong customer"), /changed or is no longer available/);
+  assert.deepEqual(await loadCustomerNotes(client(), company, note.customerId), [edited]);
+  assert.deepEqual(await query("update customer_notes set text='Unauthorized caller' where id=$1 returning id", [note.id], "other-company"), []);
+});
+
+test("simultaneous editors allow one winner; duplicate requests converge without changing metadata", async () => {
+  await saveCustomerNote(client(), company, note);
+  const results = await Promise.allSettled([
+    updateCustomerNote(client(), company, note, "First draft"),
+    updateCustomerNote(client(), company, note, "Second draft"),
+  ]);
+  assert.equal(results.filter(r => r.status === "fulfilled").length, 1);
+  const current = (await loadCustomerNotes(client(), company, note.customerId))[0];
+  const duplicates = await Promise.all([
+    updateCustomerNote(client(), company, current, "Same replacement"),
+    updateCustomerNote(client(), company, current, "Same replacement"),
+  ]);
+  assert.deepEqual(duplicates, [{ ...note, text: "Same replacement" }, { ...note, text: "Same replacement" }]);
+  assert.equal((await pg.query("select * from customer_notes")).rows.length, 1);
+});
+
+test("failed edits remain unchanged; lost-response retries verify the committed replacement", async () => {
+  await saveCustomerNote(client(), company, note);
+  mode = "write-error";
+  await assert.rejects(updateCustomerNote(client(), company, note, "Retained draft"), /Write unavailable/);
+  mode = "silent-noop";
+  await assert.rejects(updateCustomerNote(client(), company, note, "Retained draft"), /changed or is no longer available/);
+  mode = "ok";
+  assert.deepEqual(await loadCustomerNotes(client(), company, note.customerId), [note]);
+  mode = "write-response-lost";
+  await assert.rejects(updateCustomerNote(client(), company, note, "Retained draft"), /Response interrupted/);
+  mode = "read-error";
+  await assert.rejects(updateCustomerNote(client(), company, note, "Retained draft"), /could not be verified/);
+  mode = "ok";
+  assert.deepEqual(await updateCustomerNote(client(), company, note, "Retained draft"), { ...note, text: "Retained draft" });
+  await assert.rejects(updateCustomerNote(client(), company, note, "Changed retry draft"), /changed or is no longer available/);
+});
+
+test("invalid edits never send requests", async () => {
+  for (const [scope, original, text] of [["", note, "Draft"], [company, { ...note, id: "" }, "Draft"], [company, { ...note, customerId: "" }, "Draft"], [company, note, "  "]] as const) {
+    await assert.rejects(updateCustomerNote(client(), scope, original, text));
+  }
+  assert.equal(requests, 0);
+});
+
+test("edit cache cancels stale reads, preserves position, and never replaces a newer cached edit", async () => {
+  const cache = new QueryClient({ defaultOptions: { queries: { gcTime: Infinity } } });
+  const key = customerNotesKey("staff-test", company, note.customerId);
+  const other = { ...note, id: "newer", text: "Newer note" };
+  const edited = { ...note, text: "Edited text" };
+  try {
+    cache.setQueryData(key, [other, note]);
+    let finish!: (notes: CustomerNote[]) => void;
+    const oldRead = cache.fetchQuery({ queryKey: key, queryFn: () => new Promise<CustomerNote[]>(resolve => { finish = resolve; }), staleTime: 0 }).catch(() => {});
+    await cacheUpdatedCustomerNote(cache, "staff-test", company, note, edited);
+    finish([other, note]);
+    await oldRead;
+    assert.deepEqual(cache.getQueryData(key), [other, edited]);
+    const latest = { ...note, text: "Later edit" };
+    cache.setQueryData(key, [other, latest]);
+    await cacheUpdatedCustomerNote(cache, "staff-test", company, note, edited);
+    assert.deepEqual(cache.getQueryData(key), [other, latest]);
+    assert.equal(cache.getQueryData(customerNotesKey("other-user", company, note.customerId)), undefined);
+    assert.equal(cache.getQueryData(customerNotesKey("staff-test", "other-company", note.customerId)), undefined);
+    assert.equal(cache.getQueryData(customerNotesKey("staff-test", company, "other-customer")), undefined);
+    cache.clear();
+    await cacheUpdatedCustomerNote(cache, "staff-test", company, note, edited);
+    assert.equal(cache.getQueryData(key), undefined, "Do not manufacture a partial note list");
+  } finally { cache.clear(); }
 });

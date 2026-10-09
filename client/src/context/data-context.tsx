@@ -13,7 +13,7 @@ import {
 } from "react";
 import { toast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { cacheSavedCustomerNote, saveCustomerNote, type CustomerNote } from "../../../shared/customer-notes";
+import { cacheSavedCustomerNote, cacheUpdatedCustomerNote, customerNotesKey, saveCustomerNote, updateCustomerNote, type CustomerNote } from "../../../shared/customer-notes";
 import { normalizeLeadSource } from "../../../shared/customer-lead-source";
 import { useAuth } from "@/context/auth-context";
 import { canAccess } from "../../../shared/access";
@@ -66,6 +66,7 @@ interface DataContextValue {
   acceptSavedRecord: (table: "customers" | "quotes" | "invoices", record: any) => void;
   addCustomer: (data: NewCustomerData, leadId?: string) => Promise<Customer>;
   addNote: (customerId: string, text: string) => Promise<void>;
+  editNote: (original: CustomerNote, text: string) => Promise<void>;
   getPhotos: (customerId: string) => CustomerPhoto[];
   addPhoto: (customerId: string, file: File) => Promise<void>;
   createWorkOrder: (data: {
@@ -116,6 +117,9 @@ const DataContext = createContext<DataContextValue | null>(null);
 export function DataProvider({ children }: { children: ReactNode }) {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
+  const noteScopeRef = useRef("");
+  const noteScope = `${profile?.id || ""}:${profile?.company_id || ""}`;
+  noteScopeRef.current = noteScope;
   const [loadError,setLoadError]=useState<string|null>(null);
   const actor=profile?.full_name || "Staff member";
   const pendingCreates=useRef(new Map<string,string>());
@@ -262,6 +266,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await cacheSavedCustomerNote(queryClient, profile?.id || "", profile?.company_id || "", saved);
     finishCreate("note-", input);
   }, [actor, profile?.id, profile?.company_id, queryClient]);
+
+  const editNote = useCallback(async (original: CustomerNote, text: string) => {
+    if (!profile?.id || !profile.company_id || noteScopeRef.current !== noteScope) {
+      throw new Error("Your sign-in changed. Reopen the customer before editing notes.");
+    }
+    let saved: CustomerNote;
+    try {
+      saved = await updateCustomerNote(supabase, profile.company_id, original, text.trim());
+    } catch (error) {
+      // Refresh the list after a conflict or uncertain response without touching
+      // the editor's original snapshot or draft. Reopening then uses fresh text.
+      if (noteScopeRef.current === noteScope) {
+        void queryClient.invalidateQueries({ queryKey: customerNotesKey(profile.id, profile.company_id, original.customerId), exact: true });
+      }
+      throw error;
+    }
+    if (noteScopeRef.current !== noteScope) throw new Error("Your sign-in changed. Reopen the customer to verify the note.");
+    await cacheUpdatedCustomerNote(queryClient, profile.id, profile.company_id, original, saved);
+  }, [profile?.id, profile?.company_id, noteScope, queryClient]);
 
   const getPhotos = useCallback(
     (customerId: string): CustomerPhoto[] => {
@@ -603,6 +626,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     acceptSavedRecord,
     addCustomer,
     addNote,
+    editNote,
     getPhotos,
     addPhoto,
     createWorkOrder,

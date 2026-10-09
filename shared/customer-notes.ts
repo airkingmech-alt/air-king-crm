@@ -77,3 +77,38 @@ export async function cacheSavedCustomerNote(queryClient: QueryClient, userId: s
   queryClient.setQueryData<CustomerNote[]>(queryKey, previous => [note, ...(previous || []).filter(item => item.id !== note.id)]);
   void queryClient.invalidateQueries({ queryKey, exact: true });
 }
+
+// Compare the original text in the same UPDATE that writes the replacement.
+// A read followed by an unconditional write would lose concurrent edits.
+export async function updateCustomerNote(client: SupabaseClient, companyId: string, original: CustomerNote, text: string): Promise<CustomerNote> {
+  if (!companyId || !original.customerId || !original.id || !text.trim()) {
+    throw new Error("A signed-in company, customer, and nonempty note are required.");
+  }
+  const scope = () => client.from("customer_notes").select(columns)
+    .eq("company_id", companyId).eq("customer_id", original.customerId).eq("id", original.id);
+  const { data, error } = await client.from("customer_notes").update({ text })
+    .eq("company_id", companyId).eq("customer_id", original.customerId).eq("id", original.id)
+    .eq("text", original.text).select(columns);
+  if (error) throw new Error(error.message || "The note could not be saved. Please retry.");
+  // A retry after a committed write with a lost response matches no old text.
+  // Verify the scoped row instead of repeating an unconditional update.
+  let row: NonNullable<typeof data>[number] | null | undefined = data?.[0];
+  if (!row) {
+    const { data: current, error: readError } = await scope().maybeSingle();
+    if (readError) throw new Error("The note save could not be verified. Please retry. " + readError.message);
+    row = current;
+  }
+  if (!row || row.id !== original.id || row.customer_id !== original.customerId || row.text !== text) {
+    throw new Error("This note changed or is no longer available. Your draft is retained. Cancel and reopen the latest note before editing again.");
+  }
+  return fromRow(row);
+}
+
+export async function cacheUpdatedCustomerNote(queryClient: QueryClient, userId: string, companyId: string, original: CustomerNote, saved: CustomerNote) {
+  const queryKey = customerNotesKey(userId, companyId, original.customerId);
+  await queryClient.cancelQueries({ queryKey, exact: true });
+  queryClient.setQueryData<CustomerNote[]>(queryKey, previous => previous?.map(note =>
+    note.id === saved.id && (note.text === original.text || note.text === saved.text) ? saved : note));
+  // Preserve ordering and any newer cached edit; a fresh read resolves races.
+  void queryClient.invalidateQueries({ queryKey, exact: true });
+}
