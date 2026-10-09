@@ -1,5 +1,7 @@
 import { AddressAttribution } from "@/components/address-attribution";
 import { CustomerEditor } from "@/components/customer-editor";
+import { CustomerNoteEditor } from "@/components/customer-note-editor";
+import { useAuth } from "@/context/auth-context";
 import { ServiceAddressActions } from "@/components/service-address-actions";
 import { formatServiceAddress } from "../../../shared/service-address";
 import { CustomerImportSummary, CustomerBillingAddress, CustomerContactChannels } from "@/components/customer-import-details";
@@ -111,10 +113,13 @@ const jobTypes = [
 export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
+  const { profile } = useAuth();
+  const noteEditorScope = `${profile?.id || ""}:${profile?.company_id || ""}:${id}`;
   const {
     customers,
     getPhotos,
     addNote,
+    editNote,
     addPhoto,
     quotes: contextQuotes,
     invoices,
@@ -571,9 +576,7 @@ export default function CustomerDetail() {
                             {note.date}
                           </span>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {note.text}
-                        </p>
+                        <CustomerNoteEditor key={`${noteEditorScope}:${note.id}`} note={note} onSave={editNote} />
                       </div>
                     </div>
                   ))}
@@ -909,9 +912,7 @@ export default function CustomerDetail() {
                           {note.date}
                         </span>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {note.text}
-                      </p>
+                      <CustomerNoteEditor key={`${noteEditorScope}:${note.id}`} note={note} onSave={editNote} />
                       <span className="text-[10px] text-muted-foreground/70">
                         by {note.author}
                       </span>
