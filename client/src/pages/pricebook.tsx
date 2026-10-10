@@ -18,11 +18,11 @@ import { useToast } from "@/hooks/use-toast";
 import { addOnServices, pricebook as legacyEquipment } from "@/data/pricebook";
 import { dollarsToCents, missingCatalogRows, sellingPriceFromCost } from "@/lib/pricebook-utils";
 
-type ItemType = "equipment" | "part" | "service" | "labor";
+import { categoryAfterTypeChange, matchesPricebookTab, newItemDefaults, pricebookTabs as tabNames, type ItemType, type PricebookTab } from "../../../shared/pricebook-sections";
 type PriceItem = {
   id: string; company_id: string; item_type: ItemType; category: string; name: string;
   description: string; sku: string | null; brand: string | null; model: string | null;
-  updated_at: string; unit: string; cost_cents: number; price_cents: number; taxable: boolean; active: boolean;
+  metadata?: { subcategory?: string; source_notes?: string[] }; updated_at: string; unit: string; cost_cents: number; price_cents: number; taxable: boolean; active: boolean;
 };
 type PriceForm = {
   item_type: ItemType; category: string; name: string; description: string; sku: string;
@@ -35,15 +35,13 @@ const newForm = (): PriceForm => ({
   model: "", unit: "each", cost: "0.00", price: "0.00", taxable: true, active: true,
 });
 const money = (cents: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
-const tabNames: Record<"all" | ItemType, string> = {
-  all: "All items", equipment: "Equipment", part: "Parts", service: "Services", labor: "Labor",
-};
+
 
 export default function Pricebook() {
   const { profile } = useAuth();
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [tab, setTab] = useState<"all" | ItemType>("all");
+  const [tab, setTab] = useState<PricebookTab>("all");
   const [search, setSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [open, setOpen] = useState(false);
@@ -110,8 +108,8 @@ export default function Pricebook() {
   const shown = useMemo(() => {
     const term = search.trim().toLowerCase();
     return items.filter((item) =>
-      (tab === "all" || item.item_type === tab) && (showArchived || item.active) &&
-      (!term || [item.name, item.description, item.sku, item.brand, item.model, item.category]
+      matchesPricebookTab(item, tab) && (showArchived || item.active) &&
+      (!term || [item.name, item.description, item.sku, item.brand, item.model, item.category, item.metadata?.subcategory]
         .filter(Boolean).some((value) => value!.toLowerCase().includes(term))),
     );
   }, [items, tab, search, showArchived]);
@@ -162,10 +160,10 @@ export default function Pricebook() {
   const openNew = () => {
     setEditing(null);
     const next = newForm();
-    if (tab !== "all") { next.item_type = tab; next.category = tabNames[tab]; }
+    Object.assign(next, newItemDefaults(tab));
     setForm(next); setOpen(true);
   };
-  const counts = (type: "all" | ItemType) => items.filter((item) => item.active && (type === "all" || item.item_type === type)).length;
+  const counts = (type: PricebookTab) => items.filter((item) => item.active && matchesPricebookTab(item, type)).length;
 
   return <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-5">
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -182,7 +180,7 @@ export default function Pricebook() {
 
     <Card><CardContent className="p-4 space-y-4">
       <div className="flex gap-2 overflow-x-auto pb-1">
-        {(Object.keys(tabNames) as Array<"all" | ItemType>).map((value) => <Button key={value} size="sm" variant={tab === value ? "default" : "outline"} onClick={() => setTab(value)} className="shrink-0">{tabNames[value]} <span className="ml-1 opacity-70">({counts(value)})</span></Button>)}
+        {(Object.keys(tabNames) as Array<PricebookTab>).map((value) => <Button key={value} size="sm" variant={tab === value ? "default" : "outline"} onClick={() => setTab(value)} className="shrink-0">{tabNames[value]} <span className="ml-1 opacity-70">({counts(value)})</span></Button>)}
       </div>
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1"><Search className="absolute left-3 top-2.5 text-muted-foreground" size={16} /><Input className="pl-9" placeholder="Search name, SKU, brand, model, or category" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
@@ -196,8 +194,8 @@ export default function Pricebook() {
 
     {!catalog.isLoading && !importCatalog.isPending && !catalog.isError && shown.length > 0 && <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
       {shown.map((item) => <Card key={item.id} className={!item.active ? "opacity-60" : ""}><CardContent className="p-4 space-y-3">
-        <div className="flex justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap gap-1.5 items-center"><Badge variant="secondary" className="capitalize">{item.item_type}</Badge><Badge variant="outline">{item.category}</Badge>{!item.active && <Badge variant="outline">Archived</Badge>}</div><h3 className="font-semibold mt-2 break-words">{item.name}</h3><p className="text-xs text-muted-foreground break-all">{[item.sku, item.brand, item.model].filter(Boolean).join(" • ") || "No SKU"}</p></div><div className="text-right shrink-0"><p className="font-bold">{money(item.price_cents)}</p><p className="text-xs text-muted-foreground">Cost {money(item.cost_cents)}</p></div></div>
-        <p className="text-sm text-muted-foreground line-clamp-2 min-h-10">{item.description || "No customer-facing description"}</p>
+        <div className="flex justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap gap-1.5 items-center"><Badge variant="secondary" className="capitalize">{item.item_type}</Badge><Badge variant="outline">{item.category}</Badge>{item.metadata?.subcategory && <Badge variant="outline">{item.metadata.subcategory}</Badge>}{!item.active && <Badge variant="outline">Archived</Badge>}</div><h3 className="font-semibold mt-2 break-words">{item.name}</h3><p className="text-xs text-muted-foreground break-all">{[item.sku, item.brand, item.model].filter(Boolean).join(" • ") || "No SKU"}</p></div><div className="text-right shrink-0"><p className="font-bold">{money(item.price_cents)}</p><p className="text-xs text-muted-foreground">Cost {money(item.cost_cents)}</p></div></div>
+        {item.metadata?.source_notes?.length ? <p className="text-xs text-amber-700">Source note: {item.metadata.source_notes.join(" ")}</p> : null}<p className="text-sm text-muted-foreground line-clamp-2 min-h-10">{item.description || "No customer-facing description"}</p>
         <div className="flex justify-end gap-1 border-t pt-2"><Button size="sm" variant="ghost" onClick={() => edit(item)}><Pencil size={15} className="mr-1.5" /> Edit</Button><Button size="sm" variant="ghost" disabled={setActive.isPending} onClick={() => setActive.mutate({ item, active: !item.active })}>{item.active ? <><Archive size={15} className="mr-1.5" /> Archive</> : <><RotateCcw size={15} className="mr-1.5" /> Restore</>}</Button></div>
       </CardContent></Card>)}
     </div>}
@@ -206,7 +204,7 @@ export default function Pricebook() {
 
     <Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>{editing ? "Edit price book item" : "Add price book item"}</DialogTitle></DialogHeader><div className="grid sm:grid-cols-2 gap-4">
       <Field label="Name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-      <Field label="Type"><Select value={form.item_type} onValueChange={(value: ItemType) => setForm({ ...form, item_type: value, category: tabNames[value] })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(["equipment", "part", "service", "labor"] as const).map((value) => <SelectItem key={value} value={value}>{tabNames[value]}</SelectItem>)}</SelectContent></Select></Field>
+      <Field label="Type"><Select value={form.item_type} onValueChange={(value: ItemType) => setForm({ ...form, item_type: value, category: categoryAfterTypeChange(form.category, value) })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(["equipment", "part", "service", "labor"] as const).map((value) => <SelectItem key={value} value={value}>{tabNames[value]}</SelectItem>)}</SelectContent></Select></Field>
       <Field label="Category"><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /></Field>
       <Field label="SKU / part number"><Input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></Field>
       <Field label="Brand"><Input value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} /></Field>
