@@ -96,6 +96,7 @@ const defaults = () => {
   state.automation_runs = [
     { id: "r", company_id: "co", automation_id: "a", step_index: 0 },
   ];
+  state.sms_phone_suppressions = [];
   providerCalls = 0;
   providerResult = "success";
 };
@@ -153,7 +154,9 @@ globalThis.fetch = async (input: any, init: any = {}) => {
       return true;
     });
   if (method === "GET") {
-    const rows = state[table].filter(match);
+    let rows = state[table].filter(match);
+    if (url.searchParams.get("order") === "id.asc") rows = rows.sort((a,b) => a.id.localeCompare(b.id));
+    if (url.searchParams.has("limit")) rows = rows.slice(0,Number(url.searchParams.get("limit")));
     const headers = new Headers(init.headers);
     return json(
       headers.get("accept")?.includes("object") ? rows[0] || null : rows,
@@ -384,4 +387,38 @@ test("draft quote can still be sent only through explicit document delivery", as
   await deliver(message({quote_id:"q",reason:"document_delivery"}));
   assert.equal(providerCalls, 1);
   assert.equal(state.communications[0].status, "sent");
+});
+
+test("Sent provider opt-out without a message or text suppresses all company phone duplicates", async () => {
+  defaults();
+  state.communication_events = [];
+  state.customers.push({id:"duplicate",company_id:"co",data:{contacts:[{phone:"(816) 555-1234"}]}});
+  state.customers.push({id:"foreign",company_id:"other",data:{contacts:[{phone:"+18165551234"}]}});
+  state.customer_communication_preferences = [];
+  await processSentInbound({id:"network-opt-out",payload:{company_id:"co",from:"+18165551234",text:"",message_id:null,opt_out:true}});
+  assert.deepEqual(state.customer_communication_preferences.map(p=>p.customer_id).sort(),["c","duplicate"]);
+  assert.equal(state.sms_phone_suppressions.length,1);
+  assert.equal(state.communication_events.length,1);
+  assert.equal(state.communication_events[0].customer_id,undefined);
+  assert.equal(state.communication_events[0].metadata.ambiguous,true);
+});
+test("Sent matching traverses beyond 1000 customers and skips soft-deleted matches", async () => {
+  defaults(); state.communication_events = [];
+  state.customers = Array.from({length:1100},(_,i)=>({id:String(i).padStart(5,"0"),company_id:"co",data:{contacts:[]}}));
+  state.customers.push({id:"zz-match",company_id:"co",data:{contacts:[{phone:"8165551234"}]}});
+  state.customers.push({id:"zz-deleted",company_id:"co",data:{deletedAt:"2026-10-01",contacts:[{phone:"8165551234"}]}});
+  await processSentInbound({id:"page-reply",payload:{company_id:"co",from:"+18165551234",text:"Synthetic reply",message_id:"page-message"}});
+  assert.equal(state.communication_events.length,1);
+  assert.equal(state.communication_events[0].customer_id,"zz-match");
+  assert.equal(state.communication_events[0].metadata.body,"Synthetic reply");
+});
+test("unmatched opt-out is durable and suppresses a later customer's send without provider calls", async () => {
+  defaults(); state.communication_events = []; state.customers = [];
+  await processSentInbound({id:"unmatched-stop",payload:{company_id:"co",from:"+18165551234",text:"STOP",message_id:"unknown"}});
+  assert.equal(state.communication_events[0].metadata.unmatched,true);
+  state.customers.push({id:"c",company_id:"co",data:{contacts:[{phone:"8165551234"}]}});
+  let sends=0;
+  await deliver(message({channel:"sms",recipient:"+18165551234"}), async()=>{sends++;return "never";});
+  assert.equal(sends,0);
+  assert.match(state.communications[state.communications.length-1].error,/suppressed/);
 });

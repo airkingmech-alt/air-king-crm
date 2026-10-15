@@ -5,9 +5,9 @@ import { registerCustomerImport } from "./customer-import";
 import { directCheckoutReady, invoiceFeeBps } from "./card-fee";
 import { registerCardCheckout, reconcileDirectPayments, settleDirectPayment } from "./card-checkout";
 import { surchargeReady, surchargeEnabled, surchargeCheckoutOptions, verifiedSurcharge, SURCHARGE_API_VERSION, type SurchargeSession } from "./surcharge";
-import { smsProvider, sentConfigured, verifySentWebhook, sentStatus } from "./sentdm";
+import { smsProvider, sentConfigured, verifySentWebhook, sentStatus, sentEventKey, sentFailureReason, sentOptOut } from "./sentdm";
 import { updateVersioned } from "../../shared/versioned-save";
-import { saveCallback, processCallbacks } from "./callbacks";
+import { saveCallback, saveSentCallback, processCallbacks } from "./callbacks";
 import type { Express, Request, Response } from "express";
 import Stripe from "stripe";
 import twilio from "twilio";
@@ -525,6 +525,27 @@ export function registerCrm(app: Express) {
       res.json({ message: "Starter automations created. All are turned off." });
     }),
   );
+  app.get("/api/crm/replies", wrap(async (req, res) => {
+    const c = await caller(req);
+    const page = z.coerce.number().int().min(0).max(100000).parse(req.query.page || 0);
+    const history = req.query.history === "true";
+    let query = db().from("communication_events").select("*")
+      .eq("company_id", c.company).eq("channel", "sms")
+      .in("event_type", ["sms.received", "customer.opted_out"])
+      .order("created_at", {ascending: false}).order("id");
+    if (!history) query = query.is("read_at", null);
+    res.json(await result(query.range(page * 100, page * 100 + 99)));
+  }));
+  app.post("/api/crm/replies/:id/read", wrap(async (req, res) => {
+    const c = await caller(req);
+    const id = z.string().uuid().parse(req.params.id);
+    const rows = await result(db().from("communication_events")
+      .update({read_at: new Date().toISOString(), read_by: c.id})
+      .eq("company_id", c.company).eq("id", id).eq("channel", "sms")
+      .in("event_type", ["sms.received", "customer.opted_out"]).is("read_at", null).select("id"));
+    // Missing/foreign/already-read IDs do not reveal any other company's records.
+    res.json({updated: rows.length});
+  }));
   app.get(
     "/api/crm/customers/:id/history",
     wrap(async (req, res) => {
@@ -1276,23 +1297,32 @@ export function registerCrm(app: Express) {
     const body = req.body;
     const payload = body?.payload;
     if (!payload || payload.account_id !== process.env.SENT_DM_ACCOUNT_ID) { res.sendStatus(403); return; }
-    if (typeof payload.message_id !== "string" || !payload.message_id) { res.sendStatus(400); return; }
-    const providerId = `sentdm:${payload.message_id}`;
     const createdAt = payload.updated_at || body.timestamp;
     if (typeof createdAt !== "string" || !Number.isFinite(Date.parse(createdAt))) { res.sendStatus(400); return; }
-    if (body.event === "message.received") {
-      if (payload.channel !== "sms") { res.sendStatus(204); return; }
-      if (typeof payload.text !== "string") { res.sendStatus(204); return; }
-      await saveCallback("sentdm-inbound", `sentdm-inbound:${payload.message_id}`, providerId, {
-        company_id: process.env.SENT_DM_COMPANY_ID, from: phone(payload.inbound_number),
-        text: payload.text.slice(0, 4000), message_id: payload.message_id, created_at: createdAt,
+    const id = sentEventKey(req.rawBody, req.headers["x-webhook-event-id"]);
+    const contact = body.event === "contact.opt_out";
+    if (contact || body.event === "message.received") {
+      if (!["sms", "mms"].includes(payload.channel)) { res.sendStatus(204); return; }
+      if (contact && payload.opt_out !== true) { res.sendStatus(400); return; }
+      if (!contact && (typeof payload.message_id !== "string" || !payload.message_id)) { res.sendStatus(400); return; }
+      await saveSentCallback("sentdm-inbound", id, `sentdm:${payload.message_id || id}`, {
+        company_id: process.env.SENT_DM_COMPANY_ID,
+        from: phone(contact ? payload.from : payload.inbound_number),
+        text: typeof payload.text === "string" ? payload.text.slice(0, 4000) : "",
+        message_id: payload.message_id || null, opt_out: contact || sentOptOut(payload.text),
+        event_type: body.event, created_at: createdAt,
       });
     } else {
       const status = sentStatus(body.event);
       if (!status) { res.sendStatus(204); return; }
-      await saveCallback("sms", `sentdm:${payload.message_id}:${status}:${createdAt}`, providerId, {status, created_at: createdAt});
+      if (typeof payload.message_id !== "string" || !payload.message_id) { res.sendStatus(400); return; }
+      await saveSentCallback("sms", id, `sentdm:${payload.message_id}`, {
+        company_id: process.env.SENT_DM_COMPANY_ID, status, created_at: createdAt,
+        failure_reason: sentFailureReason(payload),
+      });
     }
-    await processCallbacks();
+    // Only durable receipt is on the request path. The existing authorized worker
+    // processes pending callbacks; failures remain retryable without delaying ACK.
     res.sendStatus(204);
   }));
   const twilioValid = (req: Request) =>

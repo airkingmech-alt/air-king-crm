@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 type Env = NodeJS.ProcessEnv;
 export function smsProvider(env: Env = process.env) {
@@ -37,7 +37,7 @@ export function sentStatus(event: string): string | null {
   const map: Record<string, string> = {
     "message.queued": "queued", "message.routed": "routed", "message.sent": "sent",
     "message.delivered": "delivered", "message.read": "read", "message.failed": "failed",
-    "message.blocked": "blocked", "message.filtered": "filtered", "message.scheduled": "scheduled",
+    "message.blocked": "blocked", "message.filtered": "filtered", "message.scheduled": "scheduled", "message.cancelled": "cancelled",
   };
   return map[event] || null;
 }
@@ -66,4 +66,28 @@ export async function sendSentSms(msg: {id: string; company_id: string; recipien
     typeof recipients[0].message_id !== "string" || !recipients[0].message_id)
     throw new Error("Sent.dm acceptance could not be confirmed.");
   return `sentdm:${recipients[0].message_id}`;
+}
+
+// The event ID is stable across attempts; endpoint ID and signing timestamp are not
+// event identities. Bind it to the signed body hash as the ID header is not signed.
+export function sentEventKey(raw: Buffer, eventId: unknown) {
+  const hash = createHash("sha256").update(raw).digest("hex");
+  return `sentdm-event:${typeof eventId === "string" ? eventId.slice(0, 200) : "legacy"}:${hash}`;
+}
+
+export function sentFailureReason(payload: Record<string, unknown>) {
+  // Never persist arbitrary provider text (may contain PII, credentials or markup).
+  const code = typeof payload.reason_code === "string" && /^(BUSINESS|DELIVERY)_\d{3}$/.test(payload.reason_code)
+    ? payload.reason_code : null;
+  const hints: Record<string, string> = {
+    BUSINESS_003: "Account balance is insufficient.", BUSINESS_004: "Recipient is opted out or suppressed.",
+    BUSINESS_020: "Account onboarding quota reached.", BUSINESS_029: "SMS sender is not active on the account.",
+    DELIVERY_004: "Destination is denied by routing policy.",
+  };
+  return code ? `${code}: ${hints[code] || "Provider could not deliver. Review the Sent dashboard."}`
+    : "Provider could not deliver. Review the Sent dashboard.";
+}
+
+export function sentOptOut(text: unknown) {
+  return typeof text === "string" && /^(STOP|STOPALL|UNSUBSCRIBE|CANCEL|END|QUIT|REVOKE|OPTOUT)$/i.test(text.trim());
 }
