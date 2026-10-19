@@ -45,3 +45,15 @@ test("Sent sends only SMS with a stable idempotency key and validates acceptance
   }
   await assert.rejects(sendSentSms(msg, env, (async () => Response.json({}, {status:409})) as typeof fetch), (e:any) => e.status === undefined);
 });
+
+test("documented cancellation maps to a terminal status and provider reasons cannot leak arbitrary text", async () => {
+  const {sentStatus, sentFailureReason, sentEventKey} = await import("../server/crm/sentdm");
+  assert.equal(sentStatus("message.cancelled"), "cancelled");
+  assert.match(sentFailureReason({reason_code:"BUSINESS_004",reason:"secret customer +18165551234 <script>"}), /opted out/);
+  assert.doesNotMatch(sentFailureReason({reason_code:"BUSINESS_004",reason:"secret"}), /secret/);
+  assert.doesNotMatch(sentFailureReason({reason_code:"evil<script>",reason:"secret"}), /evil|secret/);
+  const raw = Buffer.from('{"event":"contact.opt_out"}');
+  assert.equal(sentEventKey(raw,"stable-event"), sentEventKey(raw,"stable-event"));
+  assert.notEqual(sentEventKey(raw,"stable-event"), sentEventKey(Buffer.from("other"),"stable-event"));
+  assert.equal(sentEventKey(raw,undefined), sentEventKey(raw,undefined));
+});

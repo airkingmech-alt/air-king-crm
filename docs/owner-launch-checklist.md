@@ -73,3 +73,13 @@ Migrations:
 Pre-repair application release: `b75b8ff9ff7a3cfe2e0e8b39a24737032348cf55`. For an application regression, redeploy that commit through Render and inspect logs. Additive save functions may remain. Do not remove access policies or restore the database blindly to undo a UI problem. No restore drill is claimed.
 
 Proceed with a controlled owner/staff pilot after the access/save walkthrough. Hold live card collection and automatic subscriptions until their separate gates pass. Optional new features are not required for the pilot.
+
+## October 15 Sent.dm review preparation (not deployed)
+
+- [x] Prepared code and synthetic regression coverage for signed contact opt-outs (including no message ID), durable immediate company/phone suppression, paginated phone matching, shared unread text replies and authorized read state, prompt durable webhook acknowledgement, event-ID/body deduplication, sanitized failures and cancellation/out-of-order projection.
+- [ ] Review and approve the Sent launch PR and `20261015034423_sentdm_launch_safety.sql`. Migration remains unapplied outside disposable local tests.
+- [ ] Owner completes and verifies Sent number, customer-care registration/template, API key, webhook account/endpoint/signature and **message plus contact** subscriptions. Keep `SENT_DM_SENDING_ENABLED=false` until separate approval.
+- [ ] Verify the existing worker safely processes callbacks in isolated staging, without enabling automations or marketing.
+- [ ] Approve and execute the exact controlled test in [Sent.dm launch review](sentdm-sms.md). Prior audit had zero recorded SMS outbox/callbacks; this preparation is not proof of live delivery.
+
+See that review document for required environment variable names (no secrets), the unapplied migration, deployment order, remaining limitations and the one-message test cap. Earlier checklist statements about Twilio are historical; Sent is the current SMS launch target.

@@ -1,5 +1,5 @@
 import CustomerDocument, { Unsubscribe } from "@/pages/customer-document";
-import { Automations, Templates, Integrations } from "@/pages/communications";
+import { Automations, Templates, Integrations, Replies } from "@/pages/communications";
 import { Switch, Route, Router } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { queryClient } from "./lib/queryClient";
@@ -49,6 +49,7 @@ function InternalRouter() {
         <Route path="/marketing">{can("marketing") ? <Marketing /> : <AccessDenied />}</Route>
         <Route path="/inventory">{can("inventory") ? <Inventory /> : <AccessDenied />}</Route>
         <Route path="/automations">{can("automations") ? <Automations /> : <AccessDenied />}</Route>
+        <Route path="/replies">{["communications", "customers", "quotes", "invoices", "schedule"].every(can) ? <Replies /> : <AccessDenied />}</Route>
         <Route path="/templates">{can("communications") ? <Templates /> : <AccessDenied />}</Route>
         <Route path="/integrations">{can("communications") ? <Integrations /> : <AccessDenied />}</Route>
         <Route path="/team">{profile?.role === "owner" ? <Users /> : <AccessDenied />}</Route>

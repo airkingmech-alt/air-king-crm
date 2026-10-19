@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/context/auth-context";
+import { Link } from "wouter";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { crm } from "@/lib/crm-api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -952,7 +954,7 @@ export function CustomerCommunications({ customerId }: { customerId: string }) {
     ...(data?.events || []).map((e: any) => ({
       ...e,
       title: label(e.event_type),
-      detail: e.metadata.message || e.metadata.reason || "",
+      detail: e.metadata.body || e.metadata.message || e.metadata.reason || "",
     })),
     ...(data?.messages || []).map((m: any) => ({
       ...m,
@@ -1062,4 +1064,45 @@ export function CustomerCommunications({ customerId }: { customerId: string }) {
       </CardContent>
     </Card>
   );
+}
+
+export function Replies() {
+  const {profile} = useAuth();
+  const cache = useQueryClient();
+  const [showHistory, setShowHistory] = useState(false);
+  const [page, setPage] = useState(0);
+  const {data: replies = [], refetch, error} = useQuery({
+    queryKey: showHistory ? ["sms-reply-history", profile?.company_id, page] : ["sms-replies", profile?.company_id],
+    queryFn: () => crm(showHistory ? `crm/replies?history=true&page=${page}` : "crm/replies"), refetchInterval: 15000,
+  });
+  const [notice, setNotice] = useState("");
+  return <div className="space-y-4">
+    <h1 className="text-2xl font-bold">{showHistory ? "Text reply history" : "Unread text replies"}</h1>
+    <Button variant="outline" onClick={() => {setShowHistory(!showHistory); setPage(0);}}>{showHistory ? "Show unread replies" : "View all reply history"}</Button>
+    <p className="text-sm text-muted-foreground">Shared office inbox. Showing up to 100 replies and opt-outs per page, newest first. Read status is shared with authorized staff.</p>
+    <Notice text={notice || error?.message || ""} />
+    {!replies.length && !error && <p className="text-muted-foreground">{showHistory ? "No replies on this page." : "No unread text replies."}</p>}
+    {replies.map((reply: any) => <Card key={reply.id}><CardContent className="p-4 space-y-2">
+      <p className="font-semibold">{reply.metadata.from} · {label(reply.event_type)}</p>
+      <p className="text-xs text-muted-foreground">{new Date(reply.created_at).toLocaleString()}</p>
+      <p className="whitespace-pre-wrap break-words">{reply.metadata.body || (reply.event_type === "customer.opted_out" ? "Provider reported an opt-out." : "No text supplied. Attachments are not displayed.")}</p>
+      {reply.metadata.ambiguous && <p className="text-sm text-amber-700">Multiple customers share this phone. Resolve the match before replying.</p>}
+      {reply.metadata.unmatched && <p className="text-sm text-amber-700">No matching customer. Review this phone before replying.</p>}
+      <div className="flex gap-3 items-center">
+        {reply.customer_id && <Link className="text-sm underline" href={`/customers/${encodeURIComponent(reply.customer_id)}`}>View customer reply history</Link>}
+        {!reply.read_at && <Button size="sm" variant="outline" onClick={async () => {
+          try {
+            await crm(`crm/replies/${reply.id}/read`, "POST", {});
+            await refetch();
+            await cache.invalidateQueries({queryKey: ["sms-replies"]});
+          } catch (e: any) {setNotice(e.message);}
+        }}>Mark as read</Button>}
+        {reply.read_at && <span className="text-xs text-muted-foreground">Read</span>}
+      </div>
+    </CardContent></Card>)}
+    {showHistory && <div className="flex gap-3">
+      <Button variant="outline" disabled={page === 0} onClick={() => setPage(page - 1)}>Previous page</Button>
+      <Button variant="outline" disabled={replies.length < 100} onClick={() => setPage(page + 1)}>Next page</Button>
+    </div>}
+  </div>;
 }

@@ -322,6 +322,11 @@ function couponHtml(body: string, name: string, values: Row) {
   </div>`;
 }
 async function stopReason(msg: Row, ctx: Awaited<ReturnType<typeof context>>) {
+  if (msg.channel === "sms") {
+    const stopped = await result(db().from("sms_phone_suppressions").select("phone")
+      .eq("company_id", msg.company_id).eq("phone", phone(msg.recipient)).maybeSingle());
+    if (stopped) return "Phone number is suppressed after an opt-out.";
+  }
   if (ctx.quote?.data.status === "Draft" && msg.reason !== "document_delivery")
     return "Draft quotes cannot be sent by automations.";
   if (!allowed(ctx, msg.channel, msg.category))
