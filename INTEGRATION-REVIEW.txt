@@ -66,8 +66,10 @@ Postbuild validation: passed on final build; no deploy.
 Logs: ../crm-tests-final.log and ../crm-build-final.log.
 New tests cover pricing, private serialization, snapshot roundtrip, invalid
 values, equipment quantity handling and recovery isolation/malformed storage.
-No packages or lockfiles changed. Prior install reported existing dependency
-audit findings; this work did not perform a dependency remediation/release audit.
+Publication CI passed all 638 tests but found the existing follow-redirects
+1.16.0 security advisory. Targeted lockfile update to patched 1.16.1 changes
+only that package; production npm audit now reports zero vulnerabilities.
+Development-only advisories remain outside this release patch.
 
 BROWSER QA (LOCAL SYNTHETIC DATA ONLY)
 - Completed all eight sections and reviewed computed price $6,725.14.
