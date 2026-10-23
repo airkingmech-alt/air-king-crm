@@ -1,0 +1,102 @@
+Air King Quote Builder integration review - 2026-10-23
+
+STATUS: Owner approved publication on 2026-10-23; deployment verification pending.
+Branch: codex/new-house-builder-integration
+CRM baseline: b3d75605d02e4ff6eb9234b81e87c83e7916e11b
+No push, deployment, production data changes, customer messages or migrations.
+
+SOURCE AND LAYOUT
+Original Site: https://air-king-quote-builder.chirpy-cedar-6950.chatgpt.site/
+Project appgprj_6a543b7644f881919de579592bdd268e, version 31.
+Verified original commit: 6338e3262dc96a7d0a7d7af547b5f5309e834535.
+Opened through the authorized Sites source-repository route. The denied/unresolved
+archive request was not retried. Original checkout ../quote-builder-original is
+unchanged. No credentials persisted. Actual eight-step builder, Manual J aid,
+voice-fill, duct catalog and scoped dark/red/gold styles were ported into CRM.
+
+CRM INTEGRATION
+New House Quote entries on Quotes and Customer Detail. Existing staff auth,
+quote/customer permission checks, customer/property records, DataProvider and
+confirmed createQuote / crm_save_records are reused. Other quote flows remain.
+A versioned internal takeoff snapshot is saved on the existing quote JSON.
+No new tables, role grants or RLS changes; no production migration to apply.
+Saving creates Draft only, never sends. Pending submission is guarded, failed
+save keeps inputs, and successful save opens the normal proposal route.
+
+REOPENING AND EDITING
+Saved inputs reopen as a historical view. Edit takeoff as new draft restores
+all eight editable sections and saves a separate quote with sourceQuoteId in its
+private snapshot. It does not overwrite the original record, manual prices,
+scope, add-ons, accepted scope or approvals. The UI explicitly explains that a
+new draft recalculates from takeoff inputs and does not copy proposal adjustments.
+The existing View / edit saved proposal route retains normal in-place pricing
+and scope edits with existing conflict/audit/accepted-document protections.
+This copy workflow is not a replacement for the CRM's formal accepted-quote
+revision endpoint or an automatic replacement of a customer-approved proposal.
+Current equipment IDs/costs are validated; obsolete saved costs require reselecting
+models rather than silently changing them. Original allowances remain reviewable.
+
+UNSAVED WORK
+Session-storage recovery is keyed by company, staff user and source quote. It
+restores inputs after route navigation, browser Back and refresh in the same tab.
+It is not a server save or cross-device draft; save before closing the tab.
+Cancel shows Keep working / Discard takeoff. Discard removes the recovery copy;
+successful save clears it. If storage fails, a visible warning, unload warning
+and link guard protect against silent loss (browser Back under unavailable
+storage remains a platform limitation). No new persistent credentials are used.
+
+PRICING AND CUSTOMER PRIVACY
+Uses existing cents-based CRM formula: 9% equipment + materials purchase tax,
+untaxed labor, total cost divided by 0.80. Original Site equipment-only taxation
+was intentionally replaced by the established CRM rule. Historical prices and
+ordinary quote calculations were not changed. Invalid costs, quantities, catalog
+IDs and categories are rejected. Duct/trade allowances need supplier confirmation.
+The Manual J worksheet is an estimating aid, not a certified design; final
+manufacturer/AHRI matching and sizing require normal professional review.
+Customer scope contains a generic installation description for review in the
+proposal editor, not crew days, subcontract allowances or private notes.
+Existing public-field allowlists omit the takeoff snapshot and internal costs;
+internal proposal costs remain no-print. No snapshot was added to customer
+pages, print, email or SMS output. Public serialization privacy is tested.
+
+FINAL VERIFICATION
+TypeScript: passed. Full regression suite: 638/638 passed.
+Production build: passed; existing large-chunk warning remains (~1.48 MB JS).
+Postbuild validation: passed on final build; no deploy.
+Logs: ../crm-tests-final.log and ../crm-build-final.log.
+New tests cover pricing, private serialization, snapshot roundtrip, invalid
+values, equipment quantity handling and recovery isolation/malformed storage.
+No packages or lockfiles changed. Prior install reported existing dependency
+audit findings; this work did not perform a dependency remediation/release audit.
+
+BROWSER QA (LOCAL SYNTHETIC DATA ONLY)
+- Completed all eight sections and reviewed computed price $6,725.14.
+- Simulated offline save retained complete inputs and zero records.
+- Delayed double-click save created one Draft; reload restored eight sections,
+  original quantities, private note and price.
+- Real QuoteEditor component saved a manual $7,000 price and changed scope.
+- Edited takeoff copy: crew days 2 -> 3 survived in-app navigation, browser Back
+  and refresh. Original proposal still showed $7,000 and adjusted scope.
+- Cancel / Keep working retained 3 days. Discard returned to original 2 days,
+  removed recovery, and did not create a quote.
+- Negative labor blocked save. Valid edited copy double-click saved exactly one
+  separate Draft at $7,925.14; reopened copy retained 3 days. Original remained
+  $7,000 with its manually edited scope.
+- Mobile at 390x844: stacked checklist/form, usable labor fields and save action,
+  no horizontal overflow (clientWidth=scrollWidth=385). Desktop layout checked.
+  Viewport reset succeeded after final screenshots.
+- Native browser confirmation stalled automation; replaced builder Cancel with
+  explicit accessible in-page controls and verified both actions.
+Fixture: tests/new-house-preview.mjs. Uses actual DataProvider and QuoteEditor
+with mocked auth/Supabase and synthetic local records. This proves UI behavior,
+not a new production database connectivity or permission audit. Prior live CRM
+inspection was read-only New Quote -> Cancel; live quote count unchanged.
+Sent/Meta tabs were not altered. Original Site was not edited.
+Screenshots: new-house-qa-desktop.jpg and new-house-qa-mobile.jpg.
+
+OWNER REVIEW / NEXT STEP
+Review the preserved layout, copy-as-new-draft editing policy, supplier allowances
+and generic customer scope. Existing model-matching/sizing disclaimers remain.
+Owner approved publishing this tested integration. Publish through normal CRM
+CI and Render deployment; verify the exact commit and live UI without creating
+production quotes or sending customer messages. QA screenshots remain local.

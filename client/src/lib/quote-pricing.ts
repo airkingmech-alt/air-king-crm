@@ -26,6 +26,7 @@ export function calculateQuotePricing(equipment: number, labor: number, material
 }
 
 export interface QuoteDraftInput {
+  newHouseSnapshot?: import("./new-house-quote").NewHouseSnapshot;
   customerId: string;
   customerName: string;
   jobType: string;
@@ -106,6 +107,7 @@ export function buildQuoteDraft(input: QuoteDraftInput, id: string, createdAt: s
   const pricing = calculateQuotePricing(selectedOption.equipmentCost || 0, input.laborCost, input.materialsCost);
   return {
     id, customerId: input.customerId, customerName: input.customerName,
+    ...(input.newHouseSnapshot ? {newHouseSnapshot: input.newHouseSnapshot} : {}),
     jobType: input.jobType as Quote["jobType"], title: input.title,
     status: "Draft", createdAt,
     equipmentItems: [...input.equipmentItems], equipmentSelectionMode: "explicit",

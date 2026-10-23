@@ -490,14 +490,7 @@ export default function Quotes() {
             {quotes.filter((q) => q.status === "Quote Sent").length} pending
           </p>
         </div>
-        <Button
-          size="sm"
-          className="bg-primary text-primary-foreground"
-          onClick={() => setShowBuilder(true)}
-        >
-          <Plus size={16} className="mr-1.5" />
-          New Quote
-        </Button>
+        <div className="flex gap-2"><Link href="/quotes/new-house"><Button size="sm" variant="outline">New House Quote</Button></Link><Button size="sm" className="bg-primary text-primary-foreground" onClick={() => setShowBuilder(true)}><Plus size={16} className="mr-1.5" />New Quote</Button></div>
       </div>
 
       <div className="grid grid-cols-1 gap-4">
@@ -533,6 +526,7 @@ export default function Quotes() {
                     <p className="text-xs text-muted-foreground mt-1">
                       Created {quote.createdAt}
                     </p>
+                    {quote.newHouseSnapshot && <Link className="text-sm underline" href={`/quotes/new-house/${quote.id}`}>View saved new-house takeoff</Link>}
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     <div className="flex gap-1.5">

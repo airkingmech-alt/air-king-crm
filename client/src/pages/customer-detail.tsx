@@ -401,6 +401,7 @@ export default function CustomerDetail() {
             </div>
             <div className="flex flex-wrap gap-2">
               <CustomerEditor key={customer.id} customer={customer} />
+              <Link href={`/quotes/new-house?customer=${encodeURIComponent(customer.id)}`}><Button size="sm" variant="outline">New House Quote</Button></Link>
               <DeleteRecord kind="customer" record={customer} destination="/customers" />
               <Button
                 size="sm"

@@ -16,6 +16,7 @@ import Customers from "@/pages/customers";
 import CustomerDetail from "@/pages/customer-detail";
 import Pricebook from "@/pages/pricebook";
 import Quotes from "@/pages/quote-builder";
+import NewHouseQuote from "@/pages/new-house-quote";
 import Proposal from "@/pages/proposal";
 import Schedule from "@/pages/schedule";
 import CrownCare from "@/pages/crown-care";
@@ -40,6 +41,8 @@ function InternalRouter() {
         <Route path="/leads">{can("leads") ? <Leads /> : <AccessDenied />}</Route>
         <Route path="/customers/:id">{can("customers") ? <CustomerDetail /> : <AccessDenied />}</Route>
         <Route path="/pricebook">{can("pricebook") ? <Pricebook /> : <AccessDenied />}</Route>
+        <Route path="/quotes/new-house/:id">{can("quotes") && can("customers") ? <NewHouseQuote /> : <AccessDenied />}</Route>
+        <Route path="/quotes/new-house">{can("quotes") && can("customers") ? <NewHouseQuote /> : <AccessDenied />}</Route>
         <Route path="/quotes">{can("quotes") ? <Quotes /> : <AccessDenied />}</Route>
         <Route path="/time-clock">{can("time_clock") ? <TimeClock /> : <AccessDenied />}</Route>
         <Route path="/schedule">{can("schedule") ? <Schedule /> : <AccessDenied />}</Route>

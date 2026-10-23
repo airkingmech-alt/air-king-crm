@@ -114,6 +114,7 @@ export interface QuoteOption {
 }
 
 export interface Quote {
+  newHouseSnapshot?: import("../lib/new-house-quote").NewHouseSnapshot;
   id: string;
   customerId: string;
   customerName: string;
