@@ -1,3 +1,4 @@
+import {registerTextMessages} from "./text-messages";
 import { currentCrownInquiryMetadata, publicCrownCatalog } from "../../shared/crown-tiers";
 import { loadCrownCatalog, registerCrownCatalog } from "./crown-catalog";
 import { registerAcceptedQuotes } from "./accepted-quotes";
@@ -113,6 +114,7 @@ async function authorizedLeadSource(req: Request, source: string) {
 }
 
 export function registerCrm(app: Express) {
+  registerTextMessages(app);
   registerAcceptedQuotes(app);
   registerCustomerImport(app);
   app.use("/api/public", limit);

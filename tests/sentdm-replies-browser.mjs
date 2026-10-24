@@ -122,7 +122,7 @@ try {
   await evaluate("document.querySelector('[aria-label=\"Open menu\"]').click()");
   await wait("!!document.querySelector('[aria-label=\"Close menu\"]')");
   assert.ok(await evaluate("Array.from(document.querySelectorAll('[aria-label=\"2 unread text replies\"]')).some(e=>e.getBoundingClientRect().width>0)"));
-  await clickText("Text replies2");
+  await clickText("Text Messages2");
   await wait("Array.from(document.querySelectorAll('[aria-label=\"Close menu\"]')).every(e=>e.getBoundingClientRect().width===0)");
   await evaluate("location.hash='/integrations'");
   await wait("document.body.innerText.includes('Missing SENT_DM_TEMPLATE_ID.')");
