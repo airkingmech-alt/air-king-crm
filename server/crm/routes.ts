@@ -41,6 +41,7 @@ import {
   bodies,
 } from "./catalog";
 import { tick } from "./worker";
+import { customerSmsReadiness, queueCustomerSms } from "./sms-compose";
 import { mapMetaLead, secureEqual, verifyMetaSignature } from "./meta-leads";
 import {
   smsConfigured,
@@ -546,6 +547,40 @@ export function registerCrm(app: Express) {
       .in("event_type", ["sms.received", "customer.opted_out"]).is("read_at", null).select("id"));
     // Missing/foreign/already-read IDs do not reveal any other company's records.
     res.json({updated: rows.length});
+  }));
+  app.get("/api/crm/customers/:id/sms", wrap(async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    const c = await caller(req);
+    res.json(await customerSmsReadiness(c.company, String(req.params.id)));
+  }));
+  app.post("/api/crm/customers/:id/sms", wrap(async (req, res) => {
+    const c = await caller(req);
+    const input = z.object({body:z.string().trim().min(1).max(1600).refine(value => !value.includes("{{")), recipient:z.string().min(1).max(20)}).strict().parse(req.body);
+    const requestKey = z.string().uuid().parse(req.headers["idempotency-key"]);
+    try {
+      const message = await queueCustomerSms(c.company, String(req.params.id), c.id, requestKey, input.body, input.recipient);
+      res.json({message});
+    } catch (error:any) {
+      // A database/history failure may follow durable queue insertion. Preserve
+      // the client's request key and hide database internals on uncertain errors.
+      if (!error.status) throw Object.assign(new Error("Queue confirmation unavailable. Retry the same request to confirm its status."), {status:503});
+      throw error;
+    }
+  }));
+  app.get("/api/crm/sms-readiness", wrap(async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    const c = await caller(req, true);
+    const config = await settings(c.company);
+    const pending = await result(db().from("provider_webhook_events").select("created_at,next_attempt_at")
+      .eq("payload->>company_id", c.company).is("processed_at", null).order("created_at").limit(100));
+    const processed = await result(db().from("provider_webhook_events").select("processed_at")
+      .eq("payload->>company_id", c.company).not("processed_at", "is", null).order("processed_at", {ascending:false}).limit(1));
+    res.json({provider:smsProvider(), local: smsProvider() === "sentdm" ? sentReadiness(process.env,c.company) : {ready:smsConfigured()},
+      sending_enabled:!!config.sending_enabled, worker_secret_configured:!!process.env.CRM_WORKER_SECRET,
+      worker_schedule_verified:false, last_callback_processed_at:processed[0]?.processed_at || null,
+      pending_callbacks_observed:pending.length, pending_count_capped:pending.length === 100,
+      oldest_pending_callback_at:pending[0]?.created_at || null,
+      note:"Read-only observation. Secret presence and past callback processing do not prove a worker is currently scheduled. Do not invoke the tick endpoint as a health check."});
   }));
   app.get(
     "/api/crm/customers/:id/history",

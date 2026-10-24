@@ -22,9 +22,17 @@ try {
       {id:"two",created_at:"2026-10-15T11:00:00Z",event_type:"customer.opted_out",metadata:{from:"+18165550102",body:"STOP",ambiguous:true}},
       {id:"three",created_at:"2026-10-15T10:00:00Z",event_type:"sms.received",metadata:{from:"+18165550103",body:"Synthetic unmatched reply",unmatched:true}},
     ];
-    window.__qa={replies,failRead:false,calls:[]};
-    export async function crm(route,method="GET"){
-      window.__qa.calls.push({route,method});
+    window.__qa={replies,failRead:false,failSend:false,validationFail:false,submissions:{},calls:[]};
+    export async function crm(route,method="GET",body,key){
+      window.__qa.calls.push({route,method,body,key});
+      if(route==="crm/customers/synthetic-customer/sms") {
+        if(method==="GET") return {ready:true,recipient:"+18165550101",issues:[],sending_enabled:true,timezone:"America/Chicago",sms_start:8,sms_end:19,mode:"approved_template"};
+        if(window.__qa.validationFail) throw Object.assign(Error("Missing approved template."),{status:400});
+        window.__qa.submissions[key] ||= {id:key,status:"pending",body:body.body};
+        await new Promise(resolve=>setTimeout(resolve,150));
+        if(window.__qa.failSend) throw Error("Synthetic response lost");
+        return {message:window.__qa.submissions[key]};
+      }
       if(route==="crm/config")return {role:"owner",settings:{company_name:"Synthetic company",sending_enabled:false,timezone:"America/Chicago",sms_start:8,sms_end:19},connections:{sms:false,sms_provider:"sentdm",sentdm:true,sentdm_readiness:{ready:false,provider_verified:false,issues:["Missing SENT_DM_TEMPLATE_ID.","Sent SMS sending is paused in the server configuration."]}}};
       if(route==="crm/replies")return structuredClone(replies.filter(r=>!r.read_at));
       if(route.startsWith("crm/replies?history="))return structuredClone(replies);
@@ -79,6 +87,25 @@ try {
   await clickText("View customer reply history");
   await wait("document.body.innerText.includes('Synthetic reply <img')");
   assert.ok(await evaluate("document.body.innerText.includes('Communications')"));
+  await wait("document.body.innerText.includes('SMS to primary contact: +18165550101')");
+  await evaluate(`(()=>{const e=document.querySelector('textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'Service appointment reply');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  await evaluate("window.__qa.failSend=true");
+  await evaluate("(()=>{const b=Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='Queue SMS');b.click();b.click();})()");
+  await wait("document.body.innerText.includes('Synthetic response lost')");
+  assert.equal(await evaluate("Object.keys(window.__qa.submissions).length"),1);
+  assert.equal(await evaluate("window.__qa.calls.filter(c=>c.method==='POST'&&c.route.endsWith('/sms')).length"),1);
+  assert.ok(await evaluate("document.querySelector('textarea').disabled"));
+  await evaluate("location.hash='/replies'");await wait("document.body.innerText.includes('Unread text replies')");
+  await clickText("View customer reply history");
+  await wait("document.body.innerText.includes('prior request needs confirmation')");
+  await evaluate("window.__qa.failSend=false");await clickText("Retry confirmation");
+  await wait("document.body.innerText.includes('Text queued, not delivered.')");
+  assert.equal(await evaluate("Object.keys(window.__qa.submissions).length"),1);
+  assert.equal(await evaluate("new Set(window.__qa.calls.filter(c=>c.method==='POST'&&c.route.endsWith('/sms')).map(c=>c.key)).size"),1);
+  await evaluate(`(()=>{const e=document.querySelector('textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'Another service reply');e.dispatchEvent(new Event('input',{bubbles:true}));window.__qa.validationFail=true;})()`);
+  await clickText("Queue SMS");await wait("document.body.innerText.includes('Missing approved template.')");
+  assert.equal(await evaluate("document.querySelector('textarea').value"),"Another service reply");
+  assert.equal(await evaluate("document.querySelector('textarea').disabled"),false);
   await evaluate("location.hash='/replies'");await wait("document.body.innerText.includes('Unread text replies')");
   await evaluate("window.__qa.failRead=true");await clickText("Mark as read");
   await wait("document.body.innerText.includes('Synthetic read failure')");
@@ -103,8 +130,8 @@ try {
   assert.ok(await evaluate("document.body.innerText.includes('Local configuration only.')"));
   assert.ok(await evaluate("document.body.innerText.includes('CRM sending is paused.')"));
   assert.ok(await evaluate("document.documentElement.scrollWidth<=390"), "Mobile SMS readiness must not overflow");
-  assert.ok(await evaluate("window.__qa.calls.every(c=>c.method==='GET'||c.route.endsWith('/read'))"), "Readiness must never send or update settings");
-  console.log("PASS: SMS readiness blockers and mobile layout; desktop/mobile unread navigation, body escaping, history link, duplicate/unmatched warnings, failed/successful shared read state and reviewed history. Synthetic local fixtures only.");
+  assert.ok(await evaluate("window.__qa.calls.every(c=>c.method==='GET'||c.route.endsWith('/read')||c.route.endsWith('/sms'))"), "Readiness must never send or update settings");
+  console.log("PASS: SMS compose duplicate-click, ambiguous failure/navigation retry, template failure, readiness blockers and mobile layout; desktop/mobile unread navigation, body escaping, history link, duplicate/unmatched warnings, failed/successful shared read state and reviewed history. Synthetic local fixtures only.");
 } finally {
   ws?.close();chrome?.kill();await vite?.close();
   await rm(fixture,{recursive:true,force:true});

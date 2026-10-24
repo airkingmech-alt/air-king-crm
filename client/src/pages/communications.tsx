@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SmsComposer } from "@/components/sms-composer";
 import { useAuth } from "@/context/auth-context";
 import { Link } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -987,6 +988,7 @@ export function CustomerCommunications({ customerId }: { customerId: string }) {
       </CardHeader>
       <CardContent className="space-y-4">
         <Notice text={notice || error?.message || ""} />
+        <SmsComposer key={customerId} customerId={customerId} onQueued={() => {void refetch();}} />
         {showPreferences && (
           <div className="bg-muted/30 rounded-lg p-4 space-y-2">
             {[
@@ -1046,7 +1048,7 @@ export function CustomerCommunications({ customerId }: { customerId: string }) {
             <div key={item.id} className="border-l-2 border-sky-200 pl-4">
               <div className="flex justify-between gap-3 text-sm">
                 <strong>{item.title}</strong>
-                <span>{label(item.status || "recorded")}</span>
+                <span>{item.provider_status === "accepted" ? "Accepted by provider — delivery pending" : label(item.status || "recorded")}</span>
               </div>
               <p className="text-xs text-muted-foreground">
                 {new Date(item.created_at).toLocaleString()}{" "}

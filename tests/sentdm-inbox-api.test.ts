@@ -25,6 +25,12 @@ globalThis.fetch=async(input:any,init:any={})=>{
     assert.equal(url.searchParams.get("company_id"), "eq." + profile.company_id);
     return response({data: {sending_enabled:false}});
   }
+  if(url.pathname==="/rest/v1/provider_webhook_events") {
+    assert.equal(init.method||"GET","GET");
+    assert.equal(url.searchParams.get("payload->>company_id"),profile.company_id === "co" ? "eq.co" : "eq."+profile.company_id);
+    assert.ok(!url.searchParams.get("select")?.includes("payload"));
+    queries.push(url);return response([]);
+  }
   assert.equal(url.pathname,"/rest/v1/communication_events","No processing or sends on the webhook request path");
   assert.equal(url.searchParams.get("company_id"),"eq.co");
   assert.equal(url.searchParams.get("channel"),"eq.sms");
@@ -170,4 +176,23 @@ test("documented inbound SMS envelope stores the customer number, nullable text 
   assert.equal(writes[1].p_payload.text,"");
   assert.equal((await webhook({...incoming,payload:{...incoming.payload,channel:"whatsapp"}})).status,204);
   assert.equal(writes.length,2);
+});
+
+
+test("SMS compose and diagnostics enforce staff feature/company access and reject untrusted inputs", async () => {
+  const request=(path:string,method="GET",body?:any)=>nativeFetch(base+path,{method,headers:{authorization:"Bearer synthetic","content-type":"application/json","idempotency-key":"33333333-3333-4333-8333-333333333333"},...(body?{body:JSON.stringify(body)}:{})});
+  for(const feature of ["customers","communications","quotes","invoices","schedule"]) {
+    profile.permissions={[feature]:false};
+    assert.equal((await request("/api/crm/customers/c/sms")).status,403);
+    assert.equal((await request("/api/crm/customers/c/sms","POST",{body:"Service text",recipient:"+18165551234"})).status,403);
+  }
+  profile.permissions={};
+  assert.equal((await request("/api/crm/sms-readiness")).status,403);
+  for(const body of [{body:"",recipient:"+18165551234"},{body:"{{payment_link}}",recipient:"+18165551234"},{body:"Hello",recipient:"+18165551234",channel:"whatsapp"}])
+    assert.equal((await request("/api/crm/customers/c/sms","POST",body)).status,400);
+  profile.role="owner";
+  const result=await request("/api/crm/sms-readiness");assert.equal(result.status,200);
+  const report=await result.json();assert.equal(report.worker_schedule_verified,false);assert.equal(report.pending_callbacks_observed,0);
+  assert.doesNotMatch(JSON.stringify(report),/synthetic-only|whsec_|synthetic-secret/);
+  assert.equal(writes.length,0);
 });

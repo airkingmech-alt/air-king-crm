@@ -19,6 +19,6 @@ export function requestFeatures(path: string, method = "GET"): string[] {
   if (/\/quotes\/[^/]+\/convert$/.test(p)) required.push("schedule");
   if (/\/quotes\/[^/]+\/invoice$/.test(p)) required.push("invoices");
   if (part === "marketing") required.push("customers", "quotes", "invoices", "schedule", "communications");
-  if (/\/customers\/[^/]+\/history$/.test(p) || ["messages", "replies"].includes(part)) required.push("customers", "quotes", "invoices", "schedule", "communications");
+  if (/\/customers\/[^/]+\/(history|sms)$/.test(p) || ["messages", "replies", "sms-readiness"].includes(part)) required.push("customers", "quotes", "invoices", "schedule", "communications");
   return Array.from(new Set(required));
 }

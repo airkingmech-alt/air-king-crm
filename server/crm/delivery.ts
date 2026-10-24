@@ -179,8 +179,8 @@ export async function queueMessage(
   try {
     recipient =
       channel === "email" ? email(ctx.contact.email) : phone(ctx.contact.phone);
-    if (ref.campaign_id && ref.expected_recipient !== (channel === "email" ? recipient.toLowerCase() : recipient))
-      throw new Error("Customer contact changed since the campaign was reviewed.");
+    if (ref.expected_recipient && ref.expected_recipient !== (channel === "email" ? recipient.toLowerCase() : recipient))
+      throw new Error("Customer contact changed since the message was reviewed.");
     if (!allowed(ctx, channel, template.category))
       throw new Error(
         "Customer communication preferences do not allow this message.",
@@ -322,6 +322,10 @@ function couponHtml(body: string, name: string, values: Row) {
   </div>`;
 }
 async function stopReason(msg: Row, ctx: Awaited<ReturnType<typeof context>>) {
+  if (msg.reason === "customer_care") {
+    try { if (phone(ctx.contact.phone) !== msg.recipient) return "Customer primary phone changed. Review before sending."; }
+    catch { return "Customer primary phone is unavailable."; }
+  }
   if (msg.channel === "sms") {
     const stopped = await result(db().from("sms_phone_suppressions").select("phone")
       .eq("company_id", msg.company_id).eq("phone", phone(msg.recipient)).maybeSingle());
