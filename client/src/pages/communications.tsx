@@ -802,9 +802,16 @@ export function Integrations() {
             <CardContent className="p-5">
               <h2 className="font-semibold">{name}</h2>
               <p className="text-sm mt-2">
-                {data.connections[key] ? "Configured" : key === "sms" && data.connections.sms_provider === "sentdm" && data.connections.sentdm ? "Connected — sending paused" : "Setup needed"}
+                {data.connections[key] ? "Configured" : key === "sms" && data.connections.sms_provider === "sentdm" && data.connections.sentdm ? "Setup incomplete or paused" : "Setup needed"}
               </p>
-              {key === "sms" && (<p className="text-xs text-muted-foreground">{data.connections.sms_provider === "sentdm" ? "Sent.dm · SMS only" : "Twilio"}{data.connections.sms_provider === "sentdm" && !data.connections.sms ? " — awaiting setup / approval" : ""}</p>)}
+              {key === "sms" && (<p className="text-xs text-muted-foreground">{data.connections.sms_provider === "sentdm" ? "Sent.dm · SMS only" : "Twilio"}</p>)}
+              {key === "sms" && data.connections.sentdm_readiness && (
+                <div className="text-xs text-muted-foreground mt-2 space-y-1">
+                  {data.connections.sentdm_readiness.issues.map((issue: string) => <p key={issue}>{issue}</p>)}
+                  <p>Local configuration only. Account approval, sender, template and live delivery still need verification.</p>
+                  {!config.sending_enabled && <p>CRM sending is paused.</p>}
+                </div>
+              )}
               {key === "stripe" && (
                 <p className="text-xs text-muted-foreground">
                   Mode: {data.connections.stripe_mode}

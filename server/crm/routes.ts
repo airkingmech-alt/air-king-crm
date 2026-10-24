@@ -5,7 +5,7 @@ import { registerCustomerImport } from "./customer-import";
 import { directCheckoutReady, invoiceFeeBps } from "./card-fee";
 import { registerCardCheckout, reconcileDirectPayments, settleDirectPayment } from "./card-checkout";
 import { surchargeReady, surchargeEnabled, surchargeCheckoutOptions, verifiedSurcharge, SURCHARGE_API_VERSION, type SurchargeSession } from "./surcharge";
-import { smsProvider, sentConfigured, verifySentWebhook, sentStatus, sentEventKey, sentFailureReason, sentOptOut } from "./sentdm";
+import { smsProvider, sentConfigured, sentReadiness, verifySentWebhook, sentStatus, sentEventKey, sentFailureReason, sentOptOut } from "./sentdm";
 import { updateVersioned } from "../../shared/versioned-save";
 import { saveCallback, saveSentCallback, processCallbacks } from "./callbacks";
 import type { Express, Request, Response } from "express";
@@ -266,7 +266,8 @@ export function registerCrm(app: Express) {
             : "test",
           stripe_webhook: !!process.env.STRIPE_WEBHOOK_SECRET,
           twilio: smsProvider() === "twilio" && smsConfigured(),
-          sms: smsConfigured(),
+          sms: smsConfigured() && (smsProvider() !== "sentdm" || sentReadiness(process.env, c.company).ready),
+          sentdm_readiness: smsProvider() === "sentdm" ? sentReadiness(process.env, c.company) : null,
           sms_provider: smsProvider(),
           sentdm: sentConfigured(),
           sms_marketing: smsProvider() === "twilio" && smsConfigured(),

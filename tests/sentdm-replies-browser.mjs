@@ -25,6 +25,7 @@ try {
     window.__qa={replies,failRead:false,calls:[]};
     export async function crm(route,method="GET"){
       window.__qa.calls.push({route,method});
+      if(route==="crm/config")return {role:"owner",settings:{company_name:"Synthetic company",sending_enabled:false,timezone:"America/Chicago",sms_start:8,sms_end:19},connections:{sms:false,sms_provider:"sentdm",sentdm:true,sentdm_readiness:{ready:false,provider_verified:false,issues:["Missing SENT_DM_TEMPLATE_ID.","Sent SMS sending is paused in the server configuration."]}}};
       if(route==="crm/replies")return structuredClone(replies.filter(r=>!r.read_at));
       if(route.startsWith("crm/replies?history="))return structuredClone(replies);
       if(method==="POST"&&route.endsWith("/read")){
@@ -37,8 +38,8 @@ try {
   `);
   await writeFile(path.join(fixture,"main.tsx"),`
     import React from "react";import{createRoot}from"react-dom/client";import{QueryClient,QueryClientProvider}from"@tanstack/react-query";import{Router,Route,Switch}from"wouter";import{useHashLocation}from"wouter/use-hash-location";
-    import{AppShell}from"@/components/layout/app-shell";import{Replies,CustomerCommunications}from"@/pages/communications";import"@/index.css";
-    createRoot(document.getElementById("root")!).render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><Router hook={useHashLocation}><AppShell><Switch><Route path="/customers/:id"><CustomerCommunications customerId="synthetic-customer"/></Route><Route><Replies/></Route></Switch></AppShell></Router></QueryClientProvider>);
+    import{AppShell}from"@/components/layout/app-shell";import{Replies,CustomerCommunications,Integrations}from"@/pages/communications";import"@/index.css";
+    createRoot(document.getElementById("root")!).render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><Router hook={useHashLocation}><AppShell><Switch><Route path="/integrations"><Integrations/></Route><Route path="/customers/:id"><CustomerCommunications customerId="synthetic-customer"/></Route><Route><Replies/></Route></Switch></AppShell></Router></QueryClientProvider>);
   `);
   vite=await createServer({configFile:false,root:path.join(root,"client"),plugins:[react()],optimizeDeps:{entries:[path.join(fixture,"index.html")]},resolve:{alias:[
     {find:"@/context/data-context",replacement:path.join(fixture,"mock-data.ts")},
@@ -96,7 +97,14 @@ try {
   assert.ok(await evaluate("Array.from(document.querySelectorAll('[aria-label=\"2 unread text replies\"]')).some(e=>e.getBoundingClientRect().width>0)"));
   await clickText("Text replies2");
   await wait("Array.from(document.querySelectorAll('[aria-label=\"Close menu\"]')).every(e=>e.getBoundingClientRect().width===0)");
-  console.log("PASS: desktop/mobile unread navigation, body escaping, history link, duplicate/unmatched warnings, failed/successful shared read state and reviewed history. Synthetic local fixtures only.");
+  await evaluate("location.hash='/integrations'");
+  await wait("document.body.innerText.includes('Missing SENT_DM_TEMPLATE_ID.')");
+  assert.ok(await evaluate("document.body.innerText.includes('Setup incomplete or paused')"));
+  assert.ok(await evaluate("document.body.innerText.includes('Local configuration only.')"));
+  assert.ok(await evaluate("document.body.innerText.includes('CRM sending is paused.')"));
+  assert.ok(await evaluate("document.documentElement.scrollWidth<=390"), "Mobile SMS readiness must not overflow");
+  assert.ok(await evaluate("window.__qa.calls.every(c=>c.method==='GET'||c.route.endsWith('/read'))"), "Readiness must never send or update settings");
+  console.log("PASS: SMS readiness blockers and mobile layout; desktop/mobile unread navigation, body escaping, history link, duplicate/unmatched warnings, failed/successful shared read state and reviewed history. Synthetic local fixtures only.");
 } finally {
   ws?.close();chrome?.kill();await vite?.close();
   await rm(fixture,{recursive:true,force:true});
