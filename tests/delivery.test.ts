@@ -8,6 +8,7 @@ import {
   unsubscribeUrl,
   html,
 } from "../server/crm/delivery";
+import { customerSmsReadiness, queueCustomerSms } from "../server/crm/sms-compose";
 import { randomUUID } from "node:crypto";
 import { processSentInbound } from "../server/crm/sentdm-inbound";
 process.env.SUPABASE_URL = "https://unit-test.supabase.invalid";
@@ -25,6 +26,7 @@ test("email links exclude trailing sentence punctuation", () => {
 });
 let providerCalls = 0;
 let providerResult = "success";
+let failHistory = false;
 const state: Record<string, any[]> = {};
 const defaults = () => {
   state.customers = [
@@ -99,6 +101,7 @@ const defaults = () => {
   state.sms_phone_suppressions = [];
   providerCalls = 0;
   providerResult = "success";
+  failHistory = false;
 };
 const json = (data: any, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -138,6 +141,7 @@ globalThis.fetch = async (input: any, init: any = {}) => {
     m.attempts = (m.attempts || 0) + 1;
     return json([m]);
   }
+  if (table === "communication_events" && init.method === "POST" && failHistory) return json({message:"synthetic history outage"},503);
   state[table] ||= [];
   const match = (row: any) =>
     Array.from(url.searchParams.entries()).every(([key, value]) => {
@@ -421,4 +425,50 @@ test("unmatched opt-out is durable and suppresses a later customer's send withou
   await deliver(message({channel:"sms",recipient:"+18165551234"}), async()=>{sends++;return "never";});
   assert.equal(sends,0);
   assert.match(state.communications[state.communications.length-1].error,/suppressed/);
+});
+
+
+test("customer SMS queues once, keeps SMS-only transactional content and worker-owned delivery", async () => {
+  defaults();
+  const saved = {...process.env};
+  Object.assign(process.env,{SMS_PROVIDER:"sentdm",SENT_DM_API_KEY:"synthetic",SENT_DM_ACCOUNT_ID:"account",SENT_DM_COMPANY_ID:"co",SENT_DM_TEMPLATE_ID:"template",SENT_DM_WEBHOOK_SECRET:"whsec_c3ludGhldGlj",SENT_DM_WEBHOOK_ID:"endpoint",SENT_DM_SENDING_ENABLED:"true"});
+  try {
+    const readiness=await customerSmsReadiness("co","c");assert.equal(readiness.ready,true);
+    const args = ["co","c","actor","stable","Service appointment confirmed.",readiness.recipient] as const;
+    const first=await queueCustomerSms(...args);
+    const again=await queueCustomerSms(...args);
+    const parallel=await Promise.all([queueCustomerSms(...args),queueCustomerSms(...args)]);
+    assert.ok(parallel.every(row=>row.id===first.id));
+    assert.equal(first.id,again.id);assert.equal(state.communications.length,1);
+    failHistory=true;
+    await assert.rejects(queueCustomerSms("co","c","actor","history-outage","Service text",readiness.recipient),/history outage/);
+    assert.equal(state.communications.length,2);
+    failHistory=false;
+    const confirmed=await queueCustomerSms("co","c","actor","history-outage","Service text",readiness.recipient);
+    assert.equal(confirmed.status,"pending");assert.equal(state.communications.length,2);
+    assert.equal(first.channel,"sms");assert.equal(first.category,"transactional");assert.equal(first.status,"pending");
+    assert.match(first.body,/Reply STOP/);assert.equal(providerCalls,0);
+    await assert.rejects(queueCustomerSms("co","c","actor","stable","Different text",readiness.recipient),/different text/);
+    await assert.rejects(queueCustomerSms("co","c","actor","next","Message","+18165559999"),/phone changed/);
+    state.sms_phone_suppressions.push({company_id:"co",phone:readiness.recipient});
+    assert.equal((await customerSmsReadiness("co","c")).ready,false);
+    await assert.rejects(queueCustomerSms("co","c","actor","blocked","Message",readiness.recipient),/suppressed/);
+    assert.equal(state.communications.length,2);
+    assert.equal((await queueCustomerSms(...args)).id,first.id,"Prior acceptance remains confirmable after opt-out");
+  } finally {for(const key of Object.keys(process.env)) if(!(key in saved)) delete process.env[key];Object.assign(process.env,saved);}
+});
+
+test("customer SMS readiness rejects missing consent and foreign customer and explains missing template", async () => {
+  defaults();
+  state.customer_communication_preferences[0].sms_transactional=false;
+  assert.ok((await customerSmsReadiness("co","c")).issues.some(issue=>issue.includes("consent")));
+  await assert.rejects(customerSmsReadiness("foreign","c"),/not found/);
+});
+
+test("customer-care queued texts are cancelled if the primary phone changes before delivery", async () => {
+  defaults();state.crm_settings[0].data.sms_start=0;state.crm_settings[0].data.sms_end=24;
+  const msg=message({channel:"sms",reason:"customer_care",recipient:"+18165559999"});
+  let sends=0;await deliver(msg,async()=>{sends++;return "never";});
+  assert.equal(sends,0);assert.equal(state.communications[0].status,"cancelled");
+  assert.match(state.communications[0].error,/phone changed/);
 });

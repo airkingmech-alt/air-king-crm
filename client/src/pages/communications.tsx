@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SmsComposer } from "@/components/sms-composer";
 import { useAuth } from "@/context/auth-context";
 import { Link } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -802,9 +803,16 @@ export function Integrations() {
             <CardContent className="p-5">
               <h2 className="font-semibold">{name}</h2>
               <p className="text-sm mt-2">
-                {data.connections[key] ? "Configured" : key === "sms" && data.connections.sms_provider === "sentdm" && data.connections.sentdm ? "Connected — sending paused" : "Setup needed"}
+                {data.connections[key] ? "Configured" : key === "sms" && data.connections.sms_provider === "sentdm" && data.connections.sentdm ? "Setup incomplete or paused" : "Setup needed"}
               </p>
-              {key === "sms" && (<p className="text-xs text-muted-foreground">{data.connections.sms_provider === "sentdm" ? "Sent.dm · SMS only" : "Twilio"}{data.connections.sms_provider === "sentdm" && !data.connections.sms ? " — awaiting setup / approval" : ""}</p>)}
+              {key === "sms" && (<p className="text-xs text-muted-foreground">{data.connections.sms_provider === "sentdm" ? "Sent.dm · SMS only" : "Twilio"}</p>)}
+              {key === "sms" && data.connections.sentdm_readiness && (
+                <div className="text-xs text-muted-foreground mt-2 space-y-1">
+                  {data.connections.sentdm_readiness.issues.map((issue: string) => <p key={issue}>{issue}</p>)}
+                  <p>Local configuration only. Account approval, sender, template and live delivery still need verification.</p>
+                  {!config.sending_enabled && <p>CRM sending is paused.</p>}
+                </div>
+              )}
               {key === "stripe" && (
                 <p className="text-xs text-muted-foreground">
                   Mode: {data.connections.stripe_mode}
@@ -980,6 +988,7 @@ export function CustomerCommunications({ customerId }: { customerId: string }) {
       </CardHeader>
       <CardContent className="space-y-4">
         <Notice text={notice || error?.message || ""} />
+        <SmsComposer key={customerId} customerId={customerId} onQueued={() => {void refetch();}} />
         {showPreferences && (
           <div className="bg-muted/30 rounded-lg p-4 space-y-2">
             {[
@@ -1039,7 +1048,7 @@ export function CustomerCommunications({ customerId }: { customerId: string }) {
             <div key={item.id} className="border-l-2 border-sky-200 pl-4">
               <div className="flex justify-between gap-3 text-sm">
                 <strong>{item.title}</strong>
-                <span>{label(item.status || "recorded")}</span>
+                <span>{item.provider_status === "accepted" ? "Accepted by provider — delivery pending" : label(item.status || "recorded")}</span>
               </div>
               <p className="text-xs text-muted-foreground">
                 {new Date(item.created_at).toLocaleString()}{" "}

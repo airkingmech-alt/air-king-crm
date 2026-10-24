@@ -18,9 +18,10 @@ Store runtime secrets only in the hosting environment; never in Git or PRs:
 | `SENT_DM_WEBHOOK_ID` | Pin the endpoint ID in production; this is not an event ID. |
 | `SENT_DM_TEMPLATE_ID` | Approved customer-care SMS template with the named `message` parameter. |
 | `SENT_DM_SENDING_ENABLED` | Keep `false` until separately approved. |
+| `SENT_DM_FROM_NUMBER` | Optional verified active E.164 SMS sender pin (added October 24); omission preserves account routing. |
 | `CRM_WORKER_SECRET` | Existing protected worker authentication; never expose in a browser. |
 
-Existing platform prerequisites remain `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and the configured application URL. The CRM's global sending switch remains an additional gate. There is no new sender-number environment variable: owner must verify the account's actual assigned active SMS sender in Sent.
+Existing platform prerequisites remain `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and the configured application URL. The CRM's global sending switch remains an additional gate. Owner must verify the account's actual assigned active SMS sender in Sent before setting the optional sender pin.
 
 ## Verified provider contract
 
@@ -70,3 +71,39 @@ Outbound callback application locks the callback/message, records history and co
 ## Preparation evidence
 
 On Node **20.20.2**: `npm run check` passed; `npm test` passed **633/633**; `npm run build` passed. `npm audit --omit=dev` found **zero vulnerabilities**. `git diff --check` passed; this repository has no lint script/configured lint command. `node tests/sentdm-replies-browser.mjs` passed local Chromium checks for desktop/mobile unread navigation, safe text rendering, history navigation, duplicate/unmatched warnings, failed/successful shared read state and reviewed history. The test harness mocks authentication and every app API; it does not establish live provider readiness or replace the later staff staging walkthrough. The SQL tests use disposable in-memory PostgreSQL, including intake rollback, duplicate processing, early callbacks, stale/terminal projection, and service-only permissions. Production was not queried or changed by these checks.
+
+## October 24 reliability review
+
+Based on current master `3136a65aee97e984d250265c9cb69848cf192525` (PR #49). The new-house builder and unrelated work are unchanged. No deployment, migration, real send, queue processing, credential change or provider account mutation is part of this review.
+
+Verified application defects corrected:
+
+- CRM SMS bodies always append a newline before the STOP footer. Sent template parameters reject CR/LF, tabs and runs of more than four spaces (`VALIDATION_008`). The adapter now replaces those separators with spaces, preserving the content and opt-out wording; the stored CRM body retains its formatting. This applies only to the parameter sent to Sent, not to email or Twilio. Validate the final provider template wrapper separately.
+- Empty/non-JSON provider errors previously lost their HTTP classification. Explicit HTTP rejection and rate limits now retain classification without storing response text; ambiguous 202 responses, 409 conflicts, transport failures and 5xx remain held for reconciliation by the existing delivery worker. No blind resend is introduced.
+- Settings previously described environment-variable presence as a connection and did not identify missing templates, server pause or wrong CRM company. A secret-free local checklist now explains those blockers and explicitly says provider approval/delivery remain unverified. Production sends require the already-documented endpoint ID pin.
+
+`SENT_DM_FROM_NUMBER` is a new **optional** E.164 server setting. When present the adapter sends `channels: {sms: [{from: [number]}]}` alongside `channel: ["sms"]`. When absent, existing account routing remains. An invalid value blocks sending locally; a syntactically valid but inactive number can still be accepted then blocked by Sent (`BUSINESS_029`). Verify the assigned sender in the correct account before configuring this option. No number is hardcoded or activated by this change.
+
+Current flow: document/automation → consent-aware outbox with STOP footer and dedupe key → global sending gate, phone suppression, latest preferences, quiet hours → atomic claim → Sent template send with stable idempotency key → accepted provider ID → signed durable webhook receipt → existing protected callback worker → status/history or shared reply inbox. STOP intake commits phone suppression before acknowledgement; START does not restore consent. Unknown send outcomes need reconciliation. The inbox supports shared read state and customer-history navigation; the customer Communications card now includes the guarded SMS composer described below. Existing status projection preserves terminal states and handles callbacks preceding provider-ID persistence.
+
+Provider readiness is a separate question. This execution environment has no `SENT_DM_API_KEY`, so no authenticated Sent diagnostic was attempted. The owner/account investigation must verify account activation and scope, the active SMS sender, customer-care campaign, usable approved template with a `message` parameter, message/contact webhook subscription, endpoint identity and worker operation. Historical campaign approval email versus dashboard status is not evidence of a new rejection. The template dashboard gate alone does not prove the send API is blocked.
+
+The [current sending guide](https://docs.sent.dm/start/guides/sending-messages) supports free-form SMS only after a contact has replied, or within seven days of an approved outbound template for a never-replied contact. Thus free text is not a general replacement for onboarding/templates and is not enabled here. SMS does not require connecting WhatsApp. Use an account/profile-scoped API key for the intended `SENT_DM_ACCOUNT_ID`; organization-key `x-profile-id` delegation is not implemented by this adapter.
+
+Contract references checked October 24: [template validation errors](https://docs.sent.dm/reference/api/error-catalog#validation_008-invalid-template-variable-value), [send request and sender selector](https://docs.sent.dm/reference/api/messages/SentDmServicesEndpointsCustomerAPIv3MessagesSendMessageV3Endpoint), [sending guide and conversation rules](https://docs.sent.dm/start/guides/sending-messages). These are contract checks, not proof of account readiness or delivery. The earlier controlled-test approval and rollout gates still apply.
+
+### Customer-linked SMS composer and read-only diagnostics
+
+The customer Communications card now provides a primary-contact SMS composer for service/customer-care messages. The server validates company ownership and staff features, consent, phone suppression, provider setup and the reviewed recipient. It queues through the existing outbox; only the protected worker sends. The recipient is shown explicitly when coming from the shared inbox, because an inbound reply may have come from a different customer contact. Changing a customer's primary phone cancels pending customer-care texts. Unmatched/ambiguous inbox items still require staff resolution and cannot target an arbitrary phone through this endpoint.
+
+Sent messages continue through the configured approved customer-care template with the `message` parameter. Free-form API sending is not enabled; eligibility is never inferred from CRM history. Missing templates/onboarding remain actionable setup failures. The timeline distinguishes queued work, provider acceptance and actual delivery. The composer appends the existing STOP wording and neither changes consent nor clears suppression.
+
+Requests use a customer/company-scoped idempotency key. Double clicks are locked immediately. A pending request is stored in session storage before submission so navigation/reload can retry confirmation with the same key/body/recipient. Ambiguous network/server outcomes keep that request locked; confirmed validation/auth rejections allow correction. Durable insertion followed by a history-write error returns a retryable 503, never an invitation to create a new request. No SMS is sent in the HTTP request handler.
+
+After approved deployment, an authenticated owner/admin can inspect **GET `/api/crm/sms-readiness`** (production URL: `https://air-king-crm.onrender.com/api/crm/sms-readiness`). It is read-only and company-scoped: local setup issues, CRM pause, presence of the worker secret, up to 100 pending callbacks, oldest pending timestamp and latest processed callback timestamp. It exposes no secret, message body or recipient. `worker_schedule_verified` intentionally remains false: secret presence and historical callback processing are not proof of a currently running scheduler. **GET `/api/crm/customers/:id/sms`** provides the customer-specific recipient/consent/setup check.
+
+The web process does not install a recurring worker. The existing `POST /api/internal/communications/tick` also processes payments, automations and pending messages, and must never be called as a readiness test. Verify the approved external scheduler separately. This task does not create or run a schedule. Missing Contact Opted In subscription does not prevent existing STOP handling; automatic reconsent is intentionally not supported and adding that subscription must not clear suppression.
+
+Release audit fixes are narrow: Zod is pinned to 4.6.6, and the lockfile resolves body-parser 2.4.0 plus its required content-type/qs updates. No audit threshold is weakened.
+
+Final local validation for this extension on Node 20.20.2: `npm run release:check` passed (TypeScript, 649 tests, zero production audit vulnerabilities, build). The final focused queue/webhook/access checks passed 37/37 after the idempotency-race and cache-header refinements. `node tests/sentdm-replies-browser.mjs` passed duplicate-click prevention, lost-response/navigation confirmation, template-failure draft retention, inbox history, shared read state and mobile layout with fully mocked APIs. `npm run build:deploy` passed pruning, zero-vulnerability audit and isolated production smoke. No live SMS or worker tick was used.

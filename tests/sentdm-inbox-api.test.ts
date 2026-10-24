@@ -21,6 +21,16 @@ globalThis.fetch=async(input:any,init:any={})=>{
     if(failStorage)return response({message:"synthetic storage outage"},503);
     writes.push(JSON.parse(init.body));return response(null);
   }
+  if(url.pathname==="/rest/v1/crm_settings") {
+    assert.equal(url.searchParams.get("company_id"), "eq." + profile.company_id);
+    return response({data: {sending_enabled:false}});
+  }
+  if(url.pathname==="/rest/v1/provider_webhook_events") {
+    assert.equal(init.method||"GET","GET");
+    assert.equal(url.searchParams.get("payload->>company_id"),profile.company_id === "co" ? "eq.co" : "eq."+profile.company_id);
+    assert.ok(!url.searchParams.get("select")?.includes("payload"));
+    queries.push(url);return response([]);
+  }
   assert.equal(url.pathname,"/rest/v1/communication_events","No processing or sends on the webhook request path");
   assert.equal(url.searchParams.get("company_id"),"eq.co");
   assert.equal(url.searchParams.get("channel"),"eq.sms");
@@ -124,4 +134,65 @@ test("reviewed unmatched replies remain accessible in bounded company history",a
   assert.equal(queries[0].searchParams.get("offset"),"200");
   assert.equal(queries[0].searchParams.get("limit"),"100");
   assert.equal(queries[0].searchParams.has("read_at"),false);
+});
+
+
+test("configuration exposes company-scoped local SMS blockers without secret values", async () => {
+  const saved = {SMS_PROVIDER:process.env.SMS_PROVIDER, SENT_DM_TEMPLATE_ID:process.env.SENT_DM_TEMPLATE_ID, SENT_DM_SENDING_ENABLED:process.env.SENT_DM_SENDING_ENABLED};
+  Object.assign(process.env, {SMS_PROVIDER:"sentdm", SENT_DM_TEMPLATE_ID:"", SENT_DM_SENDING_ENABLED:"false"});
+  try {
+    const read = () => nativeFetch(base+"/api/crm/config", {headers:{authorization:"Bearer synthetic"}});
+    let result = await read();
+    assert.equal(result.status, 200);
+    let body = await result.json();
+    assert.equal(body.connections.sms, false);
+    assert.equal(body.connections.sentdm_readiness.provider_verified, false);
+    assert.match(JSON.stringify(body.connections.sentdm_readiness.issues), /SENT_DM_TEMPLATE_ID/);
+    assert.doesNotMatch(JSON.stringify(body), /synthetic-only|whsec_|synthetic-secret/);
+    Object.assign(process.env, {SENT_DM_TEMPLATE_ID:"template", SENT_DM_SENDING_ENABLED:"true"});
+    profile.company_id = "different-company";
+    body = await (await read()).json();
+    assert.equal(body.connections.sms, false);
+    assert.match(JSON.stringify(body.connections.sentdm_readiness.issues), /this CRM company/);
+  } finally {
+    for (const [key,value] of Object.entries(saved)) {
+      if(value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});
+
+test("documented inbound SMS envelope stores the customer number, nullable text and event time", async () => {
+  const incoming = {field:"message", event:"message.received", timestamp:"2026-10-24T12:00:02Z", payload:{
+    account_id:"account", message_id:"inbound-message", updated_at:"2026-10-24T12:00:00Z",
+    inbound_number:"+18165551234", outbound_number:"+12025550123", text:"Appointment confirmed", channel:"sms",
+    received_at:"2026-10-24T12:00:00Z"}};
+  assert.equal((await webhook(incoming)).status,204);
+  assert.equal(writes[0].p_provider,"sentdm-inbound");
+  assert.equal(writes[0].p_payload.from,incoming.payload.inbound_number);
+  assert.equal(writes[0].p_payload.text,"Appointment confirmed");
+  assert.equal(writes[0].p_payload.created_at,incoming.payload.updated_at);
+  assert.equal(writes[0].p_payload.opt_out,false);
+  assert.equal((await webhook({...incoming,payload:{...incoming.payload,text:null}})).status,204);
+  assert.equal(writes[1].p_payload.text,"");
+  assert.equal((await webhook({...incoming,payload:{...incoming.payload,channel:"whatsapp"}})).status,204);
+  assert.equal(writes.length,2);
+});
+
+
+test("SMS compose and diagnostics enforce staff feature/company access and reject untrusted inputs", async () => {
+  const request=(path:string,method="GET",body?:any)=>nativeFetch(base+path,{method,headers:{authorization:"Bearer synthetic","content-type":"application/json","idempotency-key":"33333333-3333-4333-8333-333333333333"},...(body?{body:JSON.stringify(body)}:{})});
+  for(const feature of ["customers","communications","quotes","invoices","schedule"]) {
+    profile.permissions={[feature]:false};
+    assert.equal((await request("/api/crm/customers/c/sms")).status,403);
+    assert.equal((await request("/api/crm/customers/c/sms","POST",{body:"Service text",recipient:"+18165551234"})).status,403);
+  }
+  profile.permissions={};
+  assert.equal((await request("/api/crm/sms-readiness")).status,403);
+  for(const body of [{body:"",recipient:"+18165551234"},{body:"{{payment_link}}",recipient:"+18165551234"},{body:"Hello",recipient:"+18165551234",channel:"whatsapp"}])
+    assert.equal((await request("/api/crm/customers/c/sms","POST",body)).status,400);
+  profile.role="owner";
+  const result=await request("/api/crm/sms-readiness");assert.equal(result.status,200);
+  const report=await result.json();assert.equal(report.worker_schedule_verified,false);assert.equal(report.pending_callbacks_observed,0);
+  assert.doesNotMatch(JSON.stringify(report),/synthetic-only|whsec_|synthetic-secret/);
+  assert.equal(writes.length,0);
 });
