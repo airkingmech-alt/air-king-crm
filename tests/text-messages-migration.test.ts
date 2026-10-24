@@ -55,3 +55,48 @@ test('anonymous and authenticated database roles cannot call internal projection
  for(const role of ['anon','authenticated']){await pg.exec('set role '+role);await assert.rejects(list(),/permission denied/);await assert.rejects(history(),/permission denied/);await assert.rejects(pg.query('select * from crm_text_matches($1,$2)',['co',phone]),/permission denied/);await pg.exec('reset role');}
  await pg.exec('set role service_role');assert.equal((await list()).length,1);
 });
+
+test('per-phone history pushes filters into both source indexes instead of scanning another phone history',async()=>{
+ await pg.exec(`insert into communications(company_id,channel,recipient,body,status,created_at)
+ select 'co','sms','+1816555'||lpad((n%100)::text,4,'0'),'Synthetic','sent',now()-n*interval '1 second' from generate_series(1,5000)n;
+ insert into communication_events(company_id,channel,event_type,metadata,created_at)
+ select 'co','sms','sms.received',jsonb_build_object('from','+1816555'||lpad((n%100)::text,4,'0'),'body','Synthetic'),now()-n*interval '1 second' from generate_series(1,5000)n;
+ analyze communications;analyze communication_events;`);
+ const plan=JSON.stringify((await pg.query("explain(format json) select * from public.crm_text_rows('co') r where r.phone='+18165550042' order by r.created_at desc,r.key desc limit 51")).rows);
+ assert.match(plan,/communications_text_phone_idx/);assert.match(plan,/events_text_phone_idx/);
+ assert.doesNotMatch(plan,/Function Scan/,'The UNION must inline to allow per-phone filtering');
+});
+
+test('temporary tables cannot shadow any customer or message sources',async()=>{
+ await customer();await outbound();await inbound();
+ await pg.exec(`create temporary table customers(like public.customers);create temporary table communications(like public.communications);create temporary table communication_events(like public.communication_events);
+ insert into pg_temp.customers values('shadow','co','{"name":"Shadow","contacts":[{"phone":"+18165550101"}]}');
+ set search_path=pg_temp,public;`);
+ try {const rows=await list();assert.equal(rows[0].customers[0].id,'c');assert.equal((await history()).length,2);}
+ finally {await pg.exec('drop table pg_temp.customers,pg_temp.communications,pg_temp.communication_events;reset search_path;');}
+});
+
+test('migration preserves existing rows, RLS and table grants under old and opt-in function defaults',async()=>{
+ const migration=await readFile('supabase/migrations/20261024231359_text_conversations.sql','utf8');
+ for(const broadDefaults of [true,false]) {
+  const isolated=new PGlite();
+  try {
+   await isolated.exec(`create role anon;create role authenticated;create role service_role bypassrls;
+    create table customers(id text primary key,company_id text,data jsonb);
+    create table communications(id uuid primary key default gen_random_uuid(),company_id text,channel text,customer_id text,recipient text,body text,status text,provider_status text,error text,created_at timestamptz default now(),scheduled_at timestamptz);
+    create table communication_events(id uuid primary key default gen_random_uuid(),company_id text,channel text,customer_id text,metadata jsonb,event_type text,created_at timestamptz default now(),read_at timestamptz);
+    grant usage on schema public to service_role;grant select on all tables in schema public to service_role;
+    alter table customers enable row level security;alter table communications enable row level security;alter table communication_events enable row level security;
+    insert into customers values('original','co','{"name":"Original","contacts":[]}');
+    insert into communications(company_id,channel,recipient,body,status) values('co','sms','not-a-phone','Keep stored text','failed');
+    insert into communication_events(company_id,channel,event_type,metadata) values('co','sms','sms.received','{"body":"Keep original reply","from":"+18165550101"}');
+    alter default privileges ${broadDefaults?'grant execute on functions to public,anon,authenticated,service_role':'revoke execute on functions from public,anon,authenticated,service_role'};`);
+   const snapshot=async()=>({data:(await isolated.query("select (select jsonb_agg(t) from customers t) customers,(select jsonb_agg(t) from communications t) messages,(select jsonb_agg(t) from communication_events t) events")).rows,
+    access:(await isolated.query("select relname,relrowsecurity,relacl from pg_class where oid in('public.customers'::regclass,'public.communications'::regclass,'public.communication_events'::regclass) order by relname")).rows});
+   const before=await snapshot();await isolated.exec(migration);assert.deepEqual(await snapshot(),before);
+   const permissions=(await isolated.query<any>(`select proname,prosecdef,has_function_privilege('anon',p.oid,'execute') anon,has_function_privilege('authenticated',p.oid,'execute') authenticated,has_function_privilege('service_role',p.oid,'execute') service from pg_proc p where pronamespace='public'::regnamespace and proname like 'crm_text_%'`)).rows;
+   assert.equal(permissions.length,5);for(const p of permissions){assert.equal(p.prosecdef,false);assert.equal(p.anon,false);assert.equal(p.authenticated,false);assert.equal(p.service,true);}
+   await isolated.exec('set role service_role');assert.equal((await isolated.query("select * from public.crm_text_conversations('co')")).rows.length,2);
+  } finally {await isolated.close();}
+ }
+});
