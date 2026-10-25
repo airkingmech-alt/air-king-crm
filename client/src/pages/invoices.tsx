@@ -585,13 +585,13 @@ export default function Invoices() {
         open={!!sendInvoice}
         onOpenChange={(open) => !open && setSendInvoice(null)}
       >
-        <DialogContent>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Send to Customer</DialogTitle>
             <DialogDescription>Share this document securely.</DialogDescription>
           </DialogHeader>
           {sendInvoice && (
-            <DocumentActions kind="invoice" id={sendInvoice.id} />
+            <DocumentActions key={sendInvoice.id} kind="invoice" id={sendInvoice.id} />
           )}
         </DialogContent>
       </Dialog>

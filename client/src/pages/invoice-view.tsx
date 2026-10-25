@@ -82,7 +82,7 @@ export default function InvoiceView() {
 
         <Card className="print-hide">
           <CardContent className="p-6">
-            <DocumentActions kind="invoice" id={invoice.id} />
+            <DocumentActions key={invoice.id} kind="invoice" id={invoice.id} />
             <InvoicePayments id={invoice.id} total={invoice.amount} status={invoice.status} />
           </CardContent>
         </Card>

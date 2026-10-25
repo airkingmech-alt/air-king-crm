@@ -20,6 +20,16 @@ The shared-phone selector requires **no new migration, environment configuration
 
 New customers keep service-text consent off by default. When permission is missing, **Review communication preferences** opens the existing controls; staff must record actual permission using **Service and invoice texts** and a consent-source note. Saving refreshes SMS readiness immediately. Opt-outs and phone suppression remain enforced and cannot be cleared by this flow. Existing conversation composers link missing-consent guidance to the customer's Timeline. No migration or configuration change is required for this UI update.
 
+## Quote and invoice texts
+
+The quote and invoice Send controls check the selected document's customer readiness before enabling **Text** or **Email + Text**. The read-only document readiness route derives the customer from the company-scoped document and requires the same document/communications permissions as sending; unrelated history permissions are not added. It shows the primary recipient and specific consent, suppression, phone or provider blockers.
+
+When consent is missing, **Review communication preferences** opens the existing saved-preferences controls inside the Send dialog. An actual permission source is required; saving never sends a message, enables marketing automatically, or removes an opt-out. Once saved, readiness refreshes and the dialog returns to document actions. Customer-history permissions remain required to load the preferences editor. Quote and invoice dialogs scroll within the mobile viewport.
+
+This correction addresses the document-delivery flow separately from starting a free-text conversation. Existing failed deliveries remain historical failures; the UI does not automatically retry them. No database migration or consent backfill is included.
+
+Verification: `node --import tsx --test tests/document-sms-readiness.test.ts` and `node tests/document-text-browser.mjs`. The browser check uses the real dialog/components with synthetic APIs, including missing consent, source requirement, immediate refresh, mobile sizing, suppression/STOP, read failures and quote/invoice sends. It sends no live messages.
+
 ## Release prerequisites
 
 Apply `supabase/migrations/20261024231359_text_conversations.sql` before deploying this code, only after publication approval. It adds read-only, SECURITY INVOKER projections and indexes; functions are service-role-only, with company scope supplied by server-verified staff profiles. No customer/message data changes, provider/environment changes, new credentials, or worker invocation are involved. Deploying without the migration shows a retryable unavailable error; it does not fall back to unscoped or partial history.

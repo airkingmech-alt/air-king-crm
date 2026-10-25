@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { crm } from "@/lib/crm-api";
 import { Mail, MessageSquare, Copy, Send } from "lucide-react";
+import { useAuth } from "@/context/auth-context";
+import { CustomerCommunications } from "@/pages/communications";
 export function DocumentActions({
   kind,
   id,
@@ -11,15 +13,22 @@ export function DocumentActions({
   kind: "quote" | "invoice";
   id: string;
 }) {
+  const {profile} = useAuth();
   const [url, setUrl] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showPreferences, setShowPreferences] = useState(false);
   const key = useRef(crypto.randomUUID());
   const { data: config } = useQuery({
     queryKey: ["crm-config"],
     queryFn: () => crm("crm/config"),
   });
-  const smsReady = Boolean(config?.connections.sms);
+  const {data: sms, error: smsError, isPending: checkingSms, refetch: refreshSms} = useQuery({
+    queryKey:["document-sms",profile?.company_id,kind,id],
+    queryFn:()=>crm(`crm/${kind}/${id}/sms-readiness`),
+    refetchInterval:15000,
+  });
+  const smsReady = Boolean(sms?.ready) && !smsError;
   async function act(channels?: string[]) {
     setBusy(true);
     setNotice("");
@@ -48,6 +57,7 @@ export function DocumentActions({
       setNotice(e.message);
     } finally {
       setBusy(false);
+      if(channels?.includes("sms")) void refreshSms();
     }
   }
   return (
@@ -62,11 +72,19 @@ export function DocumentActions({
           in Integrations.
         </p>
       )}
-      {config && !smsReady && (
-        <p className="text-sm text-muted-foreground">
-          Texting is not set up yet. You can add Twilio later in Integrations.
-        </p>
-      )}
+      {checkingSms && <p role="status" className="text-sm">Checking customer texting readiness…</p>}
+      {sms && <p className="text-sm">Text recipient: {sms.recipient || "No valid primary phone"}</p>}
+      {sms?.issues?.map((issue:string)=><p key={issue} className="text-sm text-amber-800">{issue}</p>)}
+      {smsError && <div role="alert" className="text-sm"><p>{smsError.message}</p><Button variant="outline" onClick={()=>{void refreshSms();}}>Retry texting readiness</Button></div>}
+      {sms?.consent_required && <div className="space-y-2">
+        <p className="text-sm">Before texting this {kind}, record the customer's permission for service and invoice texts.</p>
+        <Button variant="outline" onClick={()=>setShowPreferences(true)}>Review communication preferences</Button>
+      </div>}
+      {showPreferences && sms?.customer_id && <CustomerCommunications key={sms.customer_id} customerId={sms.customer_id} preferencesOnly onPreferencesSaved={()=>{
+        void refreshSms();
+        setShowPreferences(false);
+        setNotice(`Preferences saved. Review the recipient and choose Text to send this ${kind}.`);
+      }}/>}
       <div className="grid grid-cols-2 gap-2">
         <Button disabled={busy} onClick={() => act(["email"])}>
           <Mail size={16} className="mr-2" />

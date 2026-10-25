@@ -117,8 +117,7 @@ try {
   await clickText('Review communication preferences');
   await wait("document.body.innerText.includes('Consent source / note')");
   await evaluate("Array.from(document.querySelectorAll('[role=switch]'))[1].click()");
-  await clickText('Save Preferences');
-  await wait("document.body.innerText.includes('Record how permission was obtained')");
+  assert.equal(await evaluate("Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Save Preferences').disabled"),true,'Consent source is required before saving');
   await evaluate(`(()=>{const e=document.querySelector('input[placeholder="How and when did the customer give permission?"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'Synthetic explicit permission');e.dispatchEvent(new Event('input',{bubbles:true}));const t=document.querySelector('textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(t,'Synthetic first service text');t.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   const savedAt=Date.now();
   await clickText('Save Preferences');

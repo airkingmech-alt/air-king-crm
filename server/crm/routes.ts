@@ -662,6 +662,14 @@ export function registerCrm(app: Express) {
       res.json({ url: await linkFor(row, kind) });
     }),
   );
+  app.get("/api/crm/:kind/:id/sms-readiness", wrap(async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    const c = await caller(req);
+    const kind = z.enum(["quote", "invoice"]).parse(req.params.kind);
+    const row = await entity(kind + "s", String(req.params.id), c.company);
+    const customer = references(row, kind).customer_id;
+    res.json({...await customerSmsReadiness(c.company, customer), customer_id:customer});
+  }));
   app.post(
     "/api/crm/:kind/:id/send",
     wrap(async (req, res) => {
