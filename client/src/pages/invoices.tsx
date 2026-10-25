@@ -45,6 +45,8 @@ import { pricebook } from "@/data/pricebook";
 import { crm } from "@/lib/crm-api";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/auth-context";
+import { fetchCatalogItems } from "@/lib/catalog-query";
+import { assertCatalogPrice, isCatalogVisible, matchesCatalogSearch, needsCatalogPrice, type CatalogMetadata } from "../../../shared/pricebook-catalog";
 
 type CatalogItem = {
   id: string;
@@ -56,6 +58,9 @@ type CatalogItem = {
   brand: string | null;
   model: string | null;
   category: string;
+  sku: string | null;
+  unit: string;
+  metadata?: CatalogMetadata;
 };
 
 const statusConfig: Record<InvoiceStatus, { color: string; badge: string }> = {
@@ -158,30 +163,27 @@ export default function Invoices() {
 
   useEffect(() => {
     if (!showCreateDialog || !profile) return;
-    supabase
-      .from("price_book_items")
-      .select("id,item_type,name,description,price_cents,active,brand,model,category")
-      .eq("company_id", profile.company_id)
-      .eq("active", true)
-      .order("item_type")
-      .order("name")
-      .then(({ data, error }) => {
-        if (error) {
-          toast({ title: "Could not load the Price Book", description: error.message, variant: "destructive" });
-          return;
-        }
-        setCatalogItems((data as CatalogItem[]) || []);
-      });
+    let cancelled = false;
+    fetchCatalogItems(profile.company_id).then(data => {
+      if (!cancelled) setCatalogItems((data as CatalogItem[]).filter(isCatalogVisible).sort((a,b) => a.name.localeCompare(b.name, "en-US", { numeric: true })));
+    }).catch(error => {
+      if (!cancelled) toast({ title: "Could not load the Price Book", description: error.message, variant: "destructive" });
+    });
+    return () => { cancelled = true; };
   }, [profile, showCreateDialog, toast]);
 
   const addCatalogItem = (item: CatalogItem) => {
+    try { assertCatalogPrice(item); } catch (error) {
+      toast({ title: "Price needed", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+      return;
+    }
     if (item.item_type === "equipment") {
       setCatalogEquipment((current) => current.some((candidate) => candidate.id === item.id) ? current : [...current, item]);
     }
     setLineItems((current) => {
       const blankIndex = current.findIndex((line) => !line.description.trim() && !line.unitPrice);
       const line = {
-        description: item.description.trim() || item.name,
+        description: item.metadata?.supplier ? `${item.name} (per ${item.unit})` : item.description.trim() || item.name,
         quantity: "1",
         unitPrice: (item.price_cents / 100).toFixed(2),
       };
@@ -473,19 +475,21 @@ export default function Invoices() {
               />
               <div className="max-h-44 space-y-1 overflow-y-auto rounded-lg border p-2">
                 {catalogItems
-                  .filter((item) => [item.name, item.description, item.item_type].some((value) => value.toLowerCase().includes(catalogSearch.toLowerCase())))
+                  .filter((item) => matchesCatalogSearch(item, catalogSearch))
                   .map((item) => (
                     <button
                       type="button"
                       key={item.id}
                       onClick={() => addCatalogItem(item)}
-                      className="flex w-full items-center justify-between gap-3 rounded-md p-2 text-left text-xs hover:bg-muted"
+                      disabled={needsCatalogPrice(item)}
+                      className="flex w-full items-center justify-between gap-3 rounded-md p-2 text-left text-xs hover:bg-muted disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <span><span className="font-semibold">{item.name}</span><span className="ml-2 capitalize text-muted-foreground">{item.item_type}</span></span>
-                      <span className="font-semibold">{fmtCurrency(item.price_cents / 100)}</span>
+                      <span className="font-semibold shrink-0">{needsCatalogPrice(item) ? "Price needed" : `${fmtCurrency(item.price_cents / 100)} / ${item.unit}`}</span>
                     </button>
                   ))}
                 {!catalogItems.length && <p className="p-2 text-xs text-muted-foreground">No active Price Book items yet. You can still enter invoice lines manually.</p>}
+                {!!catalogItems.length && !catalogItems.some(item => matchesCatalogSearch(item, catalogSearch)) && <p className="p-2 text-xs text-muted-foreground">No matching products. Try a size, supplier, SKU, or model.</p>}
               </div>
             </div>
             <div className="space-y-2">

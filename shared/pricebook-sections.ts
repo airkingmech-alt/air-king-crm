@@ -1,8 +1,10 @@
 export type ItemType = "equipment" | "part" | "service" | "labor";
-export type PricebookTab = "all" | "mini-splits" | ItemType;
+export type PricebookTab = "all" | "mini-splits" | "ductwork" | "thermostats" | "iaq" | ItemType;
 export const MINI_SPLITS_CATEGORY = "Mini Splits";
+export const DUCTWORK_CATEGORY = "Ductwork & Fittings";
 export const pricebookTabs: Record<PricebookTab, string> = {
   all: "All items", equipment: "Equipment", "mini-splits": MINI_SPLITS_CATEGORY,
+  ductwork: DUCTWORK_CATEGORY, thermostats: "Thermostats", iaq: "Indoor Air Quality",
   part: "Parts", service: "Services", labor: "Labor",
 };
 export function isMiniSplit(item: { category: string; item_type: ItemType }) {
@@ -10,14 +12,19 @@ export function isMiniSplit(item: { category: string; item_type: ItemType }) {
     item.category.trim().toLowerCase() === MINI_SPLITS_CATEGORY.toLowerCase();
 }
 export function matchesPricebookTab(item: { category: string; item_type: ItemType }, tab: PricebookTab) {
-  return tab === "all" || (tab === "mini-splits" ? isMiniSplit(item) : item.item_type === tab);
+  if (tab === "all") return true;
+  if (tab === "mini-splits") return isMiniSplit(item);
+  if (["ductwork", "thermostats", "iaq"].includes(tab)) return item.category.trim().toLowerCase() === pricebookTabs[tab].toLowerCase();
+  return item.item_type === tab;
 }
 export function newItemDefaults(tab: PricebookTab) {
   return tab === "mini-splits" ? { item_type: "equipment" as ItemType, category: MINI_SPLITS_CATEGORY } :
+    ["ductwork", "thermostats", "iaq"].includes(tab) ? { item_type: "part" as ItemType, category: pricebookTabs[tab] } :
     tab === "all" ? { item_type: "part" as ItemType, category: "Parts" } :
-    { item_type: tab, category: pricebookTabs[tab] };
+    { item_type: tab as ItemType, category: pricebookTabs[tab] };
 }
 export function categoryAfterTypeChange(category: string, type: ItemType) {
+  if (type === "part" && [DUCTWORK_CATEGORY, "Thermostats", "Indoor Air Quality", "Replacement Parts"].includes(category.trim())) return category.trim();
   return category.trim().toLowerCase() === MINI_SPLITS_CATEGORY.toLowerCase() &&
     ["equipment", "part"].includes(type) ? MINI_SPLITS_CATEGORY : pricebookTabs[type];
 }

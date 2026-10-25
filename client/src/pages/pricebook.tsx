@@ -17,22 +17,25 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { addOnServices, pricebook as legacyEquipment } from "@/data/pricebook";
 import { dollarsToCents, missingCatalogRows, sellingPriceFromCost } from "@/lib/pricebook-utils";
+import { fetchCatalogItems } from "@/lib/catalog-query";
+import { catalogSourceUrl, compareCatalogItems, isCatalogArchived, isCatalogVisible, matchesCatalogSearch, needsCatalogPrice, type CatalogMetadata, type CatalogSort } from "../../../shared/pricebook-catalog";
 
 import { categoryAfterTypeChange, matchesPricebookTab, newItemDefaults, pricebookTabs as tabNames, type ItemType, type PricebookTab } from "../../../shared/pricebook-sections";
 type PriceItem = {
   id: string; company_id: string; item_type: ItemType; category: string; name: string;
   description: string; sku: string | null; brand: string | null; model: string | null;
-  metadata?: { subcategory?: string; source_notes?: string[] }; updated_at: string; unit: string; cost_cents: number; price_cents: number; taxable: boolean; active: boolean;
+  metadata?: CatalogMetadata; updated_at: string; unit: string; cost_cents: number; price_cents: number; taxable: boolean; active: boolean;
 };
 type PriceForm = {
   item_type: ItemType; category: string; name: string; description: string; sku: string;
   brand: string; model: string; unit: string; cost: string; price: string;
   taxable: boolean; active: boolean;
+  subcategory: string; supplier: string;
 };
 
 const newForm = (): PriceForm => ({
   item_type: "part", category: "Parts", name: "", description: "", sku: "", brand: "",
-  model: "", unit: "each", cost: "0.00", price: "0.00", taxable: true, active: true,
+  model: "", unit: "each", cost: "0.00", price: "0.00", taxable: true, active: true, subcategory: "", supplier: "",
 });
 const money = (cents: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
 
@@ -44,6 +47,12 @@ export default function Pricebook() {
   const [tab, setTab] = useState<PricebookTab>("all");
   const [search, setSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
+  const [supplier, setSupplier] = useState("all");
+  const [subcategory, setSubcategory] = useState("all");
+  const [priceStatus, setPriceStatus] = useState("all");
+  const [sort, setSort] = useState<CatalogSort>("category");
+  const [page, setPage] = useState(1);
+  const pageSize = 48;
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<PriceItem | null>(null);
   const [form, setForm] = useState<PriceForm>(newForm);
@@ -55,10 +64,7 @@ export default function Pricebook() {
     queryKey: key,
     enabled: !!profile?.company_id,
     queryFn: async () => {
-      const { data, error } = await supabase.from("price_book_items").select("*")
-        .eq("company_id", profile!.company_id).order("active", { ascending: false }).order("name");
-      if (error) throw error;
-      return data as PriceItem[];
+      return await fetchCatalogItems(profile!.company_id) as PriceItem[];
     },
   });
   const items = catalog.data ?? [];
@@ -81,9 +87,7 @@ export default function Pricebook() {
 
   const importCatalog = useMutation({
     mutationFn: async () => {
-      const { data: existing, error: readError } = await supabase.from("price_book_items")
-        .select("sku").eq("company_id", profile!.company_id);
-      if (readError) throw readError;
+      const existing = await fetchCatalogItems(profile!.company_id);
       const rows = missingCatalogRows(legacyRows(), (existing ?? []).map((item) => item.sku));
       if (!rows.length) return 0;
       const { error } = await supabase.from("price_book_items").insert(rows);
@@ -106,17 +110,27 @@ export default function Pricebook() {
   }, [canManageCatalog, catalog.isSuccess, items.length]);
 
   const shown = useMemo(() => {
-    const term = search.trim().toLowerCase();
     return items.filter((item) =>
-      matchesPricebookTab(item, tab) && (showArchived || item.active) &&
-      (!term || [item.name, item.description, item.sku, item.brand, item.model, item.category, item.metadata?.subcategory]
-        .filter(Boolean).some((value) => value!.toLowerCase().includes(term))),
-    );
-  }, [items, tab, search, showArchived]);
+      matchesPricebookTab(item, tab) && (showArchived || isCatalogVisible(item)) &&
+      (supplier === "all" || item.metadata?.supplier === supplier) &&
+      (subcategory === "all" || item.metadata?.subcategory === subcategory) &&
+      (priceStatus === "all" || (priceStatus === "missing" ? needsCatalogPrice(item) : !needsCatalogPrice(item))) &&
+      matchesCatalogSearch(item, search),
+    ).sort((a, b) => compareCatalogItems(a, b, sort));
+  }, [items, tab, search, showArchived, supplier, subcategory, priceStatus, sort]);
+  const suppliers = Array.from(new Set(items.map(item => item.metadata?.supplier).filter((value): value is string => !!value))).sort();
+  const subcategories = Array.from(new Set(items.filter(item => matchesPricebookTab(item, tab)).map(item => item.metadata?.subcategory).filter((value): value is string => !!value))).sort();
+  const pageCount = Math.max(1, Math.ceil(shown.length / pageSize));
+  const visible = shown.slice((page - 1) * pageSize, page * pageSize);
+  useEffect(() => { setPage(1); }, [tab, search, showArchived, supplier, subcategory, priceStatus, sort]);
+  useEffect(() => { setPage(current => Math.min(current, pageCount)); }, [pageCount]);
 
   const save = useMutation({
     mutationFn: async () => {
       if (!form.name.trim()) throw new Error("Item name is required.");
+      if (editing && needsCatalogPrice(editing) && (!form.cost.trim() || !form.price.trim() || Number(form.cost) <= 0 || Number(form.price) <= 0 || !form.unit.trim() || form.unit === "unit not shown")) {
+        throw new Error("Enter the confirmed cost, selling price, and unit before saving this unpriced supplier item.");
+      }
       const row = {
         company_id: profile!.company_id, item_type: form.item_type,
         category: form.category.trim() || tabNames[form.item_type], name: form.name.trim(),
@@ -124,6 +138,10 @@ export default function Pricebook() {
         brand: form.brand.trim() || null, model: form.model.trim() || null,
         unit: form.unit.trim() || "each", cost_cents: dollarsToCents(form.cost),
         price_cents: dollarsToCents(form.price), taxable: form.taxable, active: form.active,
+        metadata: {
+          ...editing?.metadata, subcategory: form.subcategory.trim() || undefined, supplier: form.supplier.trim() || undefined, catalog_archived: !form.active,
+          ...(editing && needsCatalogPrice(editing) ? { price_status: "confirmed", unit_status: "confirmed" } : {}),
+        },
       };
       if (editing) await updateVersioned(supabase,"price_book_items",editing,row);
       else {
@@ -140,7 +158,7 @@ export default function Pricebook() {
 
   const setActive = useMutation({
     mutationFn: async ({ item, active }: { item: PriceItem; active: boolean }) => {
-      await updateVersioned(supabase,"price_book_items",item,{active});
+      await updateVersioned(supabase,"price_book_items",item,{active: active && !needsCatalogPrice(item), metadata:{...item.metadata,catalog_archived:!active}});
     },
     onSuccess: (_, variables) => {
       qc.invalidateQueries({ queryKey: key });
@@ -153,8 +171,10 @@ export default function Pricebook() {
     setEditing(item);
     setForm({ item_type: item.item_type, category: item.category, name: item.name,
       description: item.description, sku: item.sku || "", brand: item.brand || "",
-      model: item.model || "", unit: item.unit, cost: (item.cost_cents / 100).toFixed(2),
-      price: (item.price_cents / 100).toFixed(2), taxable: item.taxable, active: item.active });
+      model: item.model || "", unit: item.metadata?.unit_status === "missing" ? "" : item.unit,
+      cost: needsCatalogPrice(item) ? "" : (item.cost_cents / 100).toFixed(2),
+      price: needsCatalogPrice(item) ? "" : (item.price_cents / 100).toFixed(2), taxable: item.taxable, active: isCatalogVisible(item),
+      supplier: item.metadata?.supplier || "", subcategory: item.metadata?.subcategory || "" });
     setOpen(true);
   };
   const openNew = () => {
@@ -163,7 +183,7 @@ export default function Pricebook() {
     Object.assign(next, newItemDefaults(tab));
     setForm(next); setOpen(true);
   };
-  const counts = (type: PricebookTab) => items.filter((item) => item.active && matchesPricebookTab(item, type)).length;
+  const counts = (type: PricebookTab) => items.filter((item) => isCatalogVisible(item) && matchesPricebookTab(item, type)).length;
 
   return <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-5">
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -180,25 +200,33 @@ export default function Pricebook() {
 
     <Card><CardContent className="p-4 space-y-4">
       <div className="flex gap-2 overflow-x-auto pb-1">
-        {(Object.keys(tabNames) as Array<PricebookTab>).map((value) => <Button key={value} size="sm" variant={tab === value ? "default" : "outline"} onClick={() => setTab(value)} className="shrink-0">{tabNames[value]} <span className="ml-1 opacity-70">({counts(value)})</span></Button>)}
+        {(Object.keys(tabNames) as Array<PricebookTab>).map((value) => <Button key={value} size="sm" variant={tab === value ? "default" : "outline"} onClick={() => { setTab(value); setSubcategory("all"); }} className="shrink-0">{tabNames[value]} <span className="ml-1 opacity-70">({counts(value)})</span></Button>)}
       </div>
       <div className="flex flex-col sm:flex-row gap-2">
-        <div className="relative flex-1"><Search className="absolute left-3 top-2.5 text-muted-foreground" size={16} /><Input className="pl-9" placeholder="Search name, SKU, brand, model, or category" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
+        <div className="relative flex-1"><Search className="absolute left-3 top-2.5 text-muted-foreground" size={16} /><Input aria-label="Search Price Book" className="pl-9" placeholder="Search size, product, supplier, SKU, or model" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
         <Button variant={showArchived ? "secondary" : "outline"} onClick={() => setShowArchived((value) => !value)}><Archive size={16} className="mr-2" />{showArchived ? "Hide archived" : "Show archived"}</Button>
       </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        <Select value={supplier} onValueChange={setSupplier}><SelectTrigger aria-label="Filter by supplier"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All suppliers</SelectItem>{suppliers.map(value => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select>
+        <Select value={subcategory} onValueChange={setSubcategory}><SelectTrigger aria-label="Filter by fitting or product type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All product types</SelectItem>{subcategories.map(value => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select>
+        <Select value={priceStatus} onValueChange={setPriceStatus}><SelectTrigger aria-label="Filter by price status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All price statuses</SelectItem><SelectItem value="priced">Priced items</SelectItem><SelectItem value="missing">Price needed</SelectItem></SelectContent></Select>
+        <Select value={sort} onValueChange={(value: CatalogSort) => setSort(value)}><SelectTrigger aria-label="Sort products"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="category">Category, type & size</SelectItem><SelectItem value="name">Product name</SelectItem><SelectItem value="cost-low">Supplier cost: low to high</SelectItem><SelectItem value="cost-high">Supplier cost: high to low</SelectItem></SelectContent></Select>
+      </div>
+      <p className="text-xs text-muted-foreground">Try 25x10x96, 25 x 10 x 96, a fitting name, or a supplier part number. Items marked Price needed require a confirmed price and unit before invoicing.</p>
     </CardContent></Card>
 
     {catalog.isError && <Alert variant="destructive"><AlertTitle>Price Book could not be loaded</AlertTitle><AlertDescription className="flex flex-col sm:flex-row sm:items-center gap-3"><span>{catalog.error instanceof Error ? catalog.error.message : "Please try again."}</span><Button size="sm" variant="outline" onClick={() => catalog.refetch()}><RefreshCw size={14} className="mr-2" /> Retry</Button></AlertDescription></Alert>}
 
     {(catalog.isLoading || importCatalog.isPending) && <div className="flex items-center justify-center py-16 text-sm text-muted-foreground"><Loader2 size={18} className="mr-2 animate-spin" />{importCatalog.isPending ? "Loading the Air King catalog…" : "Loading price book…"}</div>}
 
-    {!catalog.isLoading && !importCatalog.isPending && !catalog.isError && shown.length > 0 && <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
-      {shown.map((item) => <Card key={item.id} className={!item.active ? "opacity-60" : ""}><CardContent className="p-4 space-y-3">
-        <div className="flex justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap gap-1.5 items-center"><Badge variant="secondary" className="capitalize">{item.item_type}</Badge><Badge variant="outline">{item.category}</Badge>{item.metadata?.subcategory && <Badge variant="outline">{item.metadata.subcategory}</Badge>}{!item.active && <Badge variant="outline">Archived</Badge>}</div><h3 className="font-semibold mt-2 break-words">{item.name}</h3><p className="text-xs text-muted-foreground break-all">{[item.sku, item.brand, item.model].filter(Boolean).join(" • ") || "No SKU"}</p></div><div className="text-right shrink-0"><p className="font-bold">{money(item.price_cents)}</p><p className="text-xs text-muted-foreground">Cost {money(item.cost_cents)}</p></div></div>
+    {!catalog.isLoading && !importCatalog.isPending && !catalog.isError && shown.length > 0 && <><p className="text-sm text-muted-foreground" aria-live="polite">Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, shown.length)} of {shown.length} matching items</p><div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+      {visible.map((item) => <Card key={item.id} className={isCatalogArchived(item) ? "opacity-60" : ""}><CardContent className="p-4 space-y-3">
+        <div className="flex flex-col gap-3"><div className="min-w-0"><div className="flex flex-wrap gap-1.5 items-center"><Badge variant="secondary" className="capitalize">{item.item_type}</Badge><Badge variant="outline">{item.category}</Badge>{item.metadata?.subcategory && <Badge variant="outline">{item.metadata.subcategory}</Badge>}{isCatalogArchived(item) && <Badge variant="outline">Archived</Badge>}</div><h3 className="font-semibold mt-2 break-words">{item.name}</h3><p className="text-xs text-muted-foreground break-words">{[item.sku, item.brand, item.model !== item.sku ? item.model : null].filter(Boolean).join(" • ") || "No SKU"}</p></div><div className="flex justify-between items-end gap-2 rounded-md bg-muted/50 p-3">{needsCatalogPrice(item) ? <><Badge variant="outline" className="text-amber-700">Price needed</Badge><p className="text-xs text-muted-foreground">Confirm price & unit</p></> : <><div><p className="text-xs text-muted-foreground">Selling price / {item.unit}</p><p className="font-bold">{money(item.price_cents)}</p></div><div className="text-right"><p className="text-xs text-muted-foreground">Supplier cost / {item.unit}</p><p className="text-sm font-medium">{money(item.cost_cents)}</p></div></>}</div></div>
+        {item.metadata?.supplier && <p className="text-xs text-muted-foreground">{item.metadata.supplier}{item.metadata.pricing_date ? ` · Prices captured ${item.metadata.pricing_date}` : ""}</p>}
         {item.metadata?.source_notes?.length ? <p className="text-xs text-amber-700">Source note: {item.metadata.source_notes.join(" ")}</p> : null}<p className="text-sm text-muted-foreground line-clamp-2 min-h-10">{item.description || "No customer-facing description"}</p>
-        <div className="flex justify-end gap-1 border-t pt-2"><Button size="sm" variant="ghost" onClick={() => edit(item)}><Pencil size={15} className="mr-1.5" /> Edit</Button><Button size="sm" variant="ghost" disabled={setActive.isPending} onClick={() => setActive.mutate({ item, active: !item.active })}>{item.active ? <><Archive size={15} className="mr-1.5" /> Archive</> : <><RotateCcw size={15} className="mr-1.5" /> Restore</>}</Button></div>
+        <div className="flex flex-wrap justify-end gap-1 border-t pt-2">{catalogSourceUrl(item) && <Button size="sm" variant="ghost" asChild><a href={catalogSourceUrl(item)!} target="_blank" rel="noopener noreferrer">Supplier listing</a></Button>}<Button size="sm" variant="ghost" onClick={() => edit(item)}><Pencil size={15} className="mr-1.5" /> Edit</Button><Button size="sm" variant="ghost" disabled={setActive.isPending} onClick={() => setActive.mutate({ item, active: isCatalogArchived(item) })}>{!isCatalogArchived(item) ? <><Archive size={15} className="mr-1.5" /> Archive</> : <><RotateCcw size={15} className="mr-1.5" /> Restore</>}</Button></div>
       </CardContent></Card>)}
-    </div>}
+    </div><div className="flex flex-wrap items-center justify-between gap-3"><span className="text-sm text-muted-foreground">Page {page} of {pageCount}</span><div className="flex gap-2"><Button variant="outline" disabled={page === 1} onClick={() => setPage(value => value - 1)}>Previous</Button><Button variant="outline" disabled={page >= pageCount} onClick={() => setPage(value => value + 1)}>Next</Button></div></div></>}
 
     {!catalog.isLoading && !importCatalog.isPending && !catalog.isError && !shown.length && <Card><CardContent className="py-14 text-center space-y-3"><PackageOpen className="mx-auto text-muted-foreground" size={36} /><div><p className="font-medium">No matching {tabNames[tab].toLowerCase()}</p><p className="text-sm text-muted-foreground">{items.length ? "Change the filters or add a new item." : "Start with the existing Air King catalog or add an item."}</p></div><div className="flex justify-center gap-2 flex-wrap"><Button onClick={openNew}><Plus size={16} className="mr-2" /> Add item</Button>{!items.length && canManageCatalog && <Button variant="outline" onClick={() => importCatalog.mutate()}><RefreshCw size={16} className="mr-2" /> Load Air King catalog</Button>}</div></CardContent></Card>}
 
@@ -206,6 +234,8 @@ export default function Pricebook() {
       <Field label="Name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
       <Field label="Type"><Select value={form.item_type} onValueChange={(value: ItemType) => setForm({ ...form, item_type: value, category: categoryAfterTypeChange(form.category, value) })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(["equipment", "part", "service", "labor"] as const).map((value) => <SelectItem key={value} value={value}>{tabNames[value]}</SelectItem>)}</SelectContent></Select></Field>
       <Field label="Category"><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /></Field>
+      <Field label="Product type / fitting"><Input value={form.subcategory} onChange={(e) => setForm({ ...form, subcategory: e.target.value })} /></Field>
+      <Field label="Supplier"><Input value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })} /></Field>
       <Field label="SKU / part number"><Input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></Field>
       <Field label="Brand"><Input value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} /></Field>
       <Field label="Model"><Input value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} /></Field>
