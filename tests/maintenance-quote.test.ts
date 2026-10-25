@@ -20,7 +20,7 @@ test("labor estimate changes internal cost only, never fixed customer total", ()
   assert.equal(q.options[0].totalCost, 45.25); assert.equal(q.options[0].customerPrice, 99); assert.equal(q.purchaseTax, 0);
 });
 test("empty quotes and invalid service scope or prices are rejected", () => {
-  for (const patch of [{servicePrice: undefined}, {laborDescription: " "}, {servicePrice: 0}, {servicePrice: -1}, {servicePrice: Infinity}, {servicePrice: NaN}, {servicePrice: 99.001}, {laborCost: -1}, {laborCost: NaN}])
+  for (const patch of [{servicePrice: undefined}, {laborDescription: " "}, {servicePrice: 0}, {servicePrice: -1}, {servicePrice: Infinity}, {servicePrice: Number.MAX_VALUE}, {servicePrice: NaN}, {servicePrice: 99.001}, {laborCost: -1}, {laborCost: NaN}])
     assert.throws(() => buildQuoteDraft({...input, ...patch}, "Q-S", "2026-10-25"));
 });
 test("service price cannot silently override equipment or another job type", () => {

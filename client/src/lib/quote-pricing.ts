@@ -44,9 +44,9 @@ export function buildQuoteOptions(input: QuoteDraftInput, catalog: PricebookItem
   if (input.servicePrice !== undefined) {
     if (input.jobType !== "Maintenance" || input.equipmentItems.length || input.equipmentCost !== 0 || input.materialsCost !== 0 || input.selectedAddOns?.length)
       throw new Error("Fixed service pricing requires Maintenance with no equipment, materials, or add-ons.");
-    if (!input.laborDescription?.trim() || !Number.isFinite(input.servicePrice) || input.servicePrice <= 0 || Math.abs(input.servicePrice * 100 - Math.round(input.servicePrice * 100)) > 0.000001 || !Number.isFinite(input.laborCost) || input.laborCost < 0)
+    if (!input.laborDescription?.trim() || !Number.isFinite(input.servicePrice) || input.servicePrice <= 0 || !Number.isSafeInteger(Math.round(input.servicePrice * 100)) || Math.abs(input.servicePrice * 100 - Math.round(input.servicePrice * 100)) > 0.000001 || !Number.isFinite(input.laborCost) || input.laborCost < 0)
       throw new Error("Enter a service description, a positive total with at most two decimal places, and a valid labor estimate.");
-    return { options: [{ tier: "Better" as const, label: "Maintenance service", equipment: "", equipmentItems: [], equipmentSummary: "", efficiency: "", features: [input.laborDescription.trim()], equipmentCost: 0, purchaseTax: 0, totalCost: input.laborCost, customerPrice: input.servicePrice }], unavailable: [] as string[] };
+    return { options: [{ tier: "Better" as const, label: "Maintenance service", equipment: "", equipmentItems: [], equipmentSummary: "", efficiency: "", features: [input.laborDescription.trim()], equipmentCost: 0, purchaseTax: 0, totalCost: calculateQuotePricing(0, input.laborCost, 0).totalCost, customerPrice: input.servicePrice }], unavailable: [] as string[] };
   }
   if (!input.equipmentItems.length) throw new Error("Select equipment or use the service-only Maintenance form.");
   const selected = input.equipmentItems.map(id => {
