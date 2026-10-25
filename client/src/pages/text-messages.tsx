@@ -1,3 +1,4 @@
+import {SmsSendNow} from "@/components/sms-send-now";
 import {useState} from "react";
 import {useInfiniteQuery,useQueryClient} from "@tanstack/react-query";
 import {Link,useLocation,useSearch} from "wouter";
@@ -29,9 +30,9 @@ export function textStatus(message:Message) {
 export default function TextMessages() {
   const {profile}=useAuth();
   // Remount on account changes so drafts, selection and cached pages cannot cross tenants.
-  return <Messages key={`${profile?.company_id}:${profile?.id}`} company={profile?.company_id || ""}/>;
+  return <Messages key={`${profile?.company_id}:${profile?.id}`} company={profile?.company_id || ""} canSendNow={["owner","admin"].includes(profile?.role || "")}/>;
 }
-function Messages({company}:{company:string}) {
+function Messages({company,canSendNow}:{company:string;canSendNow:boolean}) {
   const [,navigate]=useLocation(),search=useSearch();
   const selected=new URLSearchParams(search).get("phone") || "";
   const cache=useQueryClient();
@@ -86,6 +87,7 @@ function Messages({company}:{company:string}) {
                   <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{m.body || (m.status==="opted_out"?"Provider reported an opt-out.":"No text supplied. Attachments are not displayed.")}</p>
                   <p className="text-xs mt-2">{textStatus(m)} · <time dateTime={m.created_at}>{when(m.created_at)}</time></p>
                   {m.status==="pending"&&m.scheduled_at&&<p className="text-xs">Scheduled: {when(m.scheduled_at)}</p>}
+                  {canSendNow&&m.direction==="outbound"&&m.status==="pending"&&<SmsSendNow key={m.id} id={m.id} recipient={selected} onUpdated={()=>{void refresh();}}/>}
                   {m.error&&<p className="text-xs mt-1">{m.error}</p>}
                   {m.ambiguous&&<p className="text-xs mt-1">Received with multiple customer matches; not assigned.</p>}
                   {m.customer_id&&<Link className="text-xs underline" href={`/customers/${encodeURIComponent(m.customer_id)}`}>Original customer record</Link>}

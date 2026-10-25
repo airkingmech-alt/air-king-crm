@@ -29,6 +29,12 @@ try {
     window.__qa={calls:[],failRead:false,failSend:false,failHistory:false,failList:false,validationFail:false,changedPhone:false,submissions:{},conversations,recent};
     export async function crm(route,method='GET',body,key){
       window.__qa.calls.push({route,method,body,key});const url=new URL(route,'http://synthetic/');
+      if(url.pathname.endsWith('/send-now')) {
+        const message={id:'pending-one',customer_id:'original-customer',quote_id:'Q-SYNTHETIC',recipient:phone,body:'Synthetic existing queued quote',status:'pending'};
+        if(method==='GET')return {message,already_requested:!!window.__qa.nowRequested};
+        if(body.confirmed!==true)throw Error('Confirmation required');
+        window.__qa.nowRequested=true;await new Promise(r=>setTimeout(r,150));if(window.__qa.nowFail)throw Error('Synthetic response lost');return {message:{...message,status:'sent'}};
+      }
       if(url.pathname==='/crm/text-messages') {if(window.__qa.failList)throw Error('Synthetic list failure');return {items:structuredClone(url.searchParams.has('before')?[{phone:'+18165550104',last_at:'2026-10-23T12:00:00Z',preview:'Older conversation',unread_count:0,customers:[]}]:conversations),next:url.searchParams.has('before')?null:{at:'2026-10-24T11:00:00Z',key:'+18165550103'}};}
       if(url.pathname==='/crm/text-messages/history') {
         if(window.__qa.failHistory)throw Error('Synthetic history failure');
@@ -128,6 +134,18 @@ try {
   assert.ok(await evaluate("document.documentElement.scrollWidth<=390"));
   await clickText('All conversations');await evaluate("window.__qa.failList=true;window.__cache.invalidateQueries({queryKey:['text-conversations']})");await wait("document.body.innerText.includes('Synthetic list failure')");
   await evaluate('window.__qa.failList=false');await clickText('Retry conversations');await wait("!document.body.innerText.includes('Synthetic list failure')");
+  await selectPhone('+18165550101');await wait("document.body.innerText.includes('Your appointment is confirmed')");
+  await evaluate("window.__qa.recent.push({key:'out:pending-one',id:'pending-one',direction:'outbound',status:'pending',body:'Synthetic existing queued quote',created_at:'2026-10-24T12:04:00Z',customer_id:'original-customer'});window.__cache.invalidateQueries({queryKey:['text-history']})");
+  await wait("document.body.innerText.includes('Send now…')");await clickText('Send now…');await wait("!!document.querySelector('[data-testid=confirm-sms-send-now]')");
+  assert.ok(await evaluate("document.querySelector('[role=dialog]').innerText.includes('Q-SYNTHETIC')"));await clickText('Cancel');
+  assert.equal(await evaluate("window.__qa.calls.filter(c=>c.method==='POST'&&c.route.endsWith('/send-now')).length"),0);
+  await clickText('Send now…');await wait("!!document.querySelector('[data-testid=confirm-sms-send-now]')");await new Promise(r=>setTimeout(r,250));
+  assert.ok(await evaluate("document.querySelector('[role=dialog]').getBoundingClientRect().right<=390"));
+  await writeFile('/tmp/sms-send-now-mobile.png',Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
+  await evaluate("window.__qa.nowFail=true;const b=document.querySelector('[data-testid=confirm-sms-send-now]');b.click();b.click()");
+  await wait("document.body.innerText.includes('Confirmation unavailable')");assert.equal(await evaluate("window.__qa.calls.filter(c=>c.method==='POST'&&c.route.endsWith('/send-now')).length"),1);
+  await clickText('Send now…');await wait("document.body.innerText.includes('already has a Send now request')");assert.equal(await evaluate("document.querySelector('[data-testid=confirm-sms-send-now]')"),null);await clickText('Cancel');
+  console.log('PASS Send now explicit confirmation, original recipient/quote, cancel, duplicate clicks, lost response/retry protection and mobile dialog.');
   console.log('PASS desktop/mobile conversations, chronological history/pagination, delivery labels, original links, unmatched/ambiguous guards, explicit unread/error handling, repeated-click/navigation idempotency, validation failure, changed recipient and list/history errors. Mocks only. Screenshots /tmp/text-messages-{desktop,mobile}.png');
 } finally {
   ws?.close();chrome?.kill();await vite?.close();

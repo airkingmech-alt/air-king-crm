@@ -1,3 +1,4 @@
+import {sendNowPreview,requestSmsSendNow} from "../server/crm/sms-send-now";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -27,6 +28,8 @@ test("email links exclude trailing sentence punctuation", () => {
 let providerCalls = 0;
 let providerResult = "success";
 let failHistory = false;
+let afterClaim: (()=>void) | null = null;
+let beforeDefer: (()=>void) | null = null;
 const state: Record<string, any[]> = {};
 const defaults = () => {
   state.customers = [
@@ -101,7 +104,7 @@ const defaults = () => {
   state.sms_phone_suppressions = [];
   providerCalls = 0;
   providerResult = "success";
-  failHistory = false;
+  failHistory = false;afterClaim=null;beforeDefer=null;
 };
 const json = (data: any, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -131,6 +134,13 @@ globalThis.fetch = async (input: any, init: any = {}) => {
   const payload = init.body ? JSON.parse(init.body) : {};
   if (table === "rpc") {
     if (path[3] === "crm_document_lifecycle") return json(null);
+    if(path[3] === "crm_request_sms_send_now") {
+      const m=state.communications.find(x=>x.id===payload.p_id&&x.company_id===payload.p_company);
+      if(!m || m.recipient!==payload.p_recipient)return json({message:'Message unavailable'},400);
+      if(m.send_now_requested_at)return json({already_requested:true,message:m});
+      Object.assign(m,{send_now_requested_at:new Date().toISOString(),send_now_expires_at:new Date(Date.now()+300000).toISOString(),send_now_actor_id:payload.p_actor,scheduled_at:new Date().toISOString()});
+      return json({already_requested:false,message:m});
+    }
     assert.equal(path[3], "crm_claim_message");
     const m = state.communications.find(
       (x) => x.id === payload.p_id && x.status === "pending",
@@ -139,10 +149,12 @@ globalThis.fetch = async (input: any, init: any = {}) => {
     m.status = "sending";
     m.claim_token = randomUUID();
     m.attempts = (m.attempts || 0) + 1;
+    afterClaim?.();
     return json([m]);
   }
   if (table === "communication_events" && init.method === "POST" && failHistory) return json({message:"synthetic history outage"},503);
   state[table] ||= [];
+  if(table==='communications' && method==='PATCH' && payload.scheduled_at && !payload.status && beforeDefer){const hook=beforeDefer;beforeDefer=null;hook();}
   const match = (row: any) =>
     Array.from(url.searchParams.entries()).every(([key, value]) => {
       if (["select", "on_conflict", "order", "limit"].includes(key))
@@ -471,4 +483,60 @@ test("customer-care queued texts are cancelled if the primary phone changes befo
   let sends=0;await deliver(msg,async()=>{sends++;return "never";});
   assert.equal(sends,0);assert.equal(state.communications[0].status,"cancelled");
   assert.match(state.communications[0].error,/phone changed/);
+});
+
+function outsideHours(){const hour=new Date().getUTCHours();const start=hour===12?14:12;state.crm_settings[0].data={...state.crm_settings[0].data,timezone:'UTC',sms_start:start,sms_end:start+1};}
+function grantedSms(extra:any={}) {return message({channel:'sms',recipient:'+18165551234',send_now_actor_id:'synthetic-owner',send_now_requested_at:new Date(Date.now()-1000).toISOString(),send_now_expires_at:new Date(Date.now()+60000).toISOString(),...extra});}
+test('one-message grant and simultaneous worker attempts dispatch once outside hours',async()=>{
+ defaults();outsideHours();const m=grantedSms();let calls=0;
+ await Promise.all([deliver(m,async()=>{calls++;return 'one';}),deliver(m,async()=>{calls++;return 'two';})]);
+ assert.equal(calls,1);assert.equal(state.communications[0].status,'sent');assert.equal(state.communications[0].attempts,1);
+});
+test('expired, long-lived and consumed grants cannot override quiet hours',async()=>{
+ for(const extra of [{send_now_expires_at:new Date(Date.now()-1).toISOString()},{send_now_expires_at:new Date(Date.now()+3600000).toISOString()},{attempts:1}]){
+  defaults();outsideHours();let calls=0;await deliver(grantedSms(extra),async()=>{calls++;return 'never';});assert.equal(calls,0);assert.equal(state.communications[0].status,'pending');assert.ok(Date.parse(state.communications[0].scheduled_at)>Date.now());
+ }
+});
+test('fresh suppression, revoked consent, paused sending and changed primary contact win over granted SMS',async()=>{
+ for(const change of [()=>{state.sms_phone_suppressions=[{company_id:'co',phone:'+18165551234'}];},()=>{state.customer_communication_preferences[0].sms_transactional=false;},()=>{state.crm_settings[0].data.sending_enabled=false;},()=>{state.customers[0].data.contacts[0].phone='+18165559999';}]){
+  defaults();outsideHours();const m=grantedSms({reason:'customer_care'});change();let calls=0;await deliver(m,async()=>{calls++;return 'never';});assert.equal(calls,0);
+ }
+});
+test('a rate-limited granted attempt uses normal hours on retry; unknown outcomes never resend',async()=>{
+ for(const status of [429,undefined]){
+  defaults();outsideHours();const m=grantedSms();let calls=0;
+  await deliver(m,async()=>{calls++;throw Object.assign(new Error('synthetic transport failure'),{status});});
+  await deliver(m,async()=>{calls++;return 'never';});assert.equal(calls,1);assert.equal(state.communications[0].status,status===429?'pending':'unknown');
+ }
+});
+
+test('revoked consent and expired grant after atomic claim still prevent transport',async()=>{
+ for(const revoke of [true,false]){
+  defaults();outsideHours();const m=grantedSms();let calls=0;
+  afterClaim=()=>{if(revoke)state.customer_communication_preferences[0].sms_transactional=false;else state.communications[0].send_now_expires_at=new Date(Date.now()-1).toISOString();};
+  await deliver(m,async()=>{calls++;return 'never';});assert.equal(calls,0);assert.equal(state.communications[0].status,revoke?'cancelled':'pending');
+ }
+});
+test('a stale quiet-hours deferral cannot postpone a newly authorized message',async()=>{
+ defaults();outsideHours();const m=message({channel:'sms',recipient:'+18165551234',scheduled_at:new Date().toISOString()});let calls=0;
+ beforeDefer=()=>{Object.assign(state.communications[0],{send_now_actor_id:'owner',send_now_requested_at:new Date().toISOString(),send_now_expires_at:new Date(Date.now()+60000).toISOString()});};
+ await deliver(m,async()=>{calls++;return 'never';});assert.ok(Date.parse(state.communications[0].scheduled_at)<=Date.now());
+ await deliver(m,async()=>{calls++;return 'once';});assert.equal(calls,1);
+});
+
+test('Send now service rejects stale consent, foreign tenants and changed recipient, then converges repeated requests',async()=>{
+ defaults();outsideHours();const m=message({channel:'sms',recipient:'+18165551234'});let calls=0;
+ const prior={...process.env};Object.assign(process.env,{SMS_PROVIDER:'twilio',TWILIO_ACCOUNT_SID:'synthetic',TWILIO_AUTH_TOKEN:'synthetic',TWILIO_MESSAGING_SERVICE_SID:'synthetic'});
+ try {
+  await assert.rejects(sendNowPreview('foreign',m.id,m.recipient),/unavailable/);
+  await assert.rejects(sendNowPreview('co',m.id,'+18165559999'),/confirmed/);
+  state.customer_communication_preferences[0].sms_transactional=false;
+  await assert.rejects(requestSmsSendNow('co',m.id,'owner',m.recipient),/consent/i);
+  assert.equal(state.communications[0].send_now_requested_at,undefined);
+  state.customer_communication_preferences[0].sms_transactional=true;
+  const dispatch=(row:any)=>deliver(row,async()=>{calls++;return 'synthetic-sent';});
+  await Promise.all([requestSmsSendNow('co',m.id,'owner',m.recipient,dispatch),requestSmsSendNow('co',m.id,'owner',m.recipient,dispatch)]);
+  assert.equal(calls,1);assert.equal(state.communications.length,1);
+  const again=await requestSmsSendNow('co',m.id,'owner',m.recipient,dispatch);assert.equal(again.status,'sent');assert.equal(calls,1);
+ } finally {for(const key of ['SMS_PROVIDER','TWILIO_ACCOUNT_SID','TWILIO_AUTH_TOKEN','TWILIO_MESSAGING_SERVICE_SID']){if(prior[key]===undefined)delete process.env[key];else process.env[key]=prior[key];}}
 });
