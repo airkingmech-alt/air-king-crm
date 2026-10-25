@@ -11,6 +11,7 @@ export type CatalogMetadata = {
   source_notes?: string[];
   dimensions_inches?: number[];
   search_aliases?: string[];
+  catalog_archived?: boolean;
   [key: string]: unknown;
 };
 export type SearchableCatalogItem = {
@@ -39,6 +40,12 @@ export function matchesCatalogSearch(item: SearchableCatalogItem, query: string)
 }
 export function needsCatalogPrice(item: Pick<SearchableCatalogItem, "metadata">) {
   return item.metadata?.price_status === "missing" || item.metadata?.unit_status === "missing";
+}
+export function isCatalogVisible(item: { active: boolean; metadata?: CatalogMetadata }) {
+  return item.active || (needsCatalogPrice(item) && !item.metadata?.catalog_archived);
+}
+export function isCatalogArchived(item: { active: boolean; metadata?: CatalogMetadata }) {
+  return !isCatalogVisible(item);
 }
 export function assertCatalogPrice(item: SearchableCatalogItem) {
   if (needsCatalogPrice(item)) throw new Error("Enter and save this item's cost, selling price, and unit in Price Book before adding it to an invoice.");

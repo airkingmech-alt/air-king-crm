@@ -46,7 +46,7 @@ import { crm } from "@/lib/crm-api";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/auth-context";
 import { fetchCatalogItems } from "@/lib/catalog-query";
-import { assertCatalogPrice, matchesCatalogSearch, needsCatalogPrice, type CatalogMetadata } from "../../../shared/pricebook-catalog";
+import { assertCatalogPrice, isCatalogVisible, matchesCatalogSearch, needsCatalogPrice, type CatalogMetadata } from "../../../shared/pricebook-catalog";
 
 type CatalogItem = {
   id: string;
@@ -164,8 +164,8 @@ export default function Invoices() {
   useEffect(() => {
     if (!showCreateDialog || !profile) return;
     let cancelled = false;
-    fetchCatalogItems(profile.company_id, true).then(data => {
-      if (!cancelled) setCatalogItems((data as CatalogItem[]).sort((a,b) => a.name.localeCompare(b.name, "en-US", { numeric: true })));
+    fetchCatalogItems(profile.company_id).then(data => {
+      if (!cancelled) setCatalogItems((data as CatalogItem[]).filter(isCatalogVisible).sort((a,b) => a.name.localeCompare(b.name, "en-US", { numeric: true })));
     }).catch(error => {
       if (!cancelled) toast({ title: "Could not load the Price Book", description: error.message, variant: "destructive" });
     });

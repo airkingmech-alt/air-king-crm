@@ -33,7 +33,8 @@ export function buildSupplierMaterialsRows(input: unknown, companyId: string) {
       name: row.name, description: row.source_description, sku, brand: row.manufacturer, model: row.model,
       unit: row.unit, cost_cents: row.cost_cents ?? 0,
       price_cents: missing ? 0 : dollarsToCents(sellingPriceFromCost(row.cost_cents! / 100)),
-      taxable: true, active: true,
+      // Unpriced rows stay searchable in the catalog, but inactive in older invoice clients.
+      taxable: true, active: !missing,
       metadata: {
         subcategory: row.subcategory, supplier: row.supplier, supplier_sku: row.supplier_sku,
         pricing_date: manifest.pricing_date, source_filename: manifest.source_filename, source_sha256: manifest.source_sha256,

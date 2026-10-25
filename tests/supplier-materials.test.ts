@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildSupplierMaterialsRows } from "../shared/supplier-materials-import";
 import { matchesPricebookTab, newItemDefaults, categoryAfterTypeChange } from "../shared/pricebook-sections";
-import { assertCatalogPrice, compareCatalogItems, matchesCatalogSearch, needsCatalogPrice } from "../shared/pricebook-catalog";
+import { assertCatalogPrice, compareCatalogItems, isCatalogArchived, isCatalogVisible, matchesCatalogSearch, needsCatalogPrice } from "../shared/pricebook-catalog";
 
 // Synthetic examples only. Supplier account prices must remain outside the source repository.
 const source = {
@@ -40,6 +40,10 @@ test("unknown prices stay explicitly missing and cannot be added to invoices", (
   const [row] = buildSupplierMaterialsRows(manifest([{...source,cost_cents:null,source_unit:null,unit:"unit not shown"}]),"test-company");
   assert.equal(row.metadata.source_cost_cents,null);
   assert.equal(needsCatalogPrice(row),true);
+  assert.equal(row.active,false);
+  assert.equal(isCatalogVisible(row),true);
+  assert.equal(isCatalogArchived(row),false);
+  assert.equal(isCatalogVisible({...row,metadata:{...row.metadata,catalog_archived:true}}),false);
   assert.throws(()=>assertCatalogPrice(row),/before adding/);
   assert.doesNotThrow(()=>assertCatalogPrice({...row,metadata:{...row.metadata,price_status:"confirmed",unit_status:"confirmed"},price_cents:100}));
   assert.throws(()=>buildSupplierMaterialsRows(manifest([{...source,cost_cents:null}]),"test-company"),/explicitly missing/);

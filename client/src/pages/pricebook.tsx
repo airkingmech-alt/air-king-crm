@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { addOnServices, pricebook as legacyEquipment } from "@/data/pricebook";
 import { dollarsToCents, missingCatalogRows, sellingPriceFromCost } from "@/lib/pricebook-utils";
 import { fetchCatalogItems } from "@/lib/catalog-query";
-import { catalogSourceUrl, compareCatalogItems, matchesCatalogSearch, needsCatalogPrice, type CatalogMetadata, type CatalogSort } from "../../../shared/pricebook-catalog";
+import { catalogSourceUrl, compareCatalogItems, isCatalogArchived, isCatalogVisible, matchesCatalogSearch, needsCatalogPrice, type CatalogMetadata, type CatalogSort } from "../../../shared/pricebook-catalog";
 
 import { categoryAfterTypeChange, matchesPricebookTab, newItemDefaults, pricebookTabs as tabNames, type ItemType, type PricebookTab } from "../../../shared/pricebook-sections";
 type PriceItem = {
@@ -111,7 +111,7 @@ export default function Pricebook() {
 
   const shown = useMemo(() => {
     return items.filter((item) =>
-      matchesPricebookTab(item, tab) && (showArchived || item.active) &&
+      matchesPricebookTab(item, tab) && (showArchived || isCatalogVisible(item)) &&
       (supplier === "all" || item.metadata?.supplier === supplier) &&
       (subcategory === "all" || item.metadata?.subcategory === subcategory) &&
       (priceStatus === "all" || (priceStatus === "missing" ? needsCatalogPrice(item) : !needsCatalogPrice(item))) &&
@@ -139,7 +139,7 @@ export default function Pricebook() {
         unit: form.unit.trim() || "each", cost_cents: dollarsToCents(form.cost),
         price_cents: dollarsToCents(form.price), taxable: form.taxable, active: form.active,
         metadata: {
-          ...editing?.metadata, subcategory: form.subcategory.trim() || undefined, supplier: form.supplier.trim() || undefined,
+          ...editing?.metadata, subcategory: form.subcategory.trim() || undefined, supplier: form.supplier.trim() || undefined, catalog_archived: !form.active,
           ...(editing && needsCatalogPrice(editing) ? { price_status: "confirmed", unit_status: "confirmed" } : {}),
         },
       };
@@ -158,7 +158,7 @@ export default function Pricebook() {
 
   const setActive = useMutation({
     mutationFn: async ({ item, active }: { item: PriceItem; active: boolean }) => {
-      await updateVersioned(supabase,"price_book_items",item,{active});
+      await updateVersioned(supabase,"price_book_items",item,{active: active && !needsCatalogPrice(item), metadata:{...item.metadata,catalog_archived:!active}});
     },
     onSuccess: (_, variables) => {
       qc.invalidateQueries({ queryKey: key });
@@ -173,7 +173,7 @@ export default function Pricebook() {
       description: item.description, sku: item.sku || "", brand: item.brand || "",
       model: item.model || "", unit: item.metadata?.unit_status === "missing" ? "" : item.unit,
       cost: needsCatalogPrice(item) ? "" : (item.cost_cents / 100).toFixed(2),
-      price: needsCatalogPrice(item) ? "" : (item.price_cents / 100).toFixed(2), taxable: item.taxable, active: item.active,
+      price: needsCatalogPrice(item) ? "" : (item.price_cents / 100).toFixed(2), taxable: item.taxable, active: isCatalogVisible(item),
       supplier: item.metadata?.supplier || "", subcategory: item.metadata?.subcategory || "" });
     setOpen(true);
   };
@@ -183,7 +183,7 @@ export default function Pricebook() {
     Object.assign(next, newItemDefaults(tab));
     setForm(next); setOpen(true);
   };
-  const counts = (type: PricebookTab) => items.filter((item) => item.active && matchesPricebookTab(item, type)).length;
+  const counts = (type: PricebookTab) => items.filter((item) => isCatalogVisible(item) && matchesPricebookTab(item, type)).length;
 
   return <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-5">
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -220,11 +220,11 @@ export default function Pricebook() {
     {(catalog.isLoading || importCatalog.isPending) && <div className="flex items-center justify-center py-16 text-sm text-muted-foreground"><Loader2 size={18} className="mr-2 animate-spin" />{importCatalog.isPending ? "Loading the Air King catalog…" : "Loading price book…"}</div>}
 
     {!catalog.isLoading && !importCatalog.isPending && !catalog.isError && shown.length > 0 && <><p className="text-sm text-muted-foreground" aria-live="polite">Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, shown.length)} of {shown.length} matching items</p><div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
-      {visible.map((item) => <Card key={item.id} className={!item.active ? "opacity-60" : ""}><CardContent className="p-4 space-y-3">
-        <div className="flex flex-col gap-3"><div className="min-w-0"><div className="flex flex-wrap gap-1.5 items-center"><Badge variant="secondary" className="capitalize">{item.item_type}</Badge><Badge variant="outline">{item.category}</Badge>{item.metadata?.subcategory && <Badge variant="outline">{item.metadata.subcategory}</Badge>}{!item.active && <Badge variant="outline">Archived</Badge>}</div><h3 className="font-semibold mt-2 break-words">{item.name}</h3><p className="text-xs text-muted-foreground break-words">{[item.sku, item.brand, item.model !== item.sku ? item.model : null].filter(Boolean).join(" • ") || "No SKU"}</p></div><div className="flex justify-between items-end gap-2 rounded-md bg-muted/50 p-3">{needsCatalogPrice(item) ? <><Badge variant="outline" className="text-amber-700">Price needed</Badge><p className="text-xs text-muted-foreground">Confirm price & unit</p></> : <><div><p className="text-xs text-muted-foreground">Selling price / {item.unit}</p><p className="font-bold">{money(item.price_cents)}</p></div><div className="text-right"><p className="text-xs text-muted-foreground">Supplier cost / {item.unit}</p><p className="text-sm font-medium">{money(item.cost_cents)}</p></div></>}</div></div>
+      {visible.map((item) => <Card key={item.id} className={isCatalogArchived(item) ? "opacity-60" : ""}><CardContent className="p-4 space-y-3">
+        <div className="flex flex-col gap-3"><div className="min-w-0"><div className="flex flex-wrap gap-1.5 items-center"><Badge variant="secondary" className="capitalize">{item.item_type}</Badge><Badge variant="outline">{item.category}</Badge>{item.metadata?.subcategory && <Badge variant="outline">{item.metadata.subcategory}</Badge>}{isCatalogArchived(item) && <Badge variant="outline">Archived</Badge>}</div><h3 className="font-semibold mt-2 break-words">{item.name}</h3><p className="text-xs text-muted-foreground break-words">{[item.sku, item.brand, item.model !== item.sku ? item.model : null].filter(Boolean).join(" • ") || "No SKU"}</p></div><div className="flex justify-between items-end gap-2 rounded-md bg-muted/50 p-3">{needsCatalogPrice(item) ? <><Badge variant="outline" className="text-amber-700">Price needed</Badge><p className="text-xs text-muted-foreground">Confirm price & unit</p></> : <><div><p className="text-xs text-muted-foreground">Selling price / {item.unit}</p><p className="font-bold">{money(item.price_cents)}</p></div><div className="text-right"><p className="text-xs text-muted-foreground">Supplier cost / {item.unit}</p><p className="text-sm font-medium">{money(item.cost_cents)}</p></div></>}</div></div>
         {item.metadata?.supplier && <p className="text-xs text-muted-foreground">{item.metadata.supplier}{item.metadata.pricing_date ? ` · Prices captured ${item.metadata.pricing_date}` : ""}</p>}
         {item.metadata?.source_notes?.length ? <p className="text-xs text-amber-700">Source note: {item.metadata.source_notes.join(" ")}</p> : null}<p className="text-sm text-muted-foreground line-clamp-2 min-h-10">{item.description || "No customer-facing description"}</p>
-        <div className="flex flex-wrap justify-end gap-1 border-t pt-2">{catalogSourceUrl(item) && <Button size="sm" variant="ghost" asChild><a href={catalogSourceUrl(item)!} target="_blank" rel="noopener noreferrer">Supplier listing</a></Button>}<Button size="sm" variant="ghost" onClick={() => edit(item)}><Pencil size={15} className="mr-1.5" /> Edit</Button><Button size="sm" variant="ghost" disabled={setActive.isPending} onClick={() => setActive.mutate({ item, active: !item.active })}>{item.active ? <><Archive size={15} className="mr-1.5" /> Archive</> : <><RotateCcw size={15} className="mr-1.5" /> Restore</>}</Button></div>
+        <div className="flex flex-wrap justify-end gap-1 border-t pt-2">{catalogSourceUrl(item) && <Button size="sm" variant="ghost" asChild><a href={catalogSourceUrl(item)!} target="_blank" rel="noopener noreferrer">Supplier listing</a></Button>}<Button size="sm" variant="ghost" onClick={() => edit(item)}><Pencil size={15} className="mr-1.5" /> Edit</Button><Button size="sm" variant="ghost" disabled={setActive.isPending} onClick={() => setActive.mutate({ item, active: isCatalogArchived(item) })}>{!isCatalogArchived(item) ? <><Archive size={15} className="mr-1.5" /> Archive</> : <><RotateCcw size={15} className="mr-1.5" /> Restore</>}</Button></div>
       </CardContent></Card>)}
     </div><div className="flex flex-wrap items-center justify-between gap-3"><span className="text-sm text-muted-foreground">Page {page} of {pageCount}</span><div className="flex gap-2"><Button variant="outline" disabled={page === 1} onClick={() => setPage(value => value - 1)}>Previous</Button><Button variant="outline" disabled={page >= pageCount} onClick={() => setPage(value => value + 1)}>Next</Button></div></div></>}
 
