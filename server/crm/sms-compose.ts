@@ -13,7 +13,9 @@ export async function customerSmsReadiness(company: string, customer: string) {
     issues.push("This phone is suppressed after an opt-out. Sending START or editing preferences does not remove suppression.");
   if (smsProvider() === "sentdm") issues.push(...sentReadiness(process.env, company).issues);
   else if (!smsConfigured()) issues.push("Complete SMS provider setup in Integrations.");
-  return {recipient, ready: !issues.length, issues, sending_enabled: !!ctx.config.sending_enabled,
+  return {recipient, ready: !issues.length, issues,
+    consent_required: !ctx.prefs.sms_transactional && !ctx.prefs.sms_stopped,
+    sending_enabled: !!ctx.config.sending_enabled,
     timezone: ctx.config.timezone, sms_start: ctx.config.sms_start, sms_end: ctx.config.sms_end,
     provider: smsProvider(), mode: smsProvider() === "sentdm" ? "approved_template" : "sms"};
 }

@@ -23,7 +23,7 @@ function photoAnalysisText(value: string) {
   return value;
 }
 import { useEffect, useState, useRef } from "react";
-import { useParams, Link } from "wouter";
+import { useParams, useSearch, Link } from "wouter";
 import {
   ArrowLeft,
   Phone,
@@ -112,6 +112,7 @@ const jobTypes = [
 ] as const;
 
 export default function CustomerDetail() {
+  const search = useSearch();
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
   const { profile } = useAuth();
@@ -433,7 +434,7 @@ export default function CustomerDetail() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="overview">
+      <Tabs key={search} defaultValue={new URLSearchParams(search).get("tab") === "activity" ? "activity" : "overview"}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="properties">Properties & Equipment</TabsTrigger>

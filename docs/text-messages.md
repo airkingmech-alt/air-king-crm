@@ -14,6 +14,12 @@ Switching conversations or accounts resets shared-phone selection. Switching cus
 
 The shared-phone selector requires **no new migration, environment configuration, credentials or grants**. Its branch explicitly includes PR #55's separate test-only clock correction for reliable cross-platform checks; that prerequisite changes no application behavior. Neither PR is merged by this work.
 
+## First texts and consent
+
+**Start a text** searches existing customer records, including customers without any message history. The selected customer record and primary recipient remain visible. It uses the existing customer SMS endpoint and protected outbox, without needing a conversation match or changing historical attribution. Choosing a customer does not send a message or change preferences. Customer creation remains in Customers.
+
+New customers keep service-text consent off by default. When permission is missing, **Review communication preferences** opens the existing controls; staff must record actual permission using **Service and invoice texts** and a consent-source note. Saving refreshes SMS readiness immediately. Opt-outs and phone suppression remain enforced and cannot be cleared by this flow. Existing conversation composers link missing-consent guidance to the customer's Timeline. No migration or configuration change is required for this UI update.
+
 ## Release prerequisites
 
 Apply `supabase/migrations/20261024231359_text_conversations.sql` before deploying this code, only after publication approval. It adds read-only, SECURITY INVOKER projections and indexes; functions are service-role-only, with company scope supplied by server-verified staff profiles. No customer/message data changes, provider/environment changes, new credentials, or worker invocation are involved. Deploying without the migration shows a retryable unavailable error; it does not fall back to unscoped or partial history.
@@ -33,7 +39,7 @@ Screenshots from synthetic data are in `docs/screenshots/text-messages-desktop.p
 
 ## Deliberate limits
 
-No manual message reassignment or duplicate-customer merging. Start new customer conversations through the existing customer Timeline. Attachments are not displayed. Outbound bubbles show the stored CRM message content; provider template decoration is not reconstructed. The initial conversation aggregation considers the company's SMS history in PostgreSQL; returned pages and per-phone history are bounded, but very large installations may eventually warrant a maintained conversation summary table.
+No manual message reassignment or duplicate-customer merging. Start new customer conversations using **Start a text** on Text Messages or the existing customer Timeline. Attachments are not displayed. Outbound bubbles show the stored CRM message content; provider template decoration is not reconstructed. The initial conversation aggregation considers the company's SMS history in PostgreSQL; returned pages and per-phone history are bounded, but very large installations may eventually warrant a maintained conversation summary table.
 
 ## Migration access and rollback review
 
