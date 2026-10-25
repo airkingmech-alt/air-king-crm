@@ -1,5 +1,5 @@
 import { CardCheckout } from "@/components/card-checkout";
-import { QuoteHeader, QuoteGuide, QuoteFooter } from "@/components/branded-quote";
+import { QuoteHeader, QuoteGuide, QuoteFooter, isServiceOnlyQuote, ServiceQuoteTerms } from "@/components/branded-quote";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "wouter";
@@ -125,7 +125,7 @@ export default function CustomerDocument() {
             {data.kind === "quote" ? (
               <>
                 <QuoteHeader number={d.number} title={d.title} customerName={d.customerName} status={d.status} createdAt={d.createdAt} />
-                {!closed && <QuoteGuide />}
+                {!closed && !isServiceOnlyQuote(d) && <QuoteGuide />}
                 {d.legacyAcceptance && <p className="rounded-lg border bg-amber-50 p-4 text-sm text-slate-900">This legacy proposal does not have a verified itemized total in this view. Please refer to the original accepted copy.</p>}
                 <section className="rounded-xl border bg-muted/20 p-5 sm:p-6">
                   <h2 className="font-bold text-sm mb-2">Scope of work</h2>
@@ -344,7 +344,7 @@ export default function CustomerDocument() {
                     </p>
                   </section>
                 )}
-                <section className="rounded-xl border p-5 space-y-3 text-xs text-muted-foreground">
+                {isServiceOnlyQuote(d) ? <ServiceQuoteTerms /> : <section className="rounded-xl border p-5 space-y-3 text-xs text-muted-foreground">
                   <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
                     <Shield size={16} className="text-primary" /> Warranty &
                     Guarantees
@@ -365,7 +365,7 @@ export default function CustomerDocument() {
                     ductwork, electrical upgrades, or permits may require
                     additional charges.
                   </p>
-                </section>
+                </section>}
                 <QuoteFooter />
               </>
             ) : (

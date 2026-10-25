@@ -1,3 +1,4 @@
+import { MaintenanceQuoteForm } from "@/components/maintenance-quote-form";
 import { LaborDescriptionBuilder } from "@/components/labor-description-builder";
 import { calculateQuotePricing } from "@/lib/quote-pricing";
 import { guardSave } from "@/lib/confirmed-save";
@@ -40,6 +41,7 @@ export default function Quotes() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [pendingOnly,setPendingOnly]=useState(()=>new URLSearchParams(window.location.hash.split("?")[1] || "").get("status")==="pending");
+  const [serviceOnly, setServiceOnly] = useState(false);
   const [showBuilder, setShowBuilder] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [selectedEquipment, setSelectedEquipment] = useState<string[]>([]);
@@ -128,6 +130,8 @@ export default function Quotes() {
           </CardContent>
         </Card>
 
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={serviceOnly} onChange={e => setServiceOnly(e.target.checked)} data-testid="service-only-toggle" />Maintenance — service only</label>
+        {serviceOnly ? <MaintenanceQuoteForm key={selectedCustomer} customer={customers.find(c => c.id === selectedCustomer)} onCancel={() => setShowBuilder(false)} onSaved={quote => { setShowBuilder(false); setLocation(`/proposals/${quote.id}`); }} /> : <>
         {/* Equipment Selection */}
         <Card>
           <CardHeader className="pb-3">
@@ -476,6 +480,7 @@ export default function Quotes() {
             Save Draft Quote
           </Button>
         </div>
+        </>}
       </div>
     );
   }
