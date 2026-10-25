@@ -1,7 +1,7 @@
 import { QuoteEditor } from "@/components/document-editors";
 import { DeleteRecord } from "@/components/delete-record";
 import { guardSave } from "@/lib/confirmed-save";
-import { QuoteHeader, QuoteGuide, QuoteFooter } from "@/components/branded-quote";
+import { QuoteHeader, QuoteGuide, QuoteFooter, isServiceOnlyQuote, ServiceQuoteTerms } from "@/components/branded-quote";
 import { DocumentActions } from "@/components/document-actions";
 import { useLocation, useParams, Link } from "wouter";
 import { useState, useEffect, useRef } from "react";
@@ -307,7 +307,7 @@ export default function Proposal() {
 
         <div className="space-y-5 mb-6">
           <QuoteHeader number={quote.id} title={quote.title} customerName={quote.customerName} status={quote.status} createdAt={quote.createdAt} />
-          {!accepted && <QuoteGuide />}
+          {!accepted && !isServiceOnlyQuote(quote) && <QuoteGuide />}
           {quote.status === "Draft" && <div className="no-print rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Draft only. Saving does not send this quote to the customer.</div>}
           {quote.internalReviewNote && <div className="no-print rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><strong>Internal review:</strong> {quote.internalReviewNote}</div>}
           {quote.pricingVersion === "purchase-tax-v1" && <div className="no-print rounded-lg border p-3 text-xs space-y-1" aria-label="Internal quote costs">
@@ -600,7 +600,7 @@ export default function Proposal() {
         )}
 
         {/* Warranty & Terms */}
-        <Card className="mb-6">
+        {isServiceOnlyQuote(quote) ? <ServiceQuoteTerms /> : <Card className="mb-6">
           <CardContent className="p-5 space-y-3">
             <div className="flex items-center gap-2">
               <Shield size={16} className="text-primary" />
@@ -638,7 +638,7 @@ export default function Proposal() {
               </p>
             </div>
           </CardContent>
-        </Card>
+        </Card>}
 
         <QuoteFooter />
       </div>

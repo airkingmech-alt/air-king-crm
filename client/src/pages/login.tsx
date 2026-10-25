@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useAuth } from "@/context/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,8 @@ import { AirKingLogo } from "@/components/layout/app-shell";
 
 export default function Login() {
   const { signIn } = useAuth();
+  const [remember,setRemember]=useState(false);
+  const submitting=useRef(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -16,11 +18,17 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(submitting.current)return;
+    submitting.current=true;
     setError(null);
     setBusy(true);
-    const { error } = await signIn(email, password);
-    setBusy(false);
-    if (error) setError(error);
+    try {
+      const {error}=await signIn(email,password,remember);
+      if(error)setError(error);
+      else setPassword("");
+    } catch {setError("Unable to sign in. Please try again.");}
+    finally {submitting.current=false;setBusy(false);}
+
   };
 
   return (
@@ -63,6 +71,15 @@ export default function Login() {
                   data-testid="input-password"
                   placeholder="••••••••"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="remember-me" className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                  <input id="remember-me" type="checkbox" checked={remember} disabled={busy}
+                    onChange={e=>setRemember(e.target.checked)} aria-describedby="remember-help" className="h-4 w-4" />
+                  Remember me on this device
+                </label>
+                <p id="remember-help" className="text-xs text-muted-foreground">Checked: stay signed in between visits. Unchecked: use this tab’s session. Restored tabs may stay signed in; always sign out on shared devices. Session expiry still applies.</p>
               </div>
 
               {error && (
