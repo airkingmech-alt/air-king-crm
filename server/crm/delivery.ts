@@ -1,3 +1,4 @@
+import {hasSmsSendNowGrant} from "./sms-send-now-policy";
 import { smsConfigured } from "./readiness";
 import { smsProvider, sendSentSms } from "./sentdm";
 import twilio from "twilio";
@@ -321,8 +322,8 @@ function couponHtml(body: string, name: string, values: Row) {
     </div>
   </div>`;
 }
-async function stopReason(msg: Row, ctx: Awaited<ReturnType<typeof context>>) {
-  if (msg.reason === "customer_care") {
+export async function stopReason(msg: Row, ctx: Awaited<ReturnType<typeof context>>) {
+  if (msg.reason === "customer_care" || msg.send_now_requested_at) {
     try { if (phone(ctx.contact.phone) !== msg.recipient) return "Customer primary phone changed. Review before sending."; }
     catch { return "Customer primary phone is unavailable."; }
   }
@@ -415,6 +416,11 @@ export async function deliver(
   msg: Row,
   transport?: (message: Row) => Promise<string>,
 ) {
+  if (msg.campaign_id && !MARKETING_RELEASE_READY) return;
+  // Refresh worker snapshots before honoring a per-message request.
+  const current = await result(db().from("communications").select("*").eq("id",msg.id).eq("company_id",msg.company_id).maybeSingle());
+  if (!current || current.status !== "pending") return;
+  msg = current;
   // Preview and paused campaigns preserve queued work without contacting providers.
   if (msg.campaign_id) {
     if (!MARKETING_RELEASE_READY) return;
@@ -457,14 +463,10 @@ export async function deliver(
       ctx.config.sms_start,
       ctx.config.sms_end,
     );
-    if (next.getTime() > now.getTime()) {
-      await result(
-        db()
-          .from("communications")
-          .update({ scheduled_at: next.toISOString() })
-          .eq("id", msg.id)
-          .eq("status", "pending"),
-      );
+    if (next.getTime() > now.getTime() && !hasSmsSendNowGrant(msg,now)) {
+      const defer = db().from("communications").update({scheduled_at:next.toISOString()}).eq("id",msg.id).eq("status","pending");
+      // An explicit request arriving after this read must not be overwritten.
+      await result(msg.send_now_requested_at ? defer.eq("send_now_requested_at",msg.send_now_requested_at) : defer.is("send_now_requested_at",null));
       return;
     }
     if (
@@ -501,6 +503,13 @@ export async function deliver(
           .eq("claim_token", msg.claim_token),
       );
       return;
+    }
+    if (msg.channel === "sms") {
+      const now = new Date(), next = nextWindow(now,ctx.config.timezone,ctx.config.sms_start,ctx.config.sms_end);
+      if (next.getTime()>now.getTime() && !hasSmsSendNowGrant(msg,now,true)) {
+        await result(db().from("communications").update({status:"pending",scheduled_at:next.toISOString(),claim_token:null,claimed_at:null}).eq("id",msg.id).eq("claim_token",msg.claim_token));
+        return;
+      }
     }
     const latestValues: Row = {
       ...msg.merge_values,

@@ -1,3 +1,4 @@
+import {sendNowPreview,requestSmsSendNow,sendNowView} from "./sms-send-now";
 import type {Express,Request,Response} from "express";
 import {z} from "zod";
 import {caller,db,result,phone} from "./core";
@@ -17,6 +18,15 @@ const wrap = (fn:(req:Request,res:Response)=>Promise<void>) => async(req:Request
   }
 };
 export function registerTextMessages(app:Express) {
+  app.get("/api/crm/text-messages/:id/send-now",wrap(async(req,res)=>{
+    const c=await caller(req,true), id=z.string().uuid().parse(req.params.id), recipient=z.string().regex(/^\+[1-9]\d{7,14}$/).parse(req.query.recipient);
+    const preview=await sendNowPreview(c.company,id,recipient);res.json({message:sendNowView(preview.message),already_requested:preview.already_requested});
+  }));
+  app.post("/api/crm/text-messages/:id/send-now",wrap(async(req,res)=>{
+    const c=await caller(req,true), id=z.string().uuid().parse(req.params.id);
+    const input=z.object({recipient:z.string().regex(/^\+[1-9]\d{7,14}$/),confirmed:z.literal(true)}).strict().parse(req.body);
+    res.json({message:sendNowView(await requestSmsSendNow(c.company,id,c.id,input.recipient))});
+  }));
   app.get("/api/crm/text-messages",wrap(async(req,res)=>{
     const c=await caller(req), b=before(req.query.before);
     const rows=await result(db().rpc("crm_text_conversations",{p_company:c.company,p_before_at:b?.at || null,p_before_phone:b?.key || ""}));

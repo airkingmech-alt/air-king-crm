@@ -50,3 +50,11 @@ test('send rejects ambiguous, unmatched, additional and foreign-customer selecti
 test('database failures are actionable without exposing private database details',async()=>{
  fail=true;const r=await request();assert.equal(r.status,503);assert.deepEqual(await r.json(),{error:'Text messages unavailable. Please retry.'});
 });
+test('Send now requires owner/admin, explicit confirmation, strict fields and history permissions before any access',async()=>{
+ const path='/11111111-1111-4111-8111-111111111111/send-now';
+ assert.equal((await request(path,'POST',{recipient:'+18165550101',confirmed:true},false)).status,401);
+ for(const role of ['dispatcher','technician']){profile.role=role;assert.equal((await request(path,'POST',{recipient:'+18165550101',confirmed:true})).status,403);}
+ profile.role='admin';
+ for(const body of [{recipient:'+18165550101'},{recipient:'+18165550101',confirmed:false},{recipient:'+18165550101',confirmed:true,company_id:'spoofed-company'}]) assert.equal((await request(path,'POST',body)).status,400);
+ profile.permissions={communications:false};assert.equal((await request(path+'?recipient=%2B18165550101')).status,403);assert.equal(calls.length,0);
+});
