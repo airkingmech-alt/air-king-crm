@@ -104,6 +104,8 @@ test("permissions are enforced inside the transaction, with owner override", asy
   await sql("update profiles set permissions=$1 where id=$2", [{ time_clock_edit_own: false }, tech]);
   await assert.rejects(write("create", missed("2026-01-15")), /Ask an owner/);
   const running = await write("clock_in");
+  // PGlite can give consecutive punches the same millisecond; this test checks permissions, not zero-duration shifts.
+  await new Promise(resolve => setTimeout(resolve, 10));
   await write("clock_out", { id: running.id, version: 1 });
   await write("create", missed("2026-01-15"), owner);
   await sql("update profiles set permissions=$1 where id=$2", [{ time_clock: false }, tech]);
