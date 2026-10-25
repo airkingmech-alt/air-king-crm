@@ -26,6 +26,7 @@ export function calculateQuotePricing(equipment: number, labor: number, material
 }
 
 export interface QuoteDraftInput {
+  servicePrice?: number;
   newHouseSnapshot?: import("./new-house-quote").NewHouseSnapshot;
   customerId: string;
   customerName: string;
@@ -40,6 +41,14 @@ export interface QuoteDraftInput {
 }
 
 export function buildQuoteOptions(input: QuoteDraftInput, catalog: PricebookItem[] = pricebook) {
+  if (input.servicePrice !== undefined) {
+    if (input.jobType !== "Maintenance" || input.equipmentItems.length || input.equipmentCost !== 0 || input.materialsCost !== 0 || input.selectedAddOns?.length)
+      throw new Error("Fixed service pricing requires Maintenance with no equipment, materials, or add-ons.");
+    if (!input.laborDescription?.trim() || !Number.isFinite(input.servicePrice) || input.servicePrice <= 0 || Math.abs(input.servicePrice * 100 - Math.round(input.servicePrice * 100)) > 0.000001 || !Number.isFinite(input.laborCost) || input.laborCost < 0)
+      throw new Error("Enter a service description, a positive total with at most two decimal places, and a valid labor estimate.");
+    return { options: [{ tier: "Better" as const, label: "Maintenance service", equipment: "", equipmentItems: [], equipmentSummary: "", efficiency: "", features: [input.laborDescription.trim()], equipmentCost: 0, purchaseTax: 0, totalCost: input.laborCost, customerPrice: input.servicePrice }], unavailable: [] as string[] };
+  }
+  if (!input.equipmentItems.length) throw new Error("Select equipment or use the service-only Maintenance form.");
   const selected = input.equipmentItems.map(id => {
     const item = catalog.find(item => item.id === id);
     if (!item) throw new Error("Selected equipment is missing from the pricebook. Review the quote before saving.");
@@ -113,11 +122,11 @@ export function buildQuoteDraft(input: QuoteDraftInput, id: string, createdAt: s
     equipmentItems: [...input.equipmentItems], equipmentSelectionMode: "explicit",
     laborDescription: input.laborDescription,
     selectedAddOns: [...(input.selectedAddOns || [])],
-    addOnCatalog: addOnServices.map(addOn => ({ ...addOn })),
+    addOnCatalog: input.servicePrice !== undefined ? [] : addOnServices.map(addOn => ({ ...addOn })),
     equipmentCost: pricing.equipmentCost, laborCost: pricing.laborCost,
     materialsCost: pricing.materialsCost, taxRate: pricing.taxRate,
     purchaseTax: pricing.purchaseTax, pricingVersion: "purchase-tax-v1",
-    internalReviewNote: ["Confirm manufacturer/AHRI matching and supplier availability for each option before sending.", ...unavailable].join(" "),
+    internalReviewNote: input.servicePrice !== undefined ? "Fixed service total. Review internal labor costs before accepting; a zero estimate does not establish actual cost." : ["Confirm manufacturer/AHRI matching and supplier availability for each option before sending.", ...unavailable].join(" "),
     options,
   };
 }

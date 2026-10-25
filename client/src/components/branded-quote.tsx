@@ -48,3 +48,11 @@ export function QuoteFooter() {
     <p><a href="tel:+18165196067">(816) 519-6067</a> · <a href="mailto:airkingmech@gmail.com">airkingmech@gmail.com</a></p>
   </footer>;
 }
+
+// Explicit empty equipment distinguishes service drafts from older quotes without selection metadata.
+export function isServiceOnlyQuote(quote: { jobType?: string; equipmentSelectionMode?: string; equipmentItems?: unknown[] }) {
+  return quote.jobType === "Maintenance" && quote.equipmentSelectionMode === "explicit" && Array.isArray(quote.equipmentItems) && quote.equipmentItems.length === 0;
+}
+export function ServiceQuoteTerms() {
+  return <section className="rounded-xl border p-5 text-sm space-y-2 mb-6"><h2 className="font-semibold">Maintenance service terms</h2><p>The total covers the service scope described above. No equipment replacement is included. Any additional work requires a separate approved quote.</p><p>Proposal valid for 30 days. Balance due upon completion. Scheduling will be confirmed after approval.</p></section>;
+}

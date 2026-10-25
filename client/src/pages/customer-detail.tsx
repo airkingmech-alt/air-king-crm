@@ -1,3 +1,4 @@
+import { MaintenanceQuoteForm } from "@/components/maintenance-quote-form";
 import { AddressAttribution } from "@/components/address-attribution";
 import { CustomerEditor } from "@/components/customer-editor";
 import { CustomerNoteEditor } from "@/components/customer-note-editor";
@@ -346,7 +347,7 @@ export default function CustomerDetail() {
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-5">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-5 min-w-0 overflow-x-clip">
       <Link href="/customers">
         <Button variant="ghost" size="sm" className="mb-1">
           <ArrowLeft size={16} className="mr-1.5" /> Back to Customers
@@ -1060,19 +1061,19 @@ export default function CustomerDetail() {
           if (!open) resetQuoteForm();
         }}
       >
-        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100%-2rem)] max-w-[600px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText size={18} />
               New Quote — {customer.name}
             </DialogTitle>
             <DialogDescription>
-              Build a draft with equipment from the pricebook. Champion XC3/XC4 selections generate actual model-priced options; other selections stay as chosen.
+              {jobType === "Maintenance" ? "Describe the service and set the complete customer total." : "Build a draft with equipment from the pricebook. Champion XC3/XC4 selections generate actual model-priced options; other selections stay as chosen."}
             </DialogDescription>
           </DialogHeader>
 
           {/* Step indicator */}
-          <div className="flex items-center gap-2 mb-2">
+          {jobType !== "Maintenance" && <div className="flex items-center gap-2 mb-2">
             {[1, 2, 3].map((s) => (
               <div key={s} className="flex items-center gap-2">
                 <div
@@ -1098,7 +1099,7 @@ export default function CustomerDetail() {
                   ? "Equipment"
                   : "Pricing Summary"}
             </span>
-          </div>
+          </div>}
 
           <Separator />
 
@@ -1120,6 +1121,7 @@ export default function CustomerDetail() {
                   </SelectContent>
                 </Select>
               </div>
+              {jobType === "Maintenance" ? <MaintenanceQuoteForm customer={customer} onCancel={() => { setShowQuoteDialog(false); resetQuoteForm(); }} onSaved={() => { setShowQuoteDialog(false); resetQuoteForm(); }} /> : <>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="labor-cost">Labor Cost</Label>
@@ -1191,6 +1193,7 @@ export default function CustomerDetail() {
                   Next: Select Equipment
                 </Button>
               </DialogFooter>
+              </>}
             </div>
           )}
 
