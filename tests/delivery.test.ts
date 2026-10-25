@@ -138,7 +138,9 @@ globalThis.fetch = async (input: any, init: any = {}) => {
       const m=state.communications.find(x=>x.id===payload.p_id&&x.company_id===payload.p_company);
       if(!m || m.recipient!==payload.p_recipient)return json({message:'Message unavailable'},400);
       if(m.send_now_requested_at)return json({already_requested:true,message:m});
-      Object.assign(m,{send_now_requested_at:new Date().toISOString(),send_now_expires_at:new Date(Date.now()+300000).toISOString(),send_now_actor_id:payload.p_actor,scheduled_at:new Date().toISOString()});
+      // PostgreSQL now() is stable throughout crm_request_sms_send_now.
+      const requestedAt=Date.now();
+      Object.assign(m,{send_now_requested_at:new Date(requestedAt).toISOString(),send_now_expires_at:new Date(requestedAt+300000).toISOString(),send_now_actor_id:payload.p_actor,scheduled_at:new Date(requestedAt).toISOString()});
       return json({already_requested:false,message:m});
     }
     assert.equal(path[3], "crm_claim_message");
@@ -524,7 +526,12 @@ test('a stale quiet-hours deferral cannot postpone a newly authorized message',a
  await deliver(m,async()=>{calls++;return 'once';});assert.equal(calls,1);
 });
 
-test('Send now service rejects stale consent, foreign tenants and changed recipient, then converges repeated requests',async()=>{
+test('Send now service rejects stale consent, foreign tenants and changed recipient, then converges repeated requests',async(t)=>{
+ // Advance between clock reads: a mock grant must retain PostgreSQL's single
+ // transaction timestamp even when the host clock crosses a millisecond.
+ t.mock.timers.enable({apis:['Date'],now:new Date('2026-10-25T00:57:00Z')});
+ const clockNow=Date.now.bind(Date);
+ t.mock.method(Date,'now',()=>{t.mock.timers.tick(1);return clockNow();});
  defaults();outsideHours();const m=message({channel:'sms',recipient:'+18165551234'});let calls=0;
  const prior={...process.env};Object.assign(process.env,{SMS_PROVIDER:'twilio',TWILIO_ACCOUNT_SID:'synthetic',TWILIO_AUTH_TOKEN:'synthetic',TWILIO_MESSAGING_SERVICE_SID:'synthetic'});
  try {
@@ -536,6 +543,9 @@ test('Send now service rejects stale consent, foreign tenants and changed recipi
   state.customer_communication_preferences[0].sms_transactional=true;
   const dispatch=(row:any)=>deliver(row,async()=>{calls++;return 'synthetic-sent';});
   await Promise.all([requestSmsSendNow('co',m.id,'owner',m.recipient,dispatch),requestSmsSendNow('co',m.id,'owner',m.recipient,dispatch)]);
+  const saved=state.communications[0];
+  assert.equal(Date.parse(saved.send_now_expires_at)-Date.parse(saved.send_now_requested_at),300000);
+  assert.equal(saved.scheduled_at,saved.send_now_requested_at);
   assert.equal(calls,1);assert.equal(state.communications.length,1);
   const again=await requestSmsSendNow('co',m.id,'owner',m.recipient,dispatch);assert.equal(again.status,'sent');assert.equal(calls,1);
  } finally {for(const key of ['SMS_PROVIDER','TWILIO_ACCOUNT_SID','TWILIO_AUTH_TOKEN','TWILIO_MESSAGING_SERVICE_SID']){if(prior[key]===undefined)delete process.env[key];else process.env[key]=prior[key];}}
