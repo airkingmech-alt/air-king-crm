@@ -416,6 +416,7 @@ export async function deliver(
   msg: Row,
   transport?: (message: Row) => Promise<string>,
 ) {
+  if (msg.campaign_id && !MARKETING_RELEASE_READY) return;
   // Refresh worker snapshots before honoring a per-message request.
   const current = await result(db().from("communications").select("*").eq("id",msg.id).eq("company_id",msg.company_id).maybeSingle());
   if (!current || current.status !== "pending") return;
