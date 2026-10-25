@@ -1,5 +1,5 @@
 import {SmsSendNow} from "@/components/sms-send-now";
-import {useState} from "react";
+import {useEffect,useState} from "react";
 import {useInfiniteQuery,useQueryClient} from "@tanstack/react-query";
 import {Link,useLocation,useSearch} from "wouter";
 import {ArrowLeft,MessageSquare} from "lucide-react";
@@ -48,7 +48,7 @@ function Messages({company,canSendNow}:{company:string;canSendNow:boolean}) {
   const messages:Message[]=Array.from(new Map((history.data?.pages.flatMap(p=>p.items) || []).map((m:Message)=>[m.key,m])).values()) as Message[];
   messages.sort((a,b)=>a.created_at.localeCompare(b.created_at)||a.key.localeCompare(b.key));
   const customers:Customer[]=history.data?.pages[0]?.customers || [];
-  const eligible=customers.length===1 && count(customers)===1 && customers[0].is_primary;
+  const shared=count(customers)>1;
   const unread=messages.filter(m=>m.direction==="inbound"&&!m.read_at);
   const refresh=async()=>{await Promise.all([cache.invalidateQueries({queryKey:["text-history",company]}),cache.invalidateQueries({queryKey:["text-conversations",company]}),cache.invalidateQueries({queryKey:["sms-replies"]})]);};
   return <div className="space-y-4 min-w-0">
@@ -77,7 +77,7 @@ function Messages({company,canSendNow}:{company:string;canSendNow:boolean}) {
           {history.isLoading&&<p role="status">Loading messages…</p>}
           {history.error&&<div role="alert"><p>Unable to load messages. {history.error.message}</p><Button variant="outline" onClick={()=>history.refetch()}>Retry messages</Button></div>}
           {history.data&&!history.error&&<>
-            {!eligible&&<p className="rounded-md bg-amber-50 text-amber-950 p-3 text-sm">{count(customers)>1 ? "Multiple customers share this phone. Messages retain their original customer links. Replying here is disabled until this phone has one matching customer." : !customers.length ? "No current customer matches this phone. Review the customer records before replying." : "This is an additional contact phone. Replies here require a matching primary contact."}</p>}
+            {shared&&<p className="rounded-md bg-amber-50 text-amber-950 p-3 text-sm">Multiple customers share this phone. Choose the customer for your new outgoing text below. Existing messages retain their original links; unassigned replies remain unassigned.</p>}
             {history.hasNextPage&&<Button variant="outline" disabled={history.isFetchingNextPage} onClick={()=>history.fetchNextPage()}>Load older messages</Button>}
             {!messages.length&&<p className="text-muted-foreground">No messages in this conversation.</p>}
             <ol aria-label="Message history" className="space-y-3">
@@ -97,10 +97,37 @@ function Messages({company,canSendNow}:{company:string;canSendNow:boolean}) {
             {!!unread.length&&<Button variant="outline" disabled={marking} onClick={async()=>{setMarking(true);setNotice("");try{
               for(const m of unread) await crm(`crm/replies/${m.id}/read`,"POST",{});
             }catch(e:any){setNotice(e.message);}finally{await refresh();setMarking(false);}}}>Mark displayed replies read ({unread.length})</Button>}
-            {eligible&&<SmsComposer key={`${company}:${selected}:${customers[0].id}`} customerId={customers[0].id} conversationPhone={selected} onQueued={()=>{void refresh();}}/>}
+            <ConversationReply key={`${company}:${selected}`} customers={customers} recipient={selected} onQueued={()=>{void refresh();}}/>
           </>}
           {notice&&<p role="alert">{notice}</p>}
         </section>}
     </div>
+  </div>;
+}
+
+// Remount for each conversation/account. Never infer a shared phone's identity
+// from its latest message, and never persist a selected customer across threads.
+function ConversationReply({customers,recipient,onQueued}:{customers:Customer[];recipient:string;onQueued:()=>void}) {
+  const [chosen,setChosen]=useState("");
+  const primary=customers.filter(c=>c.is_primary);
+  const shared=count(customers)>1;
+  const customer=primary.find(c=>c.id===(shared ? chosen : customers.length===1 ? customers[0].id : ""));
+  useEffect(()=>{if(chosen&&!customers.some(c=>c.id===chosen&&c.is_primary))setChosen("");},[customers,chosen]);
+  if(!primary.length) return <p className="rounded-md bg-amber-50 text-amber-950 p-3 text-sm">{!customers.length
+    ? "No current customer matches this phone. Review the customer records before replying."
+    : "This is an additional contact phone. Replies here require a matching primary contact."}</p>;
+  return <div className="space-y-3 min-w-0">
+    {shared&&<div className="space-y-2">
+      <label htmlFor="reply-customer" className="block font-medium">Reply as this customer</label>
+      <select id="reply-customer" className="block w-full min-w-0 rounded-md border bg-background p-2 text-sm" value={customer?.id || ""} onChange={e=>setChosen(e.target.value)}>
+        <option value="">Choose a customer…</option>
+        {primary.map(c=><option key={c.id} value={c.id}>{c.name} ({c.id})</option>)}
+      </select>
+      <p className="text-xs text-muted-foreground">Only matching primary contacts are listed. Choose carefully: the text goes to the shared phone. Switching customers clears unsent drafts; requests awaiting confirmation stay with their original customer.</p>
+    </div>}
+    {customer&&<>
+      <p className="text-sm break-words">Reply for <strong>{customer.name}</strong> ({customer.id}) · <span className="break-all">{recipient}</span></p>
+      <SmsComposer key={customer.id} customerId={customer.id} conversationPhone={recipient} onQueued={onQueued}/>
+    </>}
   </div>;
 }

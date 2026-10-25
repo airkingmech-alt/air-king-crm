@@ -1,5 +1,5 @@
 // Synthetic UI QA only. All app APIs/auth are local module stubs.
-// Run: node tests/sentdm-replies-browser.mjs (requires local Chromium).
+// Run: node tests/text-messages-browser.mjs (requires local Chromium).
 import {mkdtemp,writeFile,rm} from "node:fs/promises";
 import path from "node:path";
 import {tmpdir} from "node:os";
@@ -24,7 +24,7 @@ try {
     const recent=[msg('in:reply','inbound','received','Synthetic reply <img src=x onerror=window.injected=true>','2026-10-24T12:03:00Z'),msg('out:sent','outbound','sent','On our way','2026-10-24T12:02:00Z'),msg('out:delivered','outbound','delivered','Your appointment is confirmed','2026-10-24T12:01:00Z')];
     const older=[msg('out:failed','outbound','failed','Earlier failed text','2026-10-24T11:00:00Z')];
     const conversations=[{phone,last_at:recent[0].created_at,preview:'Appointment reply',unread_count:1,customers:[customer]},
-      {phone:'+18165550102',last_at:'2026-10-24T12:00:00Z',preview:'Shared phone reply',unread_count:1,customers:[{...customer,id:'shared-one',total_count:2},{...customer,id:'shared-two',total_count:2}]},
+      {phone:'+18165550102',last_at:'2026-10-24T12:00:00Z',preview:'Shared phone reply',unread_count:1,customers:[{...customer,id:'shared-one',name:'Alex Sample',total_count:3},{...customer,id:'shared-two',name:'Morgan Sample',total_count:3},{...customer,id:'additional',name:'Additional contact',is_primary:false,total_count:3}]},
       {phone:'+18165550103',last_at:'2026-10-24T11:00:00Z',preview:'Unmatched reply',unread_count:0,customers:[]}];
     window.__qa={calls:[],failRead:false,failSend:false,failHistory:false,failList:false,validationFail:false,changedPhone:false,submissions:{},conversations,recent};
     export async function crm(route,method='GET',body,key){
@@ -39,8 +39,9 @@ try {
       if(url.pathname==='/crm/text-messages/history') {
         if(window.__qa.failHistory)throw Error('Synthetic history failure');
         const p=url.searchParams.get('phone');const customers=conversations.find(c=>c.phone===p)?.customers||[];
-        return {customers,items:structuredClone(p===phone?(url.searchParams.has('before')?older:recent):[msg('in:shared','inbound','received','Other conversation reply','2026-10-24T12:00:00Z')]),next:p===phone&&!url.searchParams.has('before')?{at:'2026-10-24T12:01:00Z',key:'out:delivered'}:null};
+        return {customers:structuredClone(customers),items:structuredClone(p===phone?(url.searchParams.has('before')?older:recent):[msg('in:shared','inbound','received','Other conversation reply','2026-10-24T12:00:00Z')]),next:p===phone&&!url.searchParams.has('before')?{at:'2026-10-24T12:01:00Z',key:'out:delivered'}:null};
       }
+      if(route==='crm/customers/shared-one/sms'||route==='crm/customers/shared-two/sms')return {ready:!(route.includes('shared-two')&&window.__qa.blockShared),recipient:'+18165550102',issues:route.includes('shared-two')&&window.__qa.blockShared?['Synthetic shared consent missing']:[],sending_enabled:true,timezone:'America/Chicago',sms_start:8,sms_end:19,mode:'approved_template'};
       if(route==='crm/customers/synthetic-customer/sms')return {ready:true,recipient:window.__qa.changedPhone?'+18165550999':phone,issues:[],sending_enabled:true,timezone:'America/Chicago',sms_start:8,sms_end:19,mode:'approved_template'};
       if(route==='crm/text-messages/send'){
         if(window.__qa.validationFail)throw Object.assign(Error('Synthetic consent missing'),{status:400});
@@ -118,6 +119,44 @@ try {
   await evaluate("window.__qa.changedPhone=true;window.__cache.invalidateQueries({queryKey:['customer-sms']})");await wait("document.body.innerText.includes('current primary phone does not match')");
   assert.ok(await evaluate("Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Queue SMS').disabled"));
   await selectPhone('+18165550103');await wait("document.body.innerText.includes('No current customer matches')");assert.equal(await evaluate("document.querySelectorAll('textarea').length"),0);
+  // A shared phone requires an explicit choice; every mounted composer belongs
+  // to that customer, with no implicit read acknowledgement or historical edits.
+  await evaluate('window.__qa.validationFail=false;window.__qa.changedPhone=false');
+  await selectPhone('+18165550102');await wait("!!document.querySelector('#reply-customer')");
+  const chooseCustomer=id=>evaluate(`(()=>{const s=document.querySelector('#reply-customer');s.value=${JSON.stringify(id)};s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  assert.equal(await evaluate("document.querySelector('#reply-customer').value"),'');
+  assert.equal(await evaluate("Array.from(document.querySelector('#reply-customer').options).some(o=>o.value==='additional')"),false);
+  const postsBefore=await evaluate("window.__qa.calls.filter(c=>c.method==='POST').length");
+  await chooseCustomer('shared-one');await wait("!!document.querySelector('textarea')&&document.body.innerText.includes('Reply for Alex Sample')");
+  await fill('Unsent Alex draft');await chooseCustomer('shared-two');await wait("document.body.innerText.includes('Reply for Morgan Sample')");
+  assert.equal(await evaluate("document.querySelector('textarea').value"),'');
+  await evaluate("window.__qa.blockShared=true;window.__cache.invalidateQueries({queryKey:['customer-sms']})");
+  await wait("document.body.innerText.includes('Synthetic shared consent missing')");
+  await fill('Blocked draft');assert.ok(await evaluate("Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Queue SMS').disabled"));
+  assert.equal(await evaluate("window.__qa.calls.filter(c=>c.method==='POST').length"),postsBefore,'Selection and drafts never mark read or send');
+  await chooseCustomer('shared-one');await wait("document.body.innerText.includes('Reply for Alex Sample')");
+  assert.equal(await evaluate("document.querySelector('textarea').value"),'');
+  await fill('Synthetic selected customer reply');await evaluate('window.__qa.failSend=true');
+  await evaluate("(()=>{const b=Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Queue SMS');b.click();b.click();})()");
+  await wait("document.body.innerText.includes('Synthetic response lost')");
+  await chooseCustomer('shared-two');await wait("document.body.innerText.includes('Reply for Morgan Sample')");
+  assert.equal(await evaluate("document.querySelector('textarea').value"),'');
+  await chooseCustomer('shared-one');await wait("document.body.innerText.includes('prior request needs confirmation')");
+  assert.equal(await evaluate("document.querySelector('textarea').value"),'Synthetic selected customer reply');
+  await selectPhone('+18165550103');await wait("document.body.innerText.includes('No current customer matches')");
+  await selectPhone('+18165550102');await wait("!!document.querySelector('#reply-customer')");
+  assert.equal(await evaluate("document.querySelector('#reply-customer').value"),'','Returning to a conversation requires a fresh choice');
+  assert.equal(await evaluate("document.querySelectorAll('textarea').length"),0);
+  await chooseCustomer('shared-one');await wait("document.body.innerText.includes('prior request needs confirmation')");
+  await evaluate('window.__qa.failSend=false');await clickText('Retry confirmation');await wait("document.body.innerText.includes('Text queued, not delivered.')");
+  assert.equal(await evaluate("new Set(window.__qa.calls.filter(c=>c.route==='crm/text-messages/send'&&c.body.customer_id==='shared-one').map(c=>c.key)).size"),1);
+  assert.equal(await evaluate("window.__qa.calls.filter(c=>c.route==='crm/text-messages/send'&&c.body.customer_id==='shared-one').length"),2,'One submission and one confirmation only');
+  assert.equal(await evaluate("window.__qa.calls.filter(c=>c.route==='crm/text-messages/send'&&c.body.customer_id==='shared-two').length"),0);
+  await evaluate("window.__qa.conversations[1].customers[0].is_primary=false;window.__cache.invalidateQueries({queryKey:['text-history']})");
+  await wait("!document.querySelector('textarea')");
+  assert.equal(await evaluate("document.querySelector('#reply-customer').value"),'');
+  await evaluate("window.__qa.conversations[1].customers[0].is_primary=true;window.__qa.blockShared=false;window.__cache.invalidateQueries({queryKey:['text-history']})");
+  await selectPhone('+18165550103');await wait("document.body.innerText.includes('No current customer matches')");
   await clickText('Load more conversations');await wait("document.body.innerText.includes('Older conversation')");
   await evaluate("window.__qa.failHistory=true;window.__cache.invalidateQueries({queryKey:['text-history']})");await wait("document.body.innerText.includes('Synthetic history failure')");
   await evaluate('window.__qa.failHistory=false');await clickText('Retry messages');await wait("!document.body.innerText.includes('Synthetic history failure')");
@@ -132,6 +171,14 @@ try {
   await clickText('All conversations');await wait("document.querySelector('section[aria-label=\"Conversations\"]').getBoundingClientRect().width>0");
   await selectPhone('+18165550102');await wait("document.body.innerText.includes('Multiple customers share this phone.')");
   assert.ok(await evaluate("document.documentElement.scrollWidth<=390"));
+  assert.equal(await evaluate("document.querySelector('#reply-customer').value"),'');
+  await chooseCustomer('shared-two');await wait("document.body.innerText.includes('Reply for Morgan Sample')&&!!document.querySelector('textarea')");
+  await fill('Synthetic service reply preview');
+  assert.ok(await evaluate("document.documentElement.scrollWidth<=390&&document.querySelector('#reply-customer').getBoundingClientRect().right<=390"));
+  await writeFile('/tmp/shared-phone-replies-mobile.png',Buffer.from((await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true})).data,'base64'));
+  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+  await writeFile('/tmp/shared-phone-replies-desktop.png',Buffer.from((await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true})).data,'base64'));
+  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   await clickText('All conversations');await evaluate("window.__qa.failList=true;window.__cache.invalidateQueries({queryKey:['text-conversations']})");await wait("document.body.innerText.includes('Synthetic list failure')");
   await evaluate('window.__qa.failList=false');await clickText('Retry conversations');await wait("!document.body.innerText.includes('Synthetic list failure')");
   await selectPhone('+18165550101');await wait("document.body.innerText.includes('Your appointment is confirmed')");
