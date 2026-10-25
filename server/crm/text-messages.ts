@@ -48,8 +48,8 @@ export function registerTextMessages(app:Express) {
       body:z.string().trim().min(1).max(1600).refine(v=>!v.includes("{{"))}).strict().parse(req.body);
     const key=z.string().uuid().parse(req.headers["idempotency-key"]);
     const matches=await result(db().rpc("crm_text_matches",{p_company:c.company,p_phone:phone(input.recipient)}));
-    if(matches.length!==1 || matches[0].id!==input.customer_id || !matches[0].is_primary)
-      throw Object.assign(new Error("This phone does not have one matching primary customer contact. Review the customer records before replying."),{status:409});
+    if(!matches.some((match:any)=>match.id===input.customer_id && match.is_primary))
+      throw Object.assign(new Error("The selected customer no longer has this phone as a primary contact. Refresh and choose a matching customer before replying."),{status:409});
     // Reuse consent, suppression, recipient pinning, template, idempotency and outbox checks.
     // No provider calls on this request; unknown outcomes keep the same request key.
     try {res.json({message:await queueCustomerSms(c.company,input.customer_id,c.id,key,input.body,input.recipient)});}
