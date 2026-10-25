@@ -7,7 +7,7 @@ import {useAuth} from "@/context/auth-context";
 import {crm} from "@/lib/crm-api";
 import {Button} from "@/components/ui/button";
 import {SmsComposer} from "@/components/sms-composer";
-import {CustomerCombobox} from "@/components/customer-combobox";
+import {CustomerTextSearch} from "@/components/customer-text-search";
 import {CustomerCommunications} from "@/pages/communications";
 
 type Customer={id:string;name:string;is_primary:boolean;total_count:number};
@@ -61,7 +61,7 @@ function Messages({company,canSendNow}:{company:string;canSendNow:boolean}) {
     {starting && <section aria-label="Start a text" className="rounded-xl border p-4 space-y-3">
       <div className="flex items-center justify-between gap-2"><h2 className="font-semibold">Start a text</h2><Button variant="ghost" onClick={()=>setStarting(false)}>Close</Button></div>
       <p className="text-sm text-muted-foreground">Choose a customer, including someone with no previous messages. Confirm their primary phone and service-text permission before sending.</p>
-      <CustomerCombobox value={newCustomer} onChange={setNewCustomer} allowCreate={false} placeholder="Choose a customer to text..." testId="text-new-customer"/>
+      <CustomerTextSearch value={newCustomer} onChange={setNewCustomer}/>
       {newCustomer && <>
         <p className="text-sm break-words">Customer record: {newCustomer} · <Link className="underline" href={`/customers/${encodeURIComponent(newCustomer)}`}>Review contact details</Link></p>
         <CustomerCommunications key={newCustomer} customerId={newCustomer} onQueued={()=>{void refresh();}}/>

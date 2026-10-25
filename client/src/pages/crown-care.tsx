@@ -2,6 +2,7 @@ import { CrownTierCatalog, type CrownCatalogResponse } from "@/components/crown-
 import { enrollmentProblem, type EnrollmentAgreement, type EnrollmentMode } from "@/lib/crown-enrollment";
 import { canBookCrownVisit } from "../../../shared/crown-scheduling";
 import { UNKNOWN_LEAD_SOURCE } from "../../../shared/customer-lead-source";
+import {ServiceTextConsentField} from '@/components/service-text-consent-field';
 import { CrownChecklists } from "@/components/crown-checklists";
 import { membershipSummary } from "../../../shared/dashboard";
 import { guardSave } from "@/lib/confirmed-save";
@@ -124,6 +125,7 @@ export default function CrownCare() {
     state: "MO",
     zip: "",
     leadSource: UNKNOWN_LEAD_SOURCE,
+    serviceTextConsent: false,
   });
 
   // Post-enrollment schedule state
@@ -185,14 +187,15 @@ export default function CrownCare() {
       state: newCustomer.state,
       zip: newCustomer.zip,
       leadSource: newCustomer.leadSource,
+      serviceTextConsent: newCustomer.serviceTextConsent,
     });
     setForm({ ...form, customer: created.id, autoRenew:"No" });
     setAgreement({accepted:false,acceptedOn:new Date().toISOString().slice(0,10),reference:""});
     setConfiguration({...configurationFor({}),coveredEquipment:[]});
     setCustomerSearch(created.name);
     setShowNewCustomerForm(false);
-    setNewCustomer({ name: "", type: "Residential", phone: "", email: "", address: "", city: "Kansas City", state: "MO", zip: "", leadSource: UNKNOWN_LEAD_SOURCE });
-    toast({ title: "Customer added", description: `${created.name} has been added and selected for enrollment.` });
+    setNewCustomer({ name: "", type: "Residential", phone: "", email: "", address: "", city: "Kansas City", state: "MO", zip: "", leadSource: UNKNOWN_LEAD_SOURCE, serviceTextConsent:false });
+    toast({ title: "Customer added", description: created.serviceTextConsentWarning || `${created.name} has been added and selected for enrollment.`, ...(created.serviceTextConsentWarning ? {variant:'destructive' as const} : {}) });
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -583,6 +586,7 @@ export default function CrownCare() {
                     <UserPlus size={14} /> New Customer
                   </p>
                   <div className="space-y-3">
+                    <ServiceTextConsentField checked={newCustomer.serviceTextConsent} onChange={serviceTextConsent=>setNewCustomer({...newCustomer,serviceTextConsent})}/>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1 col-span-2">
                         <Label className="text-xs">Name *</Label>

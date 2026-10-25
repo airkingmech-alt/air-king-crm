@@ -28,6 +28,7 @@ import {
 import { pricebook } from "@/data/pricebook";
 import { crownVisitLink } from "../../../shared/crown-scheduling";
 import { saveCrownVisit } from "@/lib/crown-scheduling";
+import {recordNewCustomerConsent} from '../../../shared/new-customer-consent';
 
 // === Types ===
 export interface CustomerPhoto {
@@ -52,6 +53,7 @@ export interface NewCustomerData {
   state: string;
   zip: string;
   leadSource?: string;
+  serviceTextConsent?: boolean;
 }
 
 interface DataContextValue {
@@ -64,7 +66,7 @@ interface DataContextValue {
   loadError: string | null;
 
   acceptSavedRecord: (table: "customers" | "quotes" | "invoices", record: any) => void;
-  addCustomer: (data: NewCustomerData, leadId?: string) => Promise<Customer>;
+  addCustomer: (data: NewCustomerData, leadId?: string) => Promise<Customer & {serviceTextConsentWarning?:string}>;
   addNote: (customerId: string, text: string) => Promise<void>;
   editNote: (original: CustomerNote, text: string) => Promise<void>;
   getPhotos: (customerId: string) => CustomerPhoto[];
@@ -203,7 +205,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const addCustomer = useCallback(async (data: NewCustomerData, leadId?: string): Promise<Customer> => {
+  const addCustomer = useCallback(async (data: NewCustomerData, leadId?: string): Promise<Customer & {serviceTextConsentWarning?:string}> => {
     const id = createId("cust-",data);
     const newCustomer: Customer = {
       id,
@@ -255,7 +257,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }else saved=(await saveRecords([{table:"customers",id,data:newCustomer}]))[0];
     finishCreate("cust-",data);
     setCustomers((prev) => [saved, ...prev.filter(c=>c.id!==saved.id)]);
-    return saved;
+    const serviceTextConsentWarning=await recordNewCustomerConsent(saved.id,data.serviceTextConsent,crm);
+    return serviceTextConsentWarning ? {...saved,serviceTextConsentWarning} : saved;
   }, [actor]);
 
   const addNote = useCallback(async (customerId: string, text: string) => {

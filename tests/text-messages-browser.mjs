@@ -17,7 +17,10 @@ try {
   await writeFile(path.join(fixture,"mock-auth.ts"),'export function AuthProvider({children}){return children;} export function useAuth(){return {profile:{id:"synthetic-staff",company_id:"synthetic-company",role:"owner",permissions:{}},signOut:async()=>{}};}');
   await writeFile(path.join(fixture,"mock-storage.ts"),"export const supabase={auth:{getSession:async()=>({data:{session:null}})}};");
   await writeFile(path.join(fixture,"mock-save.ts"),"export const guardSave=(_key,fn)=>fn; export const saveRecords=()=>{throw Error('Customer writes prohibited in SMS QA');};");
-  await writeFile(path.join(fixture,"mock-data.ts"),"export function useData(){return {customers:[{id:'new-customer',name:'New Customer',contacts:[{phone:'+18165550105'}],properties:[]}]};}");
+  await writeFile(path.join(fixture,"mock-data.ts"),`const customer=(id,name,phone)=>({id,name,type:'Residential',tags:[],contacts:[{role:'Primary',phone,email:''}],properties:[]});
+    const customers=[...Array.from({length:35},(_,n)=>customer('other-'+n,'Other Person '+n,'+12025550'+String(n).padStart(3,'0'))),customer('new-customer','New Customer','(816) 555-0105')];
+    window.__created=[];
+    export function useData(){return {customers,loading:false,addCustomer:async(data)=>{window.__created.push(data);return {id:'created',...data};}};}`);
 
   await writeFile(path.join(fixture,"mock-api.ts"),`
     const phone='+18165550101';
@@ -70,9 +73,10 @@ try {
   `);
   await writeFile(path.join(fixture,"main.tsx"),`
     import React from 'react';import{createRoot}from'react-dom/client';import{QueryClient,QueryClientProvider}from'@tanstack/react-query';import{Router}from'wouter';import{useHashLocation}from'wouter/use-hash-location';
-    import TextMessages from '@/pages/text-messages';import '@/index.css';
+    import TextMessages from '@/pages/text-messages';import Customers from '@/pages/customers';import '@/index.css';
+    function Screen(){const[mode,setMode]=React.useState('customers');window.__showMessages=()=>setMode('texts');return mode==='customers'?<Customers/>:<TextMessages/>;}
     window.__cache=new QueryClient({defaultOptions:{queries:{retry:false}}});
-    createRoot(document.getElementById('root')).render(<QueryClientProvider client={window.__cache}><Router hook={useHashLocation}><main className="p-4"><TextMessages/></main></Router></QueryClientProvider>);
+    createRoot(document.getElementById('root')).render(<QueryClientProvider client={window.__cache}><Router hook={useHashLocation}><main className="p-4"><Screen/></main></Router></QueryClientProvider>);
   `);
   vite=await createServer({configFile:false,root:path.join(root,"client"),plugins:[react()],optimizeDeps:{entries:[path.join(fixture,"index.html")]},resolve:{alias:[
     {find:"@/context/data-context",replacement:path.join(fixture,"mock-data.ts")},
@@ -106,9 +110,29 @@ try {
   await send("Emulation.setDeviceMetricsOverride",{width:1280,height:900,deviceScaleFactor:1,mobile:false});
 
   await send("Page.navigate",{url:`http://127.0.0.1:5191/${path.basename(fixture)}/index.html`});
+  await wait("document.body.innerText.includes('Add Customer')");
+  await clickText('Add Customer');
+  await wait("!!document.querySelector('#cust-name')");
+  const consentBox="document.querySelector('[role=checkbox][aria-label=\"Customer agreed to service texts\"]')";
+  assert.equal(await evaluate(consentBox+".getAttribute('data-state')"),'unchecked');
+  await evaluate(`(()=>{for(const [id,value] of [['cust-name','Synthetic New Contact'],['cust-phone','8165550105']]){const e=document.getElementById(id);Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,value);e.dispatchEvent(new Event('input',{bubbles:true}));}})()`);
+  await evaluate(consentBox+'.click()');
+  await send("Emulation.setDeviceMetricsOverride",{width:390,height:844,deviceScaleFactor:1,mobile:true});
+  assert.ok(await evaluate("document.querySelector('[role=dialog]').getBoundingClientRect().height<=844"));
+  await evaluate("document.querySelector('[data-testid=button-submit-customer]').click()");
+  await wait("window.__created.length===1");assert.equal(await evaluate('window.__created[0].serviceTextConsent'),true);
+  await clickText('Add Customer');await wait("!!document.querySelector('#cust-name')");
+  assert.equal(await evaluate(consentBox+".getAttribute('data-state')"),'unchecked','New-customer permission resets for each customer');
+  await clickText('Cancel');
+  await send("Emulation.setDeviceMetricsOverride",{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+  await evaluate('window.__showMessages()');
+  console.log('PASS real Add Customer form: permission starts unchecked, explicit selection is passed to creation, resets on next customer, and mobile form scrolls.');
   await wait("document.body.innerText.includes('Jordan Sample')");
   await clickText('Start a text');
   await evaluate("document.querySelector('[data-testid=text-new-customer]').click()");
+  assert.equal(await evaluate("document.querySelectorAll('[aria-label=\"Customer search results\"] button').length"),20);
+  await evaluate(`(()=>{const e=document.querySelector('[data-testid=text-new-customer]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'8165550105');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+
   await wait("!!document.querySelector('[data-testid=option-customer-new-customer]')");
   await evaluate("document.querySelector('[data-testid=option-customer-new-customer]').click()");
   await wait("document.body.innerText.includes('Before the first text')");
@@ -133,6 +157,9 @@ try {
   await writeFile('/tmp/new-customer-text-mobile.png',Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
   await send("Emulation.setDeviceMetricsOverride",{width:1280,height:900,deviceScaleFactor:1,mobile:false});
   console.log('PASS first text without prior history, no writes on selection, consent/source required, immediate readiness refresh, service-only consent, original recipient and mobile layout.');
+  await evaluate(`(()=>{const e=document.querySelector('[data-testid=text-new-customer]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'no such customer');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  await wait("document.body.innerText.includes('No matching customers')");
+  assert.equal(await evaluate("document.querySelectorAll('textarea').length"),0,'Changing customer search clears the prior recipient composer');
   await clickText('Close');
   await evaluate("window.__qa.calls=[]");
   const selectPhone=p=>evaluate(`Array.from(document.querySelectorAll('section[aria-label="Conversations"] button')).find(b=>b.textContent.includes(${JSON.stringify(p)})).click()`);

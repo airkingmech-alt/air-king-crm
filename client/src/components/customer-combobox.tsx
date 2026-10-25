@@ -1,4 +1,5 @@
 import { AddressAutocomplete } from "./address-autocomplete";
+import {ServiceTextConsentField} from './service-text-consent-field';
 import type { AddressProvenance } from "../../../shared/address-autocomplete";
 import { UNKNOWN_LEAD_SOURCE } from "../../../shared/customer-lead-source";
 import { guardSave } from "@/lib/confirmed-save";
@@ -63,6 +64,7 @@ export function CustomerCombobox({
     state: "MO",
     zip: "",
     leadSource: UNKNOWN_LEAD_SOURCE,
+    serviceTextConsent: false,
   });
 
   const selected = customers.find((c) => c.id === value);
@@ -101,13 +103,14 @@ export function CustomerCombobox({
       state: newCustomer.state,
       zip: newCustomer.zip,
       leadSource: newCustomer.leadSource,
+      serviceTextConsent: newCustomer.serviceTextConsent,
     });
     onChange(created.id);
     setSearch(created.name);
     setShowNewForm(false);
-    setNewCustomer({ name: "", type: "Residential", phone: "", email: "", address: "", unit: "", addressProvenance: undefined, city: "Kansas City", state: "MO", zip: "", leadSource: UNKNOWN_LEAD_SOURCE });
+    setNewCustomer({ name: "", type: "Residential", phone: "", email: "", address: "", unit: "", addressProvenance: undefined, city: "Kansas City", state: "MO", zip: "", leadSource: UNKNOWN_LEAD_SOURCE, serviceTextConsent:false });
     setOpen(false);
-    toast({ title: "Customer added", description: `${created.name} has been added and selected.` });
+    toast({ title: "Customer added", description: created.serviceTextConsentWarning || `${created.name} has been added and selected.`, ...(created.serviceTextConsentWarning ? {variant:'destructive' as const} : {}) });
   });
 
   return (
@@ -187,6 +190,7 @@ export function CustomerCombobox({
             <UserPlus size={14} /> New Customer
           </p>
           <div className="space-y-3">
+            <ServiceTextConsentField checked={newCustomer.serviceTextConsent} onChange={serviceTextConsent=>setNewCustomer({...newCustomer,serviceTextConsent})}/>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1 col-span-2">
                 <Label className="text-xs">Name *</Label>
