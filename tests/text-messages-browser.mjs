@@ -53,10 +53,10 @@ try {
     }
   `);
   await writeFile(path.join(fixture,"main.tsx"),`
-    import React from 'react';import{createRoot}from'react-dom/client';import{QueryClient,QueryClientProvider}from'@tanstack/react-query';import{Router}from'wouter';
+    import React from 'react';import{createRoot}from'react-dom/client';import{QueryClient,QueryClientProvider}from'@tanstack/react-query';import{Router}from'wouter';import{useHashLocation}from'wouter/use-hash-location';
     import TextMessages from '@/pages/text-messages';import '@/index.css';
     window.__cache=new QueryClient({defaultOptions:{queries:{retry:false}}});
-    createRoot(document.getElementById('root')).render(<QueryClientProvider client={window.__cache}><Router><main className="p-4"><TextMessages/></main></Router></QueryClientProvider>);
+    createRoot(document.getElementById('root')).render(<QueryClientProvider client={window.__cache}><Router hook={useHashLocation}><main className="p-4"><TextMessages/></main></Router></QueryClientProvider>);
   `);
   vite=await createServer({configFile:false,root:path.join(root,"client"),plugins:[react()],optimizeDeps:{entries:[path.join(fixture,"index.html")]},resolve:{alias:[
     {find:"@/context/data-context",replacement:path.join(fixture,"mock-data.ts")},
@@ -95,7 +95,7 @@ try {
   assert.equal(await evaluate("window.injected||false"),false);
   assert.ok(await evaluate("document.body.innerText.includes('Sent · delivery unconfirmed')&&document.body.innerText.includes('Delivered')"));
   assert.deepEqual(await evaluate("Array.from(document.querySelectorAll('ol article p:first-child')).map(e=>e.textContent.split(' ·')[0])"),['Office → customer','Office → customer','Customer → office']);
-  assert.ok(await evaluate("!!document.querySelector('a[href=\"/customers/original-customer\"]')"));
+  assert.ok(await evaluate("!!document.querySelector('a[href=\"#/customers/original-customer\"]')"));
   assert.equal(await evaluate("window.__qa.calls.filter(c=>c.method==='POST').length"),0,'Opening must not mark read or send');
   await clickText('Load older messages');await wait("document.body.innerText.includes('Earlier failed text')");
   assert.ok(await evaluate("document.querySelector('ol').textContent.startsWith('Office → customerEarlier failed text')"));

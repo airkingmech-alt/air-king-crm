@@ -69,7 +69,7 @@ function Messages({company,canSendNow}:{company:string;canSendNow:boolean}) {
       </section>
       {!selected?<section className="hidden md:flex min-h-80 border rounded-xl items-center justify-center text-muted-foreground gap-2"><MessageSquare aria-hidden="true"/><p>Select a conversation to view messages.</p></section>:
         <section aria-label="Selected conversation" className="min-w-0 border rounded-xl p-3 sm:p-4 space-y-4">
-          <Button variant="ghost" className="md:hidden" onClick={()=>navigate("/text-messages")}><ArrowLeft className="h-4 w-4 mr-2"/>All conversations</Button>
+          <Button variant="ghost" className="md:hidden" onClick={()=>navigate("/text-messages?phone=")}><ArrowLeft className="h-4 w-4 mr-2"/>All conversations</Button>
           <header className="space-y-1"><h2 className="font-semibold text-lg break-words">{title(customers)}</h2><p className="break-all">{selected}</p>
             {customers.map(c=><Link key={c.id} href={`/customers/${encodeURIComponent(c.id)}`} className="inline-block mr-3 text-sm underline">{c.name}</Link>)}
             {count(customers)>21&&<p className="text-sm">Showing 21 of {count(customers)} matching customers.</p>}
