@@ -645,12 +645,12 @@ export default function Proposal() {
 
       {/* Send Dialog */}
       <Dialog open={showSendDialog} onOpenChange={setShowSendDialog}>
-        <DialogContent>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Send to Customer</DialogTitle>
             <DialogDescription>Share this document securely.</DialogDescription>
           </DialogHeader>
-          <DocumentActions kind="quote" id={quote.id} />
+          <DocumentActions key={quote.id} kind="quote" id={quote.id} />
         </DialogContent>
       </Dialog>
     </div>

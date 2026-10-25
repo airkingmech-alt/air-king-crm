@@ -941,17 +941,18 @@ export function Integrations() {
     </div>
   );
 }
-export function CustomerCommunications({ customerId, onQueued }: { customerId: string; onQueued?:()=>void }) {
+export function CustomerCommunications({ customerId, onQueued, preferencesOnly=false, onPreferencesSaved }: { customerId: string; onQueued?:()=>void; preferencesOnly?:boolean; onPreferencesSaved?:()=>void }) {
   const cache = useQueryClient();
   const {profile} = useAuth();
-  const { data, refetch, error } = useQuery({
+  const { data, refetch, error, isPending } = useQuery({
     queryKey: ["customer-history", customerId],
     queryFn: () => crm(`crm/customers/${customerId}/history`),
     refetchInterval: 15000,
   });
   const [prefs, setPrefs] = useState<any>(null);
   const [notice, setNotice] = useState("");
-  const [showPreferences, setShowPreferences] = useState(false);
+  const [showPreferences, setShowPreferences] = useState(preferencesOnly);
+  const [savingPreferences, setSavingPreferences] = useState(false);
   const values = prefs ||
     data?.preferences || {
       email_transactional: true,
@@ -978,21 +979,22 @@ export function CustomerCommunications({ customerId, onQueued }: { customerId: s
     <Card className="mb-4">
       <CardHeader>
         <div className="flex justify-between">
-          <CardTitle className="text-base">Communications</CardTitle>
-          <Button
+          <CardTitle className="text-base">{preferencesOnly ? "Communication preferences" : "Communications"}</CardTitle>
+          {!preferencesOnly && <Button
             size="sm"
             variant="outline"
             onClick={() => setShowPreferences(!showPreferences)}
           >
             Preferences
-          </Button>
+          </Button>}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <Notice text={notice || error?.message || ""} />
-        <SmsComposer key={customerId} customerId={customerId} onReviewPreferences={() => setShowPreferences(true)} onQueued={() => {void refetch(); onQueued?.();}} />
+        {!preferencesOnly && <SmsComposer key={customerId} customerId={customerId} onReviewPreferences={() => setShowPreferences(true)} onQueued={() => {void refetch(); onQueued?.();}} />}
         {showPreferences && (
           <div className="bg-muted/30 rounded-lg p-4 space-y-2">
+            <p className="text-sm">Record permission only after the customer has given it. Saving preferences does not send a message.</p>
             {[
               ["email_transactional", "Service and invoice emails"],
               ["sms_transactional", "Service and invoice texts"],
@@ -1003,6 +1005,7 @@ export function CustomerCommunications({ customerId, onQueued }: { customerId: s
                 key={key}
                 title={title}
                 checked={!!values[key]}
+                disabled={isPending || !!error || savingPreferences}
                 onChange={(v) => setPrefs({ ...values, [key]: v })}
               />
             ))}
@@ -1014,6 +1017,7 @@ export function CustomerCommunications({ customerId, onQueued }: { customerId: s
             <Label>Consent source / note</Label>
             <Input
               value={values.consent_source || ""}
+              disabled={isPending || !!error || savingPreferences}
               onChange={(e) =>
                 setPrefs({ ...values, consent_source: e.target.value })
               }
@@ -1021,7 +1025,9 @@ export function CustomerCommunications({ customerId, onQueued }: { customerId: s
             />
             <Button
               size="sm"
+              disabled={isPending || !!error || savingPreferences || (values.consent_source || "").trim().length < 3}
               onClick={async () => {
+                setSavingPreferences(true);
                 try {
                   await crm(
                     `crm/customers/${customerId}/preferences`,
@@ -1034,21 +1040,24 @@ export function CustomerCommunications({ customerId, onQueued }: { customerId: s
                   ]);
                   setPrefs(null);
                   setNotice("Preferences saved.");
+                  onPreferencesSaved?.();
                 } catch (e: any) {
                   setNotice(e.message);
+                } finally {
+                  setSavingPreferences(false);
                 }
               }}
             >
-              Save Preferences
+              {savingPreferences ? "Saving…" : "Save Preferences"}
             </Button>
           </div>
         )}
-        {!history.length && (
+        {!preferencesOnly && !history.length && (
           <p className="text-sm text-muted-foreground">
             New communications and activity will appear here.
           </p>
         )}
-        <div className="space-y-4 max-h-[600px] overflow-y-auto">
+        {!preferencesOnly && <div className="space-y-4 max-h-[600px] overflow-y-auto">
           {history.map((item: any) => (
             <div key={item.id} className="border-l-2 border-sky-200 pl-4">
               <div className="flex justify-between gap-3 text-sm">
@@ -1074,7 +1083,7 @@ export function CustomerCommunications({ customerId, onQueued }: { customerId: s
               )}
             </div>
           ))}
-        </div>
+        </div>}
       </CardContent>
     </Card>
   );

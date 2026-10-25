@@ -20,6 +20,24 @@ The shared-phone selector requires **no new migration, environment configuration
 
 New customers keep service-text consent off by default. When permission is missing, **Review communication preferences** opens the existing controls; staff must record actual permission using **Service and invoice texts** and a consent-source note. Saving refreshes SMS readiness immediately. Opt-outs and phone suppression remain enforced and cannot be cleared by this flow. Existing conversation composers link missing-consent guidance to the customer's Timeline. No migration or configuration change is required for this UI update.
 
+## Customer creation and lookup
+
+The Add Customer form, inline customer creator, and Crown Care customer creator include an unchecked **Customer agreed to receive quotes, appointment updates, and invoice texts** checkbox. Checking it records staff confirmation through a narrow service-SMS endpoint after the customer is saved. That endpoint changes only service-text consent, preserves other preferences, refuses STOP/phone suppression, and records an audit event without inventing the original agreement date. If permission saving cannot be confirmed, the customer remains saved and the UI reports a warning instead of inviting duplicate creation. Unchecked boxes make no permission request.
+
+**Start a text** now shows a search input immediately. It searches every loaded customer by name, company, record ID, email, primary/additional phone, or address. Phone matching ignores punctuation. Results are bounded to 20 with a prompt to refine; typing a new search clears the previous selection so its composer cannot accidentally remain active for another recipient. Choosing a result never sends a message or edits consent.
+
+Tests: `tests/customer-text-onboarding.test.ts`, `tests/service-text-consent.test.ts`, and the Add Customer/search scenarios in `tests/text-messages-browser.mjs`.
+
+## Quote and invoice texts
+
+The quote and invoice Send controls check the selected document's customer readiness before enabling **Text** or **Email + Text**. The read-only document readiness route derives the customer from the company-scoped document and requires the same document/communications permissions as sending; unrelated history permissions are not added. It shows the primary recipient and specific consent, suppression, phone or provider blockers.
+
+When consent is missing, **Review communication preferences** opens the existing saved-preferences controls inside the Send dialog. An actual permission source is required; saving never sends a message, enables marketing automatically, or removes an opt-out. Once saved, readiness refreshes and the dialog returns to document actions. Customer-history permissions remain required to load the preferences editor. Quote and invoice dialogs scroll within the mobile viewport.
+
+This correction addresses the document-delivery flow separately from starting a free-text conversation. Existing failed deliveries remain historical failures; the UI does not automatically retry them. No database migration or consent backfill is included.
+
+Verification: `node --import tsx --test tests/document-sms-readiness.test.ts` and `node tests/document-text-browser.mjs`. The browser check uses the real dialog/components with synthetic APIs, including missing consent, source requirement, immediate refresh, mobile sizing, suppression/STOP, read failures and quote/invoice sends. It sends no live messages.
+
 ## Release prerequisites
 
 Apply `supabase/migrations/20261024231359_text_conversations.sql` before deploying this code, only after publication approval. It adds read-only, SECURITY INVOKER projections and indexes; functions are service-role-only, with company scope supplied by server-verified staff profiles. No customer/message data changes, provider/environment changes, new credentials, or worker invocation are involved. Deploying without the migration shows a retryable unavailable error; it does not fall back to unscoped or partial history.

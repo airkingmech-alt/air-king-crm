@@ -653,6 +653,21 @@ export function registerCrm(app: Express) {
       res.json({ message: "Preferences saved" });
     }),
   );
+  app.post("/api/crm/customers/:id/service-text-consent", wrap(async (req,res)=>{
+    const c=await caller(req);
+    z.object({confirmed:z.literal(true)}).strict().parse(req.body);
+    const customer=await entity("customers",String(req.params.id),c.company);
+    const contact=customer.data.contacts?.find((x:Row)=>x.role==='Primary') || customer.data.contacts?.[0] || {};
+    const recipient=phone(contact.phone);
+    const prefs=await result(db().from("customer_communication_preferences").select("*").eq("company_id",c.company).eq("customer_id",customer.id).maybeSingle());
+    const suppression=await result(db().from("sms_phone_suppressions").select("phone").eq("company_id",c.company).eq("phone",recipient).maybeSingle());
+    if(prefs?.sms_stopped || suppression) throw Object.assign(new Error("This customer or phone has opted out. Recording permission here cannot remove that block."),{status:400});
+    if(prefs?.sms_transactional) {res.json({recorded:true});return;}
+    const source="Staff confirmed the customer agreed to service and invoice texts while adding the customer. Original agreement date was not supplied.";
+    await result(db().from("customer_communication_preferences").upsert({company_id:c.company,customer_id:customer.id,sms_transactional:true,consent_source:source,updated_at:new Date().toISOString()}));
+    await event({company_id:c.company,customer_id:customer.id,actor_id:c.id},"preferences.updated",{sms_transactional:true,consent_source:source,original_consent_date:null});
+    res.json({recorded:true});
+  }));
   app.post(
     "/api/crm/:kind/:id/link",
     wrap(async (req, res) => {
@@ -662,6 +677,14 @@ export function registerCrm(app: Express) {
       res.json({ url: await linkFor(row, kind) });
     }),
   );
+  app.get("/api/crm/:kind/:id/sms-readiness", wrap(async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    const c = await caller(req);
+    const kind = z.enum(["quote", "invoice"]).parse(req.params.kind);
+    const row = await entity(kind + "s", String(req.params.id), c.company);
+    const customer = references(row, kind).customer_id;
+    res.json({...await customerSmsReadiness(c.company, customer), customer_id:customer});
+  }));
   app.post(
     "/api/crm/:kind/:id/send",
     wrap(async (req, res) => {

@@ -16,6 +16,7 @@ export function requestFeatures(path: string, method = "GET"): string[] {
   const required = feature[part] ? [feature[part]] : [];
   if(part === "reports") required.push("invoices");
   if (/\/(send|email|remind)$/.test(p)) required.push("communications");
+  if (/\/(quote|invoice)\/[^/]+\/sms-readiness$/.test(p)) required.push("communications");
   if (/\/quotes\/[^/]+\/convert$/.test(p)) required.push("schedule");
   if (/\/quotes\/[^/]+\/invoice$/.test(p)) required.push("invoices");
   if (part === "marketing") required.push("customers", "quotes", "invoices", "schedule", "communications");

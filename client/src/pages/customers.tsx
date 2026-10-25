@@ -1,4 +1,5 @@
 import { AddressAutocomplete } from "@/components/address-autocomplete";
+import {ServiceTextConsentField} from '@/components/service-text-consent-field';
 import type { AddressProvenance } from "../../../shared/address-autocomplete";
 import { UNKNOWN_LEAD_SOURCE } from "../../../shared/customer-lead-source";
 import { guardSave } from "@/lib/confirmed-save";
@@ -69,6 +70,7 @@ export default function Customers() {
     state: "MO",
     zip: "",
     leadSource: UNKNOWN_LEAD_SOURCE,
+    serviceTextConsent: false,
   });
 
   const filtered = customers.filter((c) => {
@@ -102,10 +104,11 @@ export default function Customers() {
       });
       return;
     }
-    await addCustomer(form);
+    const created=await addCustomer(form);
     toast({
       title: "Customer added",
-      description: `${form.name} has been added as a ${form.type.toLowerCase()} customer.`,
+      description: created.serviceTextConsentWarning || `${form.name} has been added as a ${form.type.toLowerCase()} customer.`,
+      ...(created.serviceTextConsentWarning ? {variant:'destructive' as const} : {}),
     });
     setShowAddDialog(false);
     setForm({
@@ -120,6 +123,7 @@ export default function Customers() {
       state: "MO",
       zip: "",
       leadSource: UNKNOWN_LEAD_SOURCE,
+      serviceTextConsent: false,
     });
   });
 
@@ -264,7 +268,7 @@ export default function Customers() {
 
       {/* Add Customer Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent className="sm:max-w-[480px]">
+        <DialogContent className="sm:max-w-[480px] max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add New Customer</DialogTitle>
             <DialogDescription>
@@ -347,6 +351,7 @@ export default function Customers() {
               </div>
             </div>
             <div className="space-y-2">
+              <ServiceTextConsentField checked={form.serviceTextConsent} onChange={serviceTextConsent=>setForm({...form,serviceTextConsent})}/>
               <Label htmlFor="cust-address">Service Address</Label>
               <AddressAutocomplete
                 id="cust-address"
