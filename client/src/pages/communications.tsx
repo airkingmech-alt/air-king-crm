@@ -941,7 +941,9 @@ export function Integrations() {
     </div>
   );
 }
-export function CustomerCommunications({ customerId }: { customerId: string }) {
+export function CustomerCommunications({ customerId, onQueued }: { customerId: string; onQueued?:()=>void }) {
+  const cache = useQueryClient();
+  const {profile} = useAuth();
   const { data, refetch, error } = useQuery({
     queryKey: ["customer-history", customerId],
     queryFn: () => crm(`crm/customers/${customerId}/history`),
@@ -988,7 +990,7 @@ export function CustomerCommunications({ customerId }: { customerId: string }) {
       </CardHeader>
       <CardContent className="space-y-4">
         <Notice text={notice || error?.message || ""} />
-        <SmsComposer key={customerId} customerId={customerId} onQueued={() => {void refetch();}} />
+        <SmsComposer key={customerId} customerId={customerId} onReviewPreferences={() => setShowPreferences(true)} onQueued={() => {void refetch(); onQueued?.();}} />
         {showPreferences && (
           <div className="bg-muted/30 rounded-lg p-4 space-y-2">
             {[
@@ -1026,7 +1028,10 @@ export function CustomerCommunications({ customerId }: { customerId: string }) {
                     "PUT",
                     values,
                   );
-                  await refetch();
+                  await Promise.all([
+                    refetch(),
+                    cache.invalidateQueries({queryKey:["customer-sms",profile?.company_id,customerId]}),
+                  ]);
                   setPrefs(null);
                   setNotice("Preferences saved.");
                 } catch (e: any) {

@@ -5,9 +5,10 @@ import {crm} from "@/lib/crm-api";
 import {Button} from "@/components/ui/button";
 import {Textarea} from "@/components/ui/textarea";
 import {Label} from "@/components/ui/label";
+import {Link} from "wouter";
 
 type Submission = {key:string; body:string; recipient:string};
-export function SmsComposer({customerId, onQueued, conversationPhone}: {customerId:string; onQueued:()=>void; conversationPhone?:string}) {
+export function SmsComposer({customerId, onQueued, conversationPhone, onReviewPreferences}: {customerId:string; onQueued:()=>void; conversationPhone?:string; onReviewPreferences?:()=>void}) {
   const {profile} = useAuth();
   const storageKey = `sms-submission:${profile?.company_id}:${profile?.id}:${customerId}`;
   const [submission, setSubmission] = useState<Submission | null>(() => {
@@ -34,6 +35,11 @@ export function SmsComposer({customerId, onQueued, conversationPhone}: {customer
     {data?.mode === "approved_template" && <p className="text-xs text-muted-foreground">Sent uses your approved customer-care template. First-contact and onboarding requirements still apply.</p>}
     {data && <p className="text-xs text-muted-foreground">Texts wait outside {data.sms_start}:00–{data.sms_end}:00 ({data.timezone}). {!data.sending_enabled && "CRM sending is paused; queued texts will wait."}</p>}
     {data?.issues?.map((issue:string)=><p key={issue} className="text-sm text-amber-700">{issue}</p>)}
+    {data?.consent_required && <div className="space-y-2 text-sm">
+      <p>Before the first text, record the customer's permission for service and invoice texts in Preferences.</p>
+      {onReviewPreferences ? <Button type="button" variant="outline" onClick={onReviewPreferences}>Review communication preferences</Button>
+        : <Link className="underline" href={`/customers/${encodeURIComponent(customerId)}?tab=activity`}>Review communication preferences</Link>}
+    </div>}
     {wrongPhone && <p role="alert" className="text-sm text-amber-700">The current primary phone does not match this conversation. Review the customer before replying.</p>}
     {error && <p role="alert" className="text-sm">{error.message}</p>}
     <Label htmlFor={`sms-body-${customerId}`}>SMS message</Label>

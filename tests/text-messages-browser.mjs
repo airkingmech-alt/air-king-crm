@@ -15,7 +15,9 @@ let vite,chrome,ws;
 try {
   await writeFile(path.join(fixture,"index.html"),'<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module" src="./main.tsx"></script>');
   await writeFile(path.join(fixture,"mock-auth.ts"),'export function AuthProvider({children}){return children;} export function useAuth(){return {profile:{id:"synthetic-staff",company_id:"synthetic-company",role:"owner",permissions:{}},signOut:async()=>{}};}');
-  await writeFile(path.join(fixture,"mock-data.ts"),"export function useData(){return {customers:[]};}");
+  await writeFile(path.join(fixture,"mock-storage.ts"),"export const supabase={auth:{getSession:async()=>({data:{session:null}})}};");
+  await writeFile(path.join(fixture,"mock-save.ts"),"export const guardSave=(_key,fn)=>fn; export const saveRecords=()=>{throw Error('Customer writes prohibited in SMS QA');};");
+  await writeFile(path.join(fixture,"mock-data.ts"),"export function useData(){return {customers:[{id:'new-customer',name:'New Customer',contacts:[{phone:'+18165550105'}],properties:[]}]};}");
 
   await writeFile(path.join(fixture,"mock-api.ts"),`
     const phone='+18165550101';
@@ -41,6 +43,19 @@ try {
         const p=url.searchParams.get('phone');const customers=conversations.find(c=>c.phone===p)?.customers||[];
         return {customers:structuredClone(customers),items:structuredClone(p===phone?(url.searchParams.has('before')?older:recent):[msg('in:shared','inbound','received','Other conversation reply','2026-10-24T12:00:00Z')]),next:p===phone&&!url.searchParams.has('before')?{at:'2026-10-24T12:01:00Z',key:'out:delivered'}:null};
       }
+      if(route==='crm/customers/new-customer/history')return {events:[],messages:[],preferences:window.__qa.newPrefs||null};
+      if(route==='crm/customers/new-customer/preferences'&&method==='PUT'){
+        if(!body.consent_source||body.consent_source.length<3)throw Object.assign(Error('Record how permission was obtained'),{status:400});
+        window.__qa.newPrefs=body;return {message:'Preferences saved'};
+      }
+      if(route==='crm/customers/new-customer/sms'){
+        const ready=!!window.__qa.newPrefs?.sms_transactional;
+        if(method==='POST'){
+          if(!ready)throw Object.assign(Error('Consent required'),{status:400});
+          return {message:{id:'new-message',status:'pending'}};
+        }
+        return {ready,consent_required:!ready,recipient:'+18165550105',issues:ready?[]:['SMS consent is missing or the customer has opted out. Review communication preferences.'],sending_enabled:true,timezone:'America/Chicago',sms_start:8,sms_end:19};
+      }
       if(route==='crm/customers/shared-one/sms'||route==='crm/customers/shared-two/sms')return {ready:!(route.includes('shared-two')&&window.__qa.blockShared),recipient:'+18165550102',issues:route.includes('shared-two')&&window.__qa.blockShared?['Synthetic shared consent missing']:[],sending_enabled:true,timezone:'America/Chicago',sms_start:8,sms_end:19,mode:'approved_template'};
       if(route==='crm/customers/synthetic-customer/sms')return {ready:true,recipient:window.__qa.changedPhone?'+18165550999':phone,issues:[],sending_enabled:true,timezone:'America/Chicago',sms_start:8,sms_end:19,mode:'approved_template'};
       if(route==='crm/text-messages/send'){
@@ -61,6 +76,8 @@ try {
   `);
   vite=await createServer({configFile:false,root:path.join(root,"client"),plugins:[react()],optimizeDeps:{entries:[path.join(fixture,"index.html")]},resolve:{alias:[
     {find:"@/context/data-context",replacement:path.join(fixture,"mock-data.ts")},
+    {find:"@/lib/supabase",replacement:path.join(fixture,"mock-storage.ts")},
+    {find:"@/lib/confirmed-save",replacement:path.join(fixture,"mock-save.ts")},
     {find:"@/context/auth-context",replacement:path.join(fixture,"mock-auth.ts")},
     {find:"@/lib/crm-api",replacement:path.join(fixture,"mock-api.ts")},
     {find:"@",replacement:path.join(root,"client/src")},
@@ -90,6 +107,35 @@ try {
 
   await send("Page.navigate",{url:`http://127.0.0.1:5191/${path.basename(fixture)}/index.html`});
   await wait("document.body.innerText.includes('Jordan Sample')");
+  await clickText('Start a text');
+  await evaluate("document.querySelector('[data-testid=text-new-customer]').click()");
+  await wait("!!document.querySelector('[data-testid=option-customer-new-customer]')");
+  await evaluate("document.querySelector('[data-testid=option-customer-new-customer]').click()");
+  await wait("document.body.innerText.includes('Before the first text')");
+  assert.equal(await evaluate("Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Queue SMS').disabled"),true);
+  assert.equal(await evaluate("window.__qa.calls.filter(c=>c.method!=='GET').length"),0,'Choosing a new customer must not change consent or send');
+  await clickText('Review communication preferences');
+  await wait("document.body.innerText.includes('Consent source / note')");
+  await evaluate("Array.from(document.querySelectorAll('[role=switch]'))[1].click()");
+  await clickText('Save Preferences');
+  await wait("document.body.innerText.includes('Record how permission was obtained')");
+  await evaluate(`(()=>{const e=document.querySelector('input[placeholder="How and when did the customer give permission?"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'Synthetic explicit permission');e.dispatchEvent(new Event('input',{bubbles:true}));const t=document.querySelector('textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(t,'Synthetic first service text');t.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  const savedAt=Date.now();
+  await clickText('Save Preferences');
+  await wait("!Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Queue SMS').disabled");
+  assert.ok(Date.now()-savedAt<5000,'Readiness updates immediately, without waiting for the 15-second poll');
+  assert.equal(await evaluate("window.__qa.newPrefs.sms_marketing"),false);
+  await clickText('Queue SMS');
+  await wait("document.body.innerText.includes('Text queued, not delivered.')");
+  const first=await evaluate("window.__qa.calls.filter(c=>c.method==='POST'&&c.route==='crm/customers/new-customer/sms')");
+  assert.equal(first.length,1);assert.equal(first[0].body.recipient,'+18165550105');assert.ok(first[0].key);
+  await send("Emulation.setDeviceMetricsOverride",{width:390,height:844,deviceScaleFactor:1,mobile:true});
+  assert.ok(await evaluate("document.documentElement.scrollWidth<=390"),'New-text controls fit a mobile screen');
+  await writeFile('/tmp/new-customer-text-mobile.png',Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
+  await send("Emulation.setDeviceMetricsOverride",{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+  console.log('PASS first text without prior history, no writes on selection, consent/source required, immediate readiness refresh, service-only consent, original recipient and mobile layout.');
+  await clickText('Close');
+  await evaluate("window.__qa.calls=[]");
   const selectPhone=p=>evaluate(`Array.from(document.querySelectorAll('section[aria-label="Conversations"] button')).find(b=>b.textContent.includes(${JSON.stringify(p)})).click()`);
   await selectPhone('+18165550101');
   await wait("document.body.innerText.includes('Your appointment is confirmed')&&!!document.querySelector('textarea')");

@@ -7,6 +7,8 @@ import {useAuth} from "@/context/auth-context";
 import {crm} from "@/lib/crm-api";
 import {Button} from "@/components/ui/button";
 import {SmsComposer} from "@/components/sms-composer";
+import {CustomerCombobox} from "@/components/customer-combobox";
+import {CustomerCommunications} from "@/pages/communications";
 
 type Customer={id:string;name:string;is_primary:boolean;total_count:number};
 type Cursor={at:string;key:string}|null;
@@ -38,6 +40,9 @@ function Messages({company,canSendNow}:{company:string;canSendNow:boolean}) {
   const cache=useQueryClient();
   const [notice,setNotice]=useState("");
   const [marking,setMarking]=useState(false);
+  const [starting,setStarting]=useState(false);
+  const [newCustomer,setNewCustomer]=useState("");
+  useEffect(()=>{setStarting(false);setNewCustomer("");},[selected]);
   const list=useInfiniteQuery({queryKey:["text-conversations",company],initialPageParam:null as Cursor,
     queryFn:({pageParam})=>crm("crm/text-messages"+(pageParam ? "?"+query({before:JSON.stringify(pageParam)}) : "")),
     getNextPageParam:last=>last.next || undefined,refetchInterval:15000});
@@ -52,7 +57,17 @@ function Messages({company,canSendNow}:{company:string;canSendNow:boolean}) {
   const unread=messages.filter(m=>m.direction==="inbound"&&!m.read_at);
   const refresh=async()=>{await Promise.all([cache.invalidateQueries({queryKey:["text-history",company]}),cache.invalidateQueries({queryKey:["text-conversations",company]}),cache.invalidateQueries({queryKey:["sms-replies"]})]);};
   return <div className="space-y-4 min-w-0">
-    <header className="flex flex-wrap items-start justify-between gap-2"><div><h1 className="text-2xl font-bold">Text Messages</h1><p className="text-sm text-muted-foreground">Sent texts and replies, together by phone.</p></div><Link href="/replies" className="text-sm underline">Reply history</Link></header>
+    <header className="flex flex-wrap items-start justify-between gap-2"><div><h1 className="text-2xl font-bold">Text Messages</h1><p className="text-sm text-muted-foreground">Sent texts and replies, together by phone.</p></div><div className="flex items-center gap-3"><Button onClick={()=>{setStarting(true);setNewCustomer("");}}>Start a text</Button><Link href="/replies" className="text-sm underline">Reply history</Link></div></header>
+    {starting && <section aria-label="Start a text" className="rounded-xl border p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2"><h2 className="font-semibold">Start a text</h2><Button variant="ghost" onClick={()=>setStarting(false)}>Close</Button></div>
+      <p className="text-sm text-muted-foreground">Choose a customer, including someone with no previous messages. Confirm their primary phone and service-text permission before sending.</p>
+      <CustomerCombobox value={newCustomer} onChange={setNewCustomer} allowCreate={false} placeholder="Choose a customer to text..." testId="text-new-customer"/>
+      {newCustomer && <>
+        <p className="text-sm break-words">Customer record: {newCustomer} · <Link className="underline" href={`/customers/${encodeURIComponent(newCustomer)}`}>Review contact details</Link></p>
+        <CustomerCommunications key={newCustomer} customerId={newCustomer} onQueued={()=>{void refresh();}}/>
+      </>}
+    </section>}
+    {!starting && <>
     <div className="grid md:grid-cols-[minmax(240px,320px)_minmax(0,1fr)] gap-4 items-start">
       <section aria-label="Conversations" className={`border rounded-xl overflow-hidden min-w-0 ${selected?"hidden md:block":""}`}>
         <h2 className="p-3 font-semibold border-b">Conversations</h2>
@@ -102,6 +117,7 @@ function Messages({company,canSendNow}:{company:string;canSendNow:boolean}) {
           {notice&&<p role="alert">{notice}</p>}
         </section>}
     </div>
+    </>}
   </div>;
 }
 

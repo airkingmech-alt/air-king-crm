@@ -474,8 +474,16 @@ test("customer SMS queues once, keeps SMS-only transactional content and worker-
 
 test("customer SMS readiness rejects missing consent and foreign customer and explains missing template", async () => {
   defaults();
-  state.customer_communication_preferences[0].sms_transactional=false;
-  assert.ok((await customerSmsReadiness("co","c")).issues.some(issue=>issue.includes("consent")));
+  state.customer_communication_preferences=[];
+  const readiness=await customerSmsReadiness("co","c");
+  assert.equal(readiness.ready,false);
+  assert.equal(readiness.consent_required,true);
+  assert.ok(readiness.issues.some(issue=>issue.includes("consent")));
+  await assert.rejects(queueCustomerSms("co","c","actor","first-text","Service text",readiness.recipient),/consent/);
+  assert.equal(state.communications.length,0);
+  defaults();
+  state.customer_communication_preferences[0].sms_stopped=true;
+  assert.equal((await customerSmsReadiness("co","c")).consent_required,false,"Opt-outs must not be presented as first-contact permission setup");
   await assert.rejects(customerSmsReadiness("foreign","c"),/not found/);
 });
 
