@@ -56,7 +56,7 @@ const navItems: {
   { path: "/marketing", label: "Marketing", icon: Megaphone, permission: "marketing" },
   { path: "/inventory", label: "Inventory", icon: Package, permission: "inventory" },
   { path: "/automations", label: "Automations", icon: Calendar, permission: "automations" },
-  { path: "/replies", label: "Text replies", icon: Inbox, permission: "communications" },
+  { path: "/text-messages", label: "Text Messages", icon: Inbox, permission: "communications" },
   { path: "/templates", label: "Templates", icon: FileText, permission: "communications" },
   { path: "/integrations", label: "Integrations", icon: UserCog, permission: "communications" },
   { path: "/team", label: "Team", icon: UserCog, ownerOnly: true },
@@ -150,7 +150,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {navItems
-          .filter((item) => (item.path !== "/replies" || canReadReplies) && (!item.ownerOnly || profile?.role === "owner") && (profile?.role === "owner" || !item.permission || profile?.permissions?.[item.permission] !== false))
+          .filter((item) => (item.path !== "/text-messages" || canReadReplies) && (!item.ownerOnly || profile?.role === "owner") && (profile?.role === "owner" || !item.permission || profile?.permissions?.[item.permission] !== false))
           .map((item) => {
             const Icon = item.icon;
             const active =
@@ -170,7 +170,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               >
                 <Icon size={18} strokeWidth={2} />
                 {item.label}
-                {item.path === "/replies" && replies.length > 0 && <span aria-label={`${replies.length}${replies.length === 100 ? "+" : ""} unread text replies`} className="ml-auto rounded-full bg-sky-600 px-2 py-0.5 text-xs text-white">{replies.length}{replies.length === 100 ? "+" : ""}</span>}
+                {item.path === "/text-messages" && replies.length > 0 && <span aria-label={`${replies.length}${replies.length === 100 ? "+" : ""} unread text replies`} className="ml-auto rounded-full bg-sky-600 px-2 py-0.5 text-xs text-white">{replies.length}{replies.length === 100 ? "+" : ""}</span>}
               </Link>
             );
           })}

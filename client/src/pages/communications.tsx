@@ -1086,6 +1086,7 @@ export function Replies() {
   });
   const [notice, setNotice] = useState("");
   return <div className="space-y-4">
+    <Link href="/text-messages" className="text-sm underline">Open Text Messages</Link>
     <h1 className="text-2xl font-bold">{showHistory ? "Text reply history" : "Unread text replies"}</h1>
     <Button variant="outline" onClick={() => {setShowHistory(!showHistory); setPage(0);}}>{showHistory ? "Show unread replies" : "View all reply history"}</Button>
     <p className="text-sm text-muted-foreground">Shared office inbox. Showing up to 100 replies and opt-outs per page, newest first. Read status is shared with authorized staff.</p>

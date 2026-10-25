@@ -7,7 +7,7 @@ import {Textarea} from "@/components/ui/textarea";
 import {Label} from "@/components/ui/label";
 
 type Submission = {key:string; body:string; recipient:string};
-export function SmsComposer({customerId, onQueued}: {customerId:string; onQueued:()=>void}) {
+export function SmsComposer({customerId, onQueued, conversationPhone}: {customerId:string; onQueued:()=>void; conversationPhone?:string}) {
   const {profile} = useAuth();
   const storageKey = `sms-submission:${profile?.company_id}:${profile?.id}:${customerId}`;
   const [submission, setSubmission] = useState<Submission | null>(() => {
@@ -19,6 +19,7 @@ export function SmsComposer({customerId, onQueued}: {customerId:string; onQueued
   const [notice,setNotice] = useState(submission ? "A prior request needs confirmation. Retry confirmation uses the same request and cannot queue a second text." : "");
   const {data,error,refetch} = useQuery({queryKey:["customer-sms",profile?.company_id,customerId],
     queryFn:()=>crm(`crm/customers/${customerId}/sms`),refetchInterval:15000});
+  const wrongPhone = !!conversationPhone && (data?.recipient !== conversationPhone || (!!submission && submission.recipient !== conversationPhone));
   const remember = (value:Submission | null) => {
     // Store an in-flight request before submitting so navigation/reload cannot
     // generate a fresh key after an ambiguous network response.
@@ -33,17 +34,18 @@ export function SmsComposer({customerId, onQueued}: {customerId:string; onQueued
     {data?.mode === "approved_template" && <p className="text-xs text-muted-foreground">Sent uses your approved customer-care template. First-contact and onboarding requirements still apply.</p>}
     {data && <p className="text-xs text-muted-foreground">Texts wait outside {data.sms_start}:00–{data.sms_end}:00 ({data.timezone}). {!data.sending_enabled && "CRM sending is paused; queued texts will wait."}</p>}
     {data?.issues?.map((issue:string)=><p key={issue} className="text-sm text-amber-700">{issue}</p>)}
+    {wrongPhone && <p role="alert" className="text-sm text-amber-700">The current primary phone does not match this conversation. Review the customer before replying.</p>}
     {error && <p role="alert" className="text-sm">{error.message}</p>}
     <Label htmlFor={`sms-body-${customerId}`}>SMS message</Label>
     <Textarea id={`sms-body-${customerId}`} value={body} maxLength={1600} disabled={busy || !!submission}
       onChange={event=>setBody(event.target.value)} placeholder="Write a service or appointment message" />
-    <Button disabled={busy || (!submission && (!data?.ready || !body.trim()))} onClick={async()=>{
+    <Button disabled={busy || wrongPhone || (!submission && (!data?.ready || !body.trim()))} onClick={async()=>{
       if(lock.current) return;
       lock.current=true;setBusy(true);
       try {
         const attempt = submission || {key:crypto.randomUUID(),body:body.trim(),recipient:data.recipient};
         remember(attempt);
-        const result = await crm(`crm/customers/${customerId}/sms`,"POST",{body:attempt.body,recipient:attempt.recipient},attempt.key);
+        const result = await crm(conversationPhone ? "crm/text-messages/send" : `crm/customers/${customerId}/sms`,"POST",{body:attempt.body,recipient:attempt.recipient,...(conversationPhone ? {customer_id:customerId} : {})},attempt.key);
         const message=result.message;
         remember(null);setBody("");
         setNotice(message.status === "pending" ? "Text queued, not delivered. Follow its status in the customer timeline."
