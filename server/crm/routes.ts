@@ -1,3 +1,4 @@
+import { documentNumber } from "../../shared/document-number";
 import {registerTextMessages} from "./text-messages";
 import { currentCrownInquiryMetadata, publicCrownCatalog } from "../../shared/crown-tiers";
 import { loadCrownCatalog, registerCrownCatalog } from "./crown-catalog";
@@ -1197,7 +1198,7 @@ export function registerCrm(app: Express) {
               price_data: {
                 currency: "usd",
                 unit_amount: attempt.amount_cents,
-                product_data: { name: `Air King invoice ${row.id}` },
+                product_data: { name: `Air King invoice ${documentNumber(row.data) || row.id}` },
               },
               quantity: 1,
             },

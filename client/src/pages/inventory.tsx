@@ -1,3 +1,4 @@
+import { documentNumber } from "../../../shared/document-number";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -1487,7 +1488,7 @@ export default function Inventory() {
                   onChange={(v) => field("invoice_id", v)}
                   options={invoices
                     .filter((i) => i.customerId === installCustomer?.id)
-                    .map((i) => ({ id: i.id, name: i.id }))}
+                    .map((i) => ({ id: i.id, name: documentNumber(i) }))}
                 />
                 <Select
                   label="Equipment type"

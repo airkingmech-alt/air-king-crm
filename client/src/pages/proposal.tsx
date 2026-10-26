@@ -1,3 +1,4 @@
+import { documentNumber } from "../../../shared/document-number";
 import { QuoteEditor } from "@/components/document-editors";
 import { DeleteRecord } from "@/components/delete-record";
 import { guardSave } from "@/lib/confirmed-save";
@@ -145,7 +146,7 @@ export default function Proposal() {
     window.dispatchEvent(new Event("crm-refresh"));
     toast({
       title: "Invoice created",
-      description: `${invoice.id} created for ${quote.customerName} — ${quoteMoney(invoice.amount)}.`,
+      description: `${documentNumber(invoice)} created for ${quote.customerName} — ${quoteMoney(invoice.amount)}.`,
     });
     if (activeQuoteId.current === quote.id) setLocation(`/invoices/view/${invoice.id}`);
   });
@@ -297,7 +298,7 @@ export default function Proposal() {
                     <Check size={14} className="text-emerald-600" />
                   )}
                   {invoiceForQuote
-                    ? `${invoiceForQuote.id} · ${invoiceForQuote.status}`
+                    ? `${documentNumber(invoiceForQuote)} · ${invoiceForQuote.status}`
                     : "Create when ready"}
                 </p>
               </div>
@@ -306,7 +307,7 @@ export default function Proposal() {
         </Card>
 
         <div className="space-y-5 mb-6">
-          <QuoteHeader number={quote.id} title={quote.title} customerName={quote.customerName} status={quote.status} createdAt={quote.createdAt} />
+          <QuoteHeader number={documentNumber(quote)} title={quote.title} customerName={quote.customerName} status={quote.status} createdAt={quote.createdAt} />
           {!accepted && !isServiceOnlyQuote(quote) && <QuoteGuide />}
           {quote.status === "Draft" && <div className="no-print rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Draft only. Saving does not send this quote to the customer.</div>}
           {quote.internalReviewNote && <div className="no-print rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><strong>Internal review:</strong> {quote.internalReviewNote}</div>}

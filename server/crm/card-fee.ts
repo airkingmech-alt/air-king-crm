@@ -22,10 +22,10 @@ export function calculateCardFee(base: number, bps: number, method: any) {
   return method?.type === "card" && method.card?.funding === "credit"
     ? Math.round(base * bps / 10000) : 0;
 }
-export function nativeIntentParams(a: Record<string, any>): Stripe.PaymentIntentCreateParams {
+export function nativeIntentParams(a: Record<string, any>, displayNumber = a.invoice_id): Stripe.PaymentIntentCreateParams {
   return {
     amount: Number(a.amount_cents) + Number(a.fee_cents), currency: "usd",
-    description: `Air King invoice ${a.invoice_id}`,
+    description: `Air King invoice ${displayNumber}`,
     metadata: { attempt_id: a.id, invoice_id: a.invoice_id, checkout_kind: "direct" },
     ...(Number(a.fee_cents) > 0 ? {
       amount_details: { surcharge: { amount: Number(a.fee_cents), enforce_validation: "enabled" } },

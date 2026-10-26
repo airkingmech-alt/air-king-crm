@@ -1,3 +1,4 @@
+import { documentNumber } from "../../../shared/document-number";
 import { MaintenanceQuoteForm } from "@/components/maintenance-quote-form";
 import { LaborDescriptionBuilder } from "@/components/labor-description-builder";
 import { calculateQuotePricing } from "@/lib/quote-pricing";
@@ -40,6 +41,7 @@ export default function Quotes() {
   const { quotes, createQuote, customers, workOrders, invoices } = useData();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const [search, setSearch] = useState("");
   const [pendingOnly,setPendingOnly]=useState(()=>new URLSearchParams(window.location.hash.split("?")[1] || "").get("status")==="pending");
   const [serviceOnly, setServiceOnly] = useState(false);
   const [showBuilder, setShowBuilder] = useState(false);
@@ -469,7 +471,7 @@ export default function Quotes() {
               });
               toast({
                 title: "Draft quote saved",
-                description: `${newQuote.id} generated for ${customer.name}.`,
+                description: `${documentNumber(newQuote)} generated for ${customer.name}.`,
               });
               setShowBuilder(false);
               setLocation(`/proposals/${newQuote.id}`);
@@ -498,9 +500,10 @@ export default function Quotes() {
         <div className="flex gap-2"><Link href="/quotes/new-house"><Button size="sm" variant="outline">New House Quote</Button></Link><Button size="sm" className="bg-primary text-primary-foreground" onClick={() => setShowBuilder(true)}><Plus size={16} className="mr-1.5" />New Quote</Button></div>
       </div>
 
+      <Input aria-label="Search quotes" placeholder="Search number, customer or title" value={search} onChange={event => setSearch(event.target.value)} />
       <div className="grid grid-cols-1 gap-4">
         {pendingOnly && <div className="col-span-full flex items-center gap-3 text-sm"><span>Showing pending quotes</span><Button variant="outline" size="sm" onClick={()=>setPendingOnly(false)}>Show all quotes</Button></div>}
-        {quotes.filter(quote=>!pendingOnly || quote.status==="Quote Sent").map((quote) => {
+        {quotes.filter(quote=>(!pendingOnly || quote.status==="Quote Sent") && [documentNumber(quote), quote.id, quote.customerName, quote.title].some(value=>value.toLowerCase().includes(search.toLowerCase()))).map((quote) => {
           const linkedJob = workOrders.find((job) => job.quoteId === quote.id);
           const linkedInvoice = invoices.find(
             (invoice) => invoice.quoteId === quote.id,
@@ -511,7 +514,7 @@ export default function Quotes() {
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <p className="text-sm font-semibold">{quote.id}</p>
+                      <p className="text-sm font-semibold">{documentNumber(quote)}</p>
                       <Badge
                         variant={
                           quote.status === "Won" ? "default" : "secondary"

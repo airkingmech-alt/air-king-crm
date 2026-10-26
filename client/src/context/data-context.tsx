@@ -540,10 +540,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const createQuote = useCallback(
     async (data: QuoteDraftInput): Promise<Quote> => {
       const q = buildQuoteDraft(data, createId("Q-", data), new Date().toISOString().slice(0, 10));
-      await saveRecords([{table:"quotes",id:q.id,data:q}]);
+      const [saved] = await saveRecords([{table:"quotes",id:q.id,data:q}]);
       finishCreate("Q-",data);
-      setQuotes((prev) => [q, ...prev.filter(x=>x.id!==q.id)]);
-      return q;
+      setQuotes((prev) => [saved, ...prev.filter(x=>x.id!==q.id)]);
+      return saved;
     },
     [],
   );

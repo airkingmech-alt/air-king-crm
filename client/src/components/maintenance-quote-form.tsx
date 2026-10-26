@@ -1,3 +1,4 @@
+import { documentNumber } from "../../../shared/document-number";
 import { useEffect, useRef, useState } from "react";
 import { useData } from "@/context/data-context";
 import { useToast } from "@/hooks/use-toast";
@@ -32,7 +33,7 @@ export function MaintenanceQuoteForm({ customer, onCancel, onSaved }: { customer
       pending.current = true; setSaving(true);
       try {
         const quote = await createQuote(input);
-        if (mounted.current) { toast({title: "Maintenance draft saved", description: quote.id}); onSaved(quote); }
+        if (mounted.current) { toast({title: "Maintenance draft saved", description: documentNumber(quote)}); onSaved(quote); }
       } catch (error) {
         if (mounted.current) toast({title: "Could not save", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive"});
       } finally { pending.current = false; if (mounted.current) setSaving(false); }
