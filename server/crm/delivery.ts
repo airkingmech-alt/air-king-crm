@@ -1,3 +1,4 @@
+import { documentNumber } from "../../shared/document-number";
 import {hasSmsSendNowGrant} from "./sms-send-now-policy";
 import { smsConfigured } from "./readiness";
 import { smsProvider, sendSentSms } from "./sentdm";
@@ -67,7 +68,7 @@ export async function context(ref: Row) {
     customer_first_name: name.split(" ")[0],
     customer_last_name: name.split(" ").slice(1).join(" "),
     company_name: config.company_name,
-    quote_number: quote?.id,
+    quote_number: quote ? documentNumber(quote.data) || quote.id : undefined,
     quote_total: money(
       quote?.data.options?.find(
         (o: Row) => o.tier === quote.data.selectedOption,
@@ -75,7 +76,7 @@ export async function context(ref: Row) {
         quote?.data.options?.[0]?.customerPrice ||
         0,
     ),
-    invoice_number: invoice?.id,
+    invoice_number: invoice ? documentNumber(invoice.data) || invoice.id : undefined,
     invoice_total: money(invoice?.data.amount || 0),
     amount_due: money(
       Math.max(

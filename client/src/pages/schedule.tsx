@@ -1,3 +1,4 @@
+import { documentNumber } from "../../../shared/document-number";
 import { ServiceAddressActions } from "@/components/service-address-actions";
 import { jobServiceAddress } from "../../../shared/service-address";
 import { jobDuration } from "../../../shared/scheduling";
@@ -339,7 +340,7 @@ export default function Schedule() {
     });
     toast({
       title: "Invoice created",
-      description: `${invoice.id} is linked to ${wo.id} and ready to review.`,
+      description: `${documentNumber(invoice)} is linked to ${wo.id} and ready to review.`,
     });
     setLocation(`/invoices/view/${invoice.id}`);
   });

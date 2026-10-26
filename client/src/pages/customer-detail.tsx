@@ -1,3 +1,4 @@
+import { documentNumber } from "../../../shared/document-number";
 import { MaintenanceQuoteForm } from "@/components/maintenance-quote-form";
 import { AddressAttribution } from "@/components/address-attribution";
 import { CustomerEditor } from "@/components/customer-editor";
@@ -272,7 +273,7 @@ export default function CustomerDetail() {
     });
     toast({
       title: "Draft quote saved",
-      description: `${newQuote.id} for ${customer?.name} — ${fmtCurrencyExact(grandTotal)} total. View it in the Quotes tab or the Quotes page.`,
+      description: `${documentNumber(newQuote)} for ${customer?.name} — ${fmtCurrencyExact(grandTotal)} total. View it in the Quotes tab or the Quotes page.`,
     });
     setShowQuoteDialog(false);
     resetQuoteForm();
@@ -312,7 +313,7 @@ export default function CustomerDetail() {
     });
     toast({
       title: "Invoice created",
-      description: `${invoice.id} is ready to review and send.`,
+      description: `${documentNumber(invoice)} is ready to review and send.`,
     });
     setShowInvoiceDialog(false);
     setInvoiceDescription("");
@@ -697,7 +698,7 @@ export default function CustomerDetail() {
                         <div className="flex items-center gap-2 flex-wrap mb-1">
                           <Link href={`/proposals/${q.id}`}>
                             <p className="text-sm font-semibold hover:text-primary cursor-pointer">
-                              {q.id}
+                              {documentNumber(q)}
                             </p>
                           </Link>
                           <span
@@ -777,7 +778,7 @@ export default function CustomerDetail() {
                     <CardContent className="flex items-center justify-between gap-3 p-4">
                       <div>
                         <p className="font-semibold text-primary hover:underline">
-                          {invoice.id}
+                          {documentNumber(invoice)}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {invoice.items[0]?.description} · Due {invoice.dueDate}

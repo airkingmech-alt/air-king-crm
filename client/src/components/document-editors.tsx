@@ -1,3 +1,4 @@
+import { documentNumber } from "../../../shared/document-number";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { Pencil, Plus, Trash2 } from "lucide-react";
@@ -68,7 +69,7 @@ export function QuoteEditor({ quote }: { quote: Quote }) {
     <Button size="sm" variant="outline" data-testid="button-edit-quote" onClick={() => { setOriginal(structuredClone(quote)); setForm(quoteEditForm(quote)); setError(""); }}><Pencil size={14} className="mr-1.5" />Edit Quote</Button>
     <Dialog open={!!original} onOpenChange={open => { if (!open && !pending.current) setOriginal(null); }}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader><DialogTitle>Edit Quote {quote.id}</DialogTitle><DialogDescription>Save changes to this quote. Its existing status and links stay with it. Existing customer links show the saved version.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>Edit Quote {documentNumber(quote)}</DialogTitle><DialogDescription>Save changes to this quote. Its existing status and links stay with it. Existing customer links show the saved version.</DialogDescription></DialogHeader>
         <form onSubmit={save} className="space-y-5" data-testid="form-edit-quote">
           <fieldset disabled={saving} className="min-w-0 space-y-5">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -127,7 +128,7 @@ export function InvoiceEditor({ invoice }: { invoice: Invoice }) {
     <Button size="sm" variant="outline" data-testid="button-edit-invoice" onClick={() => { setOriginal(structuredClone(invoice)); setForm(invoiceEditForm(invoice)); setError(""); }}><Pencil size={14} className="mr-1.5" />Edit Invoice</Button>
     <Dialog open={!!original} onOpenChange={open => { if (!open && !pending.current) setOriginal(null); }}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader><DialogTitle>Edit Invoice {invoice.id}</DialogTitle><DialogDescription>Save changes without sending a message or recording a payment. Existing customer links show the saved invoice.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>Edit Invoice {documentNumber(invoice)}</DialogTitle><DialogDescription>Save changes without sending a message or recording a payment. Existing customer links show the saved invoice.</DialogDescription></DialogHeader>
         <form onSubmit={save} className="space-y-4" data-testid="form-edit-invoice">
           <fieldset disabled={saving} className="min-w-0 space-y-4">
             {locked && <div className="rounded-md bg-amber-50 text-amber-950 p-3 text-sm">This invoice uses accepted quote pricing. Project details and the due date can be edited here. To change the approved scope or price, open the quote and create a draft revision.{invoice.quoteId && <Link href={`/proposals/${invoice.quoteId}`} className="ml-1 underline">Open Quote</Link>}</div>}

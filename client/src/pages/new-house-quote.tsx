@@ -1,3 +1,4 @@
+import { documentNumber } from "../../../shared/document-number";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import NewHouseBuilder from "@/components/new-house/new-house-builder";
@@ -70,7 +71,7 @@ function NewHouseQuoteForm({recoveryKey}:{recoveryKey:string}) {
     {showDiscard&&<div role="alertdialog" aria-label="Discard unsaved takeoff" className="border rounded p-4 space-y-3"><p>Discard this unsaved takeoff and its recovery copy? Saved quotes stay unchanged.</p><Button variant="outline" onClick={()=>setShowDiscard(false)}>Keep working</Button> <Button variant="destructive" onClick={discard}>Discard takeoff</Button></div>}
     {error&&<p role="alert" className="text-destructive">{error}</p>}
     {storageError&&<p role="alert" className="text-destructive">Recovery storage is unavailable. Keep this page open until you save or cancel.</p>}
-    {snapshot ? <p>{readOnly?`Saved takeoff for ${saved?.id}. Proposal edits may differ from these original inputs.`:`Editing a copy of ${saved?.id}. Saving creates a separate Draft using current CRM equipment pricing and these takeoff allowances. Original proposal prices, scope, add-ons and approvals are not copied or changed. Review the new proposal before sending.`}</p> : !started ? <div className="space-y-4 max-w-xl">
+    {snapshot ? <p>{readOnly?`Saved takeoff for ${documentNumber(saved)}. Proposal edits may differ from these original inputs.`:`Editing a copy of ${documentNumber(saved)}. Saving creates a separate Draft using current CRM equipment pricing and these takeoff allowances. Original proposal prices, scope, add-ons and approvals are not copied or changed. Review the new proposal before sending.`}</p> : !started ? <div className="space-y-4 max-w-xl">
       <h1 className="text-xl font-bold">New House Quote</h1><p>Select an existing CRM customer and service property.</p>
       <CustomerCombobox value={customerId} allowCreate={false} onChange={id=>{setCustomerId(id);setPropertyId("");}}/>
       <label className="block">Service property<select className="block border rounded p-2 w-full bg-background" value={propertyId} onChange={event=>setPropertyId(event.target.value)}><option value="">Select a property</option>{customer?.properties.map(property=><option key={property.id} value={property.id}>{property.address}, {property.city}</option>)}</select></label>

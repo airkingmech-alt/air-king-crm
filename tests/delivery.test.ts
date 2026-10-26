@@ -558,3 +558,11 @@ test('Send now service rejects stale consent, foreign tenants and changed recipi
   const again=await requestSmsSendNow('co',m.id,'owner',m.recipient,dispatch);assert.equal(again.status,'sent');assert.equal(calls,1);
  } finally {for(const key of ['SMS_PROVIDER','TWILIO_ACCOUNT_SID','TWILIO_AUTH_TOKEN','TWILIO_MESSAGING_SERVICE_SID']){if(prior[key]===undefined)delete process.env[key];else process.env[key]=prior[key];}}
 });
+
+test("email and SMS templates use stored numbers while document references stay internal", async () => {
+ defaults();state.invoices[0].data.documentNumber="004425";state.quotes[0].data.documentNumber="000042";
+ const m=await queueMessage({company_id:"co",customer_id:"c",invoice_id:"i",quote_id:"q"},"email",
+ {category:"transactional",subject:"Invoice {{invoice_number}}",body:"Quote {{quote_number}}; invoice {{invoice_number}}"},"number-test","test");
+ assert.equal(m.subject,"Invoice 004425");assert.equal(m.body,"Quote 000042; invoice 004425");
+ assert.equal(m.invoice_id,"i");assert.equal(m.quote_id,"q");
+});

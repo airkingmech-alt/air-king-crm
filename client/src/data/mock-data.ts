@@ -114,6 +114,7 @@ export interface QuoteOption {
 }
 
 export interface Quote {
+  documentNumber?: string;
   newHouseSnapshot?: import("../lib/new-house-quote").NewHouseSnapshot;
   id: string;
   customerId: string;
@@ -166,6 +167,7 @@ export interface WorkOrder {
 }
 
 export interface Invoice {
+  documentNumber?: string;
   cardFeePercent?: number;
   projectName?: string;
   constructionStage?: "Rough-in" | "Finish";

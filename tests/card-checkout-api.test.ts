@@ -8,7 +8,7 @@ const realFetch=globalThis.fetch;
 const token="a".repeat(43), attemptId="11111111-1111-4111-8111-111111111111";
 let attempt:any, intent:any, invoice:any, paid:any[], confirms=0, creates=0, recordCalls=0;
 let funding="credit", nextStatus="succeeded";
-function reset(){attempt=null;intent=null;paid=[];confirms=creates=recordCalls=0;funding="credit";nextStatus="succeeded";invoice={id:"INV-test",company_id:"air-king",data:{amount:1000,status:"Sent"}};}
+function reset(){attempt=null;intent=null;paid=[];confirms=creates=recordCalls=0;funding="credit";nextStatus="succeeded";invoice={id:"INV-test",company_id:"air-king",data:{documentNumber:"004425",amount:1000,status:"Sent"}};}
 function json(body:any,status=200){return new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json","request-id":"req_test"}});}
 globalThis.fetch=async(input:any,init:any={})=>{
  const url=new URL(typeof input==="string"?input:input.url),path=url.pathname;
@@ -17,6 +17,7 @@ globalThis.fetch=async(input:any,init:any={})=>{
   const form=new URLSearchParams(init.body);
   if(path.includes("confirmation_tokens/"))return json({id:path.split("/").at(-1),livemode:false,expires_at:Math.floor(Date.now()/1000)+3600,payment_method_preview:{type:"card",card:{funding,brand:"visa",last4:"4242"}}});
   if(path==="/v1/payment_intents" && init.method==="POST") {
+   assert.equal(form.get("description"),"Air King invoice 004425");
    creates++;assert.equal(form.get("confirm"),null);assert.equal(form.get("payment_method_types[0]"),null);
    intent={id:"pi_test",status:"requires_payment_method",currency:"usd",livemode:false,amount:Number(form.get("amount")),amount_received:0,
     metadata:{attempt_id:form.get("metadata[attempt_id]"),invoice_id:form.get("metadata[invoice_id]"),checkout_kind:"direct"},

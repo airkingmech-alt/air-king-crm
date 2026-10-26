@@ -1,3 +1,4 @@
+import { documentNumber } from "../../../shared/document-number";
 import { InvoiceEditor } from "@/components/document-editors";
 import { DeleteRecord } from "@/components/delete-record";
 import {
@@ -67,7 +68,7 @@ export default function InvoiceView() {
         </div>
         <Card className="overflow-hidden shadow-xl print:border-0 print:shadow-none">
           <BrandedInvoice
-            invoiceNumber={invoice.id}
+            invoiceNumber={documentNumber(invoice)}
             customerName={invoice.customerName}
             projectName={invoice.projectName}
             constructionStage={invoice.constructionStage}

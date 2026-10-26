@@ -1,3 +1,4 @@
+import { documentNumber } from "../../shared/document-number";
 import Stripe from "stripe";
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
@@ -25,7 +26,8 @@ async function ensureIntent(a: Row) {
   // Creating is separate from confirming so recovery/cancellation can NEVER charge.
   let intent: Stripe.PaymentIntent;
   try {
-    intent = await client().paymentIntents.create(nativeIntentParams(a),{...opts,idempotencyKey:`direct-create:${a.id}`});
+    const invoice = await entity("invoices", a.invoice_id, a.company_id);
+    intent = await client().paymentIntents.create(nativeIntentParams(a, documentNumber(invoice.data) || invoice.id),{...opts,idempotencyKey:`direct-create:${a.id}`});
   } catch(e: any) {
     // A definitive validation error means no intent was created. Network errors are
     // ambiguous: retain the reservation and recover with the same idempotency key.

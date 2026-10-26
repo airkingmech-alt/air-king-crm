@@ -1,3 +1,4 @@
+import { documentNumber } from "../../shared/document-number";
 import { addOnServices } from "../../shared/quote-addons";
 import {
   createClient,
@@ -175,7 +176,7 @@ export function email(value: string) {
 export function publicFields(kind: string, data: Row): Row {
   if (kind === "invoice")
     return {
-      number: data.id,
+      number: documentNumber(data),
       projectName: data.projectName,
       constructionStage: data.constructionStage,
       customerName: data.customerName,
@@ -190,7 +191,7 @@ export function publicFields(kind: string, data: Row): Row {
       })),
     };
   return {
-    number: data.id,
+    number: documentNumber(data),
     customerName: data.customerName,
     title: data.acceptedScope?.title || data.title,
     scope: data.acceptedScope?.laborDescription || data.laborDescription || data.title,

@@ -1,3 +1,4 @@
+import { documentNumber } from "../../../shared/document-number";
 import { isUnpaidInvoice } from "../../../shared/dashboard";
 import { useQuery } from "@tanstack/react-query";
 import { canAccess } from "../../../shared/access";
@@ -148,6 +149,7 @@ export default function Invoices() {
     const matchesSearch =
       inv.customerName.toLowerCase().includes(search.toLowerCase()) ||
       inv.id.toLowerCase().includes(search.toLowerCase()) ||
+      documentNumber(inv).toLowerCase().includes(search.toLowerCase()) ||
       (inv.projectName || "").toLowerCase().includes(search.toLowerCase()) ||
       (inv.constructionStage || "").toLowerCase().includes(search.toLowerCase());
     const matchesFilter = filter === "All" || (filter === "Unpaid" ? isUnpaidInvoice(inv) : inv.status === filter);
@@ -252,7 +254,7 @@ export default function Invoices() {
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4">
       {savedResult&&<div role="status" className="rounded-lg border p-4 flex flex-wrap items-center justify-between gap-3">
-        <div><p className="font-medium">Invoice {savedResult.id} saved</p>
+        <div><p className="font-medium">Invoice {documentNumber(invoices.find(i => i.id === savedResult.id)) || savedResult.id} saved</p>
         <p className="text-sm text-muted-foreground">{savedResult.deliveryError ? `${savedResult.deliveryError} Open this invoice to review delivery before retrying.` : "Open the saved invoice to review its details or delivery history."}</p></div>
         <Link href={`/invoices/view/${savedResult.id}`}><Button variant="outline">Open invoice</Button></Link>
       </div>}
@@ -346,8 +348,8 @@ export default function Invoices() {
                       size={18}
                       className={statusConfig[inv.status].color}
                     />
-                    <Link href={`/invoices/view/${inv.id}`} className="text-[9px] font-semibold mt-0.5 text-primary underline" aria-label={`Open invoice ${inv.id}`}>
-                      {inv.id}
+                    <Link href={`/invoices/view/${inv.id}`} className="text-[9px] font-semibold mt-0.5 text-primary underline" aria-label={`Open invoice ${documentNumber(inv)}`}>
+                      {documentNumber(inv)}
                     </Link>
                   </div>
                   <div className="flex-1 min-w-0">

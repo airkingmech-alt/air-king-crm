@@ -1,3 +1,4 @@
+import { documentNumber } from "../../../shared/document-number";
 import { guardSave } from "@/lib/confirmed-save";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/context/auth-context";
@@ -168,7 +169,7 @@ export default function Dashboard() {
                   </div>
                   {job.quote && (
                     <Link href={`/proposals/${job.quote.id}`}>
-                      <Badge variant="outline" className="text-[10px] cursor-pointer hover:bg-muted">{job.quote.id}</Badge>
+                      <Badge variant="outline" className="text-[10px] cursor-pointer hover:bg-muted">{documentNumber(job.quote)}</Badge>
                     </Link>
                   )}
                 </div>
@@ -300,7 +301,7 @@ export default function Dashboard() {
 
       {can("quotes") && <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-3"><CardTitle className="text-base font-semibold">Quotes Awaiting a Decision</CardTitle><Link href="/quotes?status=pending" className="text-xs text-primary hover:underline">View all</Link></CardHeader>
-        <CardContent className="space-y-2">{pendingQuotes.length ? pendingQuotes.slice(0,5).map(quote=><Link key={quote.id} href={`/proposals/${encodeURIComponent(quote.id)}`} className="flex items-center justify-between gap-3 p-3 rounded-lg border hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-primary"><div className="min-w-0"><p className="text-sm font-medium truncate">{quote.customerName}</p><p className="text-xs text-muted-foreground truncate">{quote.id} · {quote.title}</p></div><ArrowUpRight size={16} className="shrink-0 text-primary"/></Link>):<p className="text-sm text-muted-foreground">No quotes awaiting a decision.</p>}</CardContent>
+        <CardContent className="space-y-2">{pendingQuotes.length ? pendingQuotes.slice(0,5).map(quote=><Link key={quote.id} href={`/proposals/${encodeURIComponent(quote.id)}`} className="flex items-center justify-between gap-3 p-3 rounded-lg border hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-primary"><div className="min-w-0"><p className="text-sm font-medium truncate">{quote.customerName}</p><p className="text-xs text-muted-foreground truncate">{documentNumber(quote)} · {quote.title}</p></div><ArrowUpRight size={16} className="shrink-0 text-primary"/></Link>):<p className="text-sm text-muted-foreground">No quotes awaiting a decision.</p>}</CardContent>
       </Card>}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -352,7 +353,7 @@ export default function Dashboard() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{inv.customerName}</p>
-                  <p className="text-xs text-muted-foreground">{inv.id} · Due {inv.dueDate}</p>
+                  <p className="text-xs text-muted-foreground">{documentNumber(inv)} · Due {inv.dueDate}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold">{fmtCurrency(inv.amount - inv.paidAmount)}</p>
