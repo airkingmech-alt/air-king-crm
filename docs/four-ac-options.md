@@ -11,7 +11,7 @@ Complete AC/furnace/coil selections are evaluated as four fixed option identitie
 | Value | Cheapest reviewed compatible Guardian AC + Guardian furnace + selected Champion coil | 10-year parts only | $0 |
 | Good | Champion XC3, 13.4 SEER2 series + selected Champion furnace and coil | 10-year parts and labor | $250 |
 | Better | Champion XC4, 14.3 SEER2 series + same Champion furnace and coil | 10-year parts and labor | $250 |
-| Best | Champion XC6, 16+ SEER2 series + two-stage Champion furnace retaining selected AFUE + same coil | 10-year parts and labor | $250 |
+| Best | Champion XC6, 16+ SEER2 series + same single-stage furnace for 80%, or two-stage Champion furnace retaining selected AFUE for high efficiency + same coil | 10-year parts and labor | $250 |
 
 Candidate substitutions preserve selected cooling capacity, furnace input/cabinet/blower code, AFUE, coil, accessories and labor/material/scope inputs. Furnace catalog tonnage is not used as cooling airflow. Guardian selection sorts actual compatible model costs, without multipliers. A reviewed exact condenser/coil/furnace match is required. The top option also requires exact-model furnace AFUE and two-stage evidence in the match registry. Series efficiency labels are separate from the reviewed matched-system SEER2 rating.
 
@@ -114,3 +114,16 @@ The user approved the specific eight Guardian suffix and seven Z9ET label correc
 The previous proposed correction manifest is historical review material. The metadata approval is fulfilled. Missing Guardian RG19080C20MPS1 and Champion 80% two-stage supplier prices remain unresolved. Relaxing exact AFUE to an efficiency class, adding equipment/match records, and publishing/deploying remain separate decisions. The stale catalog-discrepancy blocker text was removed; exact-AFUE protection remains. Synthetic tests now explicitly use a fictional exact-96% furnace instead of misrepresenting real Z9ET ratings.
 
 Post-correction verification: 29 affected option, pricebook, pricing, rebate and document-editing tests pass; TypeScript check passes. Logs: `/tmp/airking-catalog-tests.log`, `/tmp/airking-catalog-check.log`.
+
+
+## Clarified furnace scope
+
+The user subsequently retained the Guardian tier but excluded unavailable `RG19080C20MPS1`. The planner excludes that exact model even if it later appears with a price or match. No replacement with lower input, different cabinet/blower, different coil or increased cooling capacity is allowed. No further supplier price request is needed for the excluded model.
+
+For 80% bids, the XC6 top option now retains the same selected single-stage Champion Z8ES furnace and coil as options 2 and 3; its label reflects this. An exact reviewed combination remains required. The 80% two-stage equipment request is withdrawn. High-efficiency top options still require two-stage equipment at the selected exact AFUE; approval to treat 96.4–97% as the same efficiency class as 96% remains outstanding.
+
+The previously verified Guardian 3-ton combination is now enabled after the approved suffix correction: RC336E2S11 + RG19060B12MPS1 + CTM36B5CDS1, AHRI 214727326, 13.4 SEER2. YorkNOW was rechecked and explicitly lists all three full model numbers and a valve built into the coil. It preserves a selected 060B12 furnace configuration. It does not justify substituting that furnace into an 080C20 bid.
+
+Actual registry availability: the 3-ton / 060B12 / CTM36B5CDS1 configuration can produce Guardian Value; the 3.5-ton / Z9ES080C20SMPS1 / CTM42C5CES1 configuration produces Champion Good and Better. No complete four-option set or 80% XC6 combination is yet verified. This is a match-evidence limitation, not a claim that other physical combinations are incompatible. No live rows or customer snapshots were changed during this clarification.
+
+Clarification verification: all **730** tests and TypeScript check pass. New regressions cover unchanged 80% furnace/coil, missing match evidence, explicit exclusion even with synthetic price/match, and the real Guardian match without furnace downsizing. Logs: `/tmp/airking-80-full-tests.log`, `/tmp/airking-80-check.log`.

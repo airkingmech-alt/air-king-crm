@@ -56,7 +56,7 @@ test('all four options use exact reviewed combinations; Guardian is cheapest com
   const conflict = matches.map(m=>m.heatingStages===2?{...m,furnaceAfue:97}:m);
   assert.match(planAcOptions(selected,catalog,conflict)![3].blocker!,/96% AFUE/);
 });
-test('real catalog blocks unavailable 80% two-stage and half-ton XC6 without changing assumptions',()=>{
+test('real catalog blocks unreviewed 80% matches and half-ton XC6 without changing assumptions',()=>{
   for(const capacity of [1.5,2,2.5,3,3.5,4,5]) {
     const ac=pricebook.find(i=>i.category==='Condenser'&&i.model.startsWith('XC3')&&i.tonnage===capacity)!;
     for(const furnace of [byId('chp-z8e100c16'),byId('chp-z9e080c16')]) {
@@ -65,7 +65,7 @@ test('real catalog blocks unavailable 80% two-stage and half-ton XC6 without cha
       const plans=planAcOptions(selected,pricebook)!;
       assert.equal(plans.length,4);assert.ok(plans[3].blocker);
       if([2.5,3.5].includes(capacity)) assert.match(plans[3].blocker!,/Capacity will not be increased/);
-      else if(furnace.tier==='80% AFUE') assert.match(plans[3].blocker!,/two-stage.*80%/);
+      else if(furnace.tier==='80% AFUE') assert.match(plans[3].blocker!,/No reviewed match/);
       assert.deepEqual(selected,before);
       assert.ok(plans.every(p=>!p.items||p.items[0].tonnage===capacity));
     }
@@ -76,4 +76,36 @@ test('matching requires exact coil, furnace, and unique pricebook model records'
   assert.equal(planAcOptions(selected,pricebook)![1].items?.[2],selected[2]);
   assert.match(planAcOptions([selected[0],selected[1],byId('chp-ec48c')],pricebook)![1].blocker!,/unchanged CTM48/);
   assert.match(planAcOptions(selected,[...pricebook,{...selected[2],id:'duplicate'}])![1].blocker!,/Duplicate/);
+});
+
+test('80% top option retains the selected single-stage furnace and coil with reviewed evidence',()=>{
+  const selected=['chp-xc336','chp-z8e100c16','chp-ec36cs'].map(byId);
+  const matches: ReviewedQuoteMatch[]=['XC336E2S11','XC436E2S11','XC636E2S11'].map(condenser=>({condenser,furnace:selected[1].model,coil:selected[2].model,ahri:'SYNTHETIC',seer2:13.4,heatingStages:1,furnaceAfue:80}));
+  const plans=planAcOptions(selected,pricebook,matches)!;
+  for(const plan of plans.slice(1)) {
+    assert.equal(plan.items?.[1],selected[1]);
+    assert.equal(plan.items?.[2],selected[2]);
+  }
+  assert.match(plans[3].label,/same 80% furnace/);
+  assert.doesNotMatch(plans[3].label,/two-stage/);
+  assert.ok(planAcOptions(selected,pricebook,[])![3].blocker);
+});
+test('unavailable Guardian furnace stays excluded even if later present with a price and reviewed match',()=>{
+  const selected=['chp-xc342','chp-z9e080c20','chp-ec42'].map(byId);
+  const excluded: PricebookItem={...byId('grd-rg080c'),id:'synthetic-unavailable',model:'RG19080C20MPS1',cost:1};
+  const match: ReviewedQuoteMatch={condenser:'RC342E2S11',furnace:excluded.model,coil:selected[2].model,ahri:'SYNTHETIC',seer2:13.75};
+  const value=planAcOptions(selected,[...pricebook,excluded],[match])![0];
+  assert.equal(value.tier,'Value');
+  assert.equal(value.items,undefined);
+  assert.match(value.blocker!,/080C20/);
+});
+
+test('verified three-ton Guardian combination retains selected furnace size and coil',()=>{
+  const selected=['chp-xc336','chp-z9e060b','chp-ec36cds'].map(byId);
+  const value=planAcOptions(selected,pricebook)![0];
+  assert.equal(value.match?.ahri,'214727326');
+  assert.equal(value.items?.[1].model,'RG19060B12MPS1');
+  assert.equal(value.items?.[2],selected[2]);
+  assert.equal(value.items?.[0].tonnage,3);
+  assert.ok(planAcOptions([selected[0],byId('chp-z9e080c20'),selected[2]],pricebook)![0].blocker);
 });

@@ -11,6 +11,9 @@ export interface ReviewedQuoteMatch {
 // Reviewed AHRI model combinations. Supplier stock and field installation fit
 // still require confirmation. Do not infer matches from nominal tonnage alone.
 export const reviewedQuoteMatches: readonly ReviewedQuoteMatch[] = [
+  // YorkNOW checked 2026-10-27: exact models, 13.4 SEER2, valve built into coil.
+  // https://www.yorknow.com/scfurn214727326v1.html
+  { condenser: "RC336E2S11", coil: "CTM36B5CDS1", furnace: "RG19060B12MPS1", ahri: "214727326", seer2: 13.4 },
   // https://www.ahridirectory.org/details/101/214727374
   { condenser: "XC342E2S11", coil: "CTM42C5CES1", furnace: "Z9ES080C20SMPS1", ahri: "214727374", seer2: 13.4 },
   // https://www.ahridirectory.org/details/101/215419289

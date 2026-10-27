@@ -9,7 +9,7 @@ export const acOptionDefinitions = [
   { tier: 'Better', label: 'Champion 14.3 SEER2', brand: 'Champion', series: 'XC4', rating: '14.3 SEER2 series' },
   { tier: 'Best', label: 'Champion 16+ SEER2 · two-stage furnace', brand: 'Champion', series: 'XC6', rating: '16+ SEER2 series' },
 ] as const;
-export type AcOptionPlan = typeof acOptionDefinitions[number] & { items?: PricebookItem[]; match?: ReviewedQuoteMatch; blocker?: string };
+export type AcOptionPlan = Omit<typeof acOptionDefinitions[number], 'label'> & { label: string } & { items?: PricebookItem[]; match?: ReviewedQuoteMatch; blocker?: string };
 const priced = (item: PricebookItem) => Number.isFinite(item.cost) && item.cost > 0;
 const afue = (item: PricebookItem) => item.tier?.match(/(\d+(?:\.\d+)?)%/)?.[1];
 // Input BTU, cabinet and blower code must be retained. Furnace "tonnage" in
@@ -20,7 +20,10 @@ export function planAcOptions(selected: PricebookItem[], catalog: PricebookItem[
   const furnaces = selected.filter(i => i.category === 'Furnace');
   const coils = selected.filter(i => i.category === 'Evaporator Coil');
   if (!acs.length || !furnaces.length || !coils.length || selected.some(i => i.category === 'Heat Pump' || i.category === 'Air Handler')) return undefined;
-  return acOptionDefinitions.map(definition => {
+  return acOptionDefinitions.map(baseDefinition => {
+    const retain80 = baseDefinition.tier === 'Best' && furnaces.length === 1 && afue(furnaces[0]) === '80';
+    const requireTwoStage = baseDefinition.tier === 'Best' && !retain80;
+    const definition = { ...baseDefinition, label: retain80 ? 'Champion 16+ SEER2 · same 80% furnace' : baseDefinition.label };
     const fail = (blocker: string): AcOptionPlan => ({ ...definition, blocker });
     if (acs.length !== 1 || furnaces.length !== 1 || coils.length !== 1) return fail('Select exactly one AC, furnace and Champion coil.');
     const [ac] = acs, [furnace] = furnaces, [coil] = coils;
@@ -28,16 +31,16 @@ export function planAcOptions(selected: PricebookItem[], catalog: PricebookItem[
     if (selected.some(i => !priced(i))) return fail('Selected equipment has a missing or invalid price.');
     const outdoor = catalog.filter(i => i.category === 'Condenser' && i.brand === definition.brand && i.model.startsWith(definition.series) && i.tonnage === ac.tonnage && priced(i));
     if (!outdoor.length) return fail(`No priced ${ac.tonnage}-ton ${definition.series} model. Capacity will not be increased.`);
-    const indoor = definition.tier === 'Good' || definition.tier === 'Better'
-      ? (furnace.brand === 'Champion' ? [furnace] : [])
-      : catalog.filter(i => i.category === 'Furnace' && i.brand === definition.brand && afue(i) === afue(furnace) && furnaceSize(i) === furnaceSize(furnace) && priced(i) && (definition.tier !== 'Best' || /^Z[89]ET/.test(i.model)));
-    if (!indoor.length) return fail(`No priced ${definition.brand}${definition.tier === 'Best' ? ' two-stage' : ''} furnace retaining ${afue(furnace)}% AFUE and ${furnaceSize(furnace)} input/cabinet/blower. Select a Champion furnace for options 2–3.`);
+    const indoor = definition.tier === 'Good' || definition.tier === 'Better' || retain80
+      ? (furnace.brand === 'Champion' && (!retain80 || /^Z8ES/.test(furnace.model)) ? [furnace] : [])
+      : catalog.filter(i => i.category === 'Furnace' && i.model !== 'RG19080C20MPS1' && i.brand === definition.brand && afue(i) === afue(furnace) && furnaceSize(i) === furnaceSize(furnace) && priced(i) && (!requireTwoStage || /^Z[89]ET/.test(i.model)));
+    if (!indoor.length) return fail(`No priced ${definition.brand}${requireTwoStage ? ' two-stage' : ''} furnace retaining ${afue(furnace)}% AFUE and ${furnaceSize(furnace)} input/cabinet/blower. Select a Champion furnace for options 2–3.`);
     const combinations = outdoor.flatMap(condenser => indoor.flatMap(heat => {
       const match = matches.find(m => m.condenser === condenser.model && m.furnace === heat.model && m.coil === coil.model);
-      if (!match || (definition.tier === 'Best' && (match.heatingStages !== 2 || match.furnaceAfue !== Number(afue(furnace))))) return [];
+      if (!match || (requireTwoStage && (match.heatingStages !== 2 || match.furnaceAfue !== Number(afue(furnace))))) return [];
       return [{ condenser, heat, match }];
     })).sort((a, b) => (a.condenser.cost + a.heat.cost) - (b.condenser.cost + b.heat.cost) || a.condenser.model.localeCompare(b.condenser.model) || a.heat.model.localeCompare(b.heat.model));
-    if (!combinations.length) return fail(`No reviewed match for ${outdoor.map(i => i.model).join('/')} + ${indoor.map(i => i.model).join('/')} + unchanged ${coil.model}${definition.tier === 'Best' ? ` confirming two-stage heat at ${afue(furnace)}% AFUE` : ''}.`);
+    if (!combinations.length) return fail(`No reviewed match for ${outdoor.map(i => i.model).join('/')} + ${indoor.map(i => i.model).join('/')} + unchanged ${coil.model}${requireTwoStage ? ` confirming two-stage heat at ${afue(furnace)}% AFUE` : ''}.`);
     const { condenser, heat, match } = combinations[0];
     // Duplicate model records are ambiguous even if one has a lower price.
     if ([condenser, heat, coil].some(item => catalog.filter(i => i.model === item.model && i.brand === item.brand && i.category === item.category).length !== 1)) return fail('Duplicate model records: confirm the equipment model and price.');
