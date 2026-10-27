@@ -48,7 +48,7 @@ export function buildQuoteOptions(input: QuoteDraftInput, catalog: PricebookItem
       throw new Error("Fixed service pricing requires Maintenance with no equipment, materials, or add-ons.");
     if (!input.laborDescription?.trim() || !Number.isFinite(input.servicePrice) || input.servicePrice <= 0 || !Number.isSafeInteger(Math.round(input.servicePrice * 100)) || Math.abs(input.servicePrice * 100 - Math.round(input.servicePrice * 100)) > 0.000001 || !Number.isFinite(input.laborCost) || input.laborCost < 0)
       throw new Error("Enter a service description, a positive total with at most two decimal places, and a valid labor estimate.");
-    return { options: [{ tier: "Better" as const, label: "Maintenance service", equipment: "", equipmentItems: [], equipmentSummary: "", efficiency: "", features: [input.laborDescription.trim()], equipmentCost: 0, purchaseTax: 0, totalCost: calculateQuotePricing(0, input.laborCost, 0).totalCost, customerPrice: input.servicePrice }], unavailable: [] as string[] };
+    return { options: [{ tier: "Better" as const, label: "Maintenance service", equipment: "", equipmentItems: [], equipmentSummary: "", efficiency: "", features: [input.laborDescription.trim()], equipmentCost: 0, purchaseTax: 0, totalCost: calculateQuotePricing(0, input.laborCost, 0).totalCost, customerPrice: input.servicePrice }], unavailable: [] as string[], unavailableOptions: [] as NonNullable<Quote["unavailableOptions"]> };
   }
   if (!input.equipmentItems.length) throw new Error("Select equipment or use the service-only Maintenance form.");
   const selected = input.equipmentItems.map(id => {
@@ -57,6 +57,7 @@ export function buildQuoteOptions(input: QuoteDraftInput, catalog: PricebookItem
     return item;
   });
   const unavailable: string[] = [];
+  const unavailableOptions: NonNullable<Quote["unavailableOptions"]> = [];
   const option = (items: PricebookItem[], tier: QuoteOption["tier"], label: string): QuoteOption => {
     const pricing = calculateQuotePricing(items.reduce((sum, item) => sum + item.cost, 0), input.laborCost, input.materialsCost);
     return {
@@ -70,11 +71,12 @@ export function buildQuoteOptions(input: QuoteDraftInput, catalog: PricebookItem
     };
   };
   const plans = planAcOptions(selected, catalog, matches);
-  if (!plans) return { options: [option(selected, "Better", "Selected system")], unavailable };
+  if (!plans) return { options: [option(selected, "Better", "Selected system")], unavailable, unavailableOptions };
   const options: QuoteOption[] = [];
   for (const plan of plans) {
     if (!plan.items) {
       unavailable.push(`${plan.label}: ${plan.blocker}`);
+      unavailableOptions.push({ tier: plan.tier, label: plan.label, reason: plan.blocker || "Equipment unavailable" });
       continue;
     }
     const result = option(plan.items, plan.tier, plan.label);
@@ -86,11 +88,11 @@ export function buildQuoteOptions(input: QuoteDraftInput, catalog: PricebookItem
     options.push(result);
   }
   if (!options.length) throw new Error(unavailable.join("\n"));
-  return { options, unavailable };
+  return { options, unavailable, unavailableOptions };
 }
 
 export function buildQuoteDraft(input: QuoteDraftInput, id: string, createdAt: string, catalog: PricebookItem[] = pricebook, matches?: readonly ReviewedQuoteMatch[]): Quote {
-  const { options, unavailable } = buildQuoteOptions(input, catalog, matches);
+  const { options, unavailable, unavailableOptions } = buildQuoteOptions(input, catalog, matches);
   const selectedOption = options.find(option => option.equipmentItems?.every((item, index) => item === input.equipmentItems[index])) || options[0];
   const pricing = calculateQuotePricing(selectedOption.equipmentCost || 0, input.laborCost, input.materialsCost);
   return {
@@ -106,6 +108,6 @@ export function buildQuoteDraft(input: QuoteDraftInput, id: string, createdAt: s
     materialsCost: pricing.materialsCost, taxRate: pricing.taxRate,
     purchaseTax: pricing.purchaseTax, pricingVersion: "purchase-tax-v1",
     internalReviewNote: input.servicePrice !== undefined ? "Fixed service total. Review internal labor costs before accepting; a zero estimate does not establish actual cost." : ["Confirm supplier availability and review physical installation requirements. Approximate series efficiency is disclosed; AHRI certification is not required to generate options.", ...unavailable].join(" "),
-    options,
+    options, unavailableOptions,
   };
 }

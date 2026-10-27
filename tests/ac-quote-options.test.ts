@@ -11,8 +11,8 @@ import type { ReviewedQuoteMatch } from '../client/src/lib/quote-matches';
 const byId = (id: string) => pricebook.find(i => i.id === id)!;
 test('all four options preserve equipment constraints and choose lowest actual Guardian cost', () => {
   // Synthetic review evidence only. Never add these to the production match registry.
-  // Fictional exact-96% two-stage item proves plumbing only; real Z9ET is 97%.
-  const catalog = pricebook.map(i=>i.id==='chp-z9t080c16'?{...i,model:'Z9ET080C16SYNTHETIC',tier:'96% AFUE'}:i);
+  // Synthetic model identity keeps optional certification evidence isolated.
+  const catalog = pricebook.map(i=>i.id==='chp-z9t080c16'?{...i,model:'Z9ET080C16SYNTHETIC',tier:'97% AFUE'}:i);
   const selected = ['chp-xc336','chp-z9e080c16','chp-ec36cs','chp-hs08'].map(byId);
   const models = ['RC336E2S11','RC436E2S11','XC336E2S11','XC436E2S11','XC636E2S11'];
   const matches: ReviewedQuoteMatch[] = models.map((condenser,index) => ({condenser,coil:'CTM36C5ADS1',furnace:index<2?'RG19080C16MPS1':index===4?'Z9ET080C16SYNTHETIC':'Z9ES080C16SMPS1',ahri:'SYNTHETIC',seer2:13.4,heatingStages:index===4?2:1,furnaceAfue:96}));
@@ -65,8 +65,7 @@ test('real catalog rounds only authorized half-ton top options and preserves oth
       const selected=[ac,furnace,coil];const before=structuredClone(selected);
       const plans=planAcOptions(selected,pricebook)!;
       assert.equal(plans.length,4);
-      if(furnace.tier==='80% AFUE') assert.ok(plans[3].items);
-      else assert.ok(plans[3].blocker);
+      assert.ok(plans[3].items);
       assert.deepEqual(selected,before);
       assert.ok(plans.every(p=>!p.items||p.items[0].tonnage===(p.tier==='Best'&&[2.5,3.5].includes(capacity)?Math.ceil(capacity):capacity)));
     }
@@ -148,13 +147,13 @@ test('delivery copy includes saved bid disclosure once and leaves historical mes
  assert.equal(quoteEfficiencyDeliveryBody(body,[{features:['Legacy warranty']}]),body);
 });
 
-test('selected real two-stage high-efficiency furnace is retained without certification; unapproved AFUE substitutions stay blocked',()=>{
+test('selected real two-stage high-efficiency furnace is retained without certification; approved final-tier upgrade selects true 97%',()=>{
  const selected=['chp-xc336','chp-z9t080c16','chp-ec36cs'].map(byId);
  const plans=planAcOptions(selected,pricebook,[])!;
  for(const plan of plans.slice(1))assert.equal(plan.items?.[1],selected[1]);
  assert.equal(plans[3].items?.[1].tier,'97% AFUE · two-stage standard ECM');
  const baseline=[selected[0],byId('chp-z9e080c16'),selected[2]];
- assert.match(planAcOptions(baseline,pricebook,[])![3].blocker!,/96% AFUE/);
+ assert.equal(planAcOptions(baseline,pricebook,[])![3].items?.find(i => i.category === 'Furnace')?.tier, '97% AFUE · two-stage standard ECM');
 });
 
 test('half-size top options visibly persist actual condenser, required coil and cost without further fallback',()=>{
@@ -184,3 +183,17 @@ test('upsized XC6 retains a supported original coil, rejects missing replacement
  const noCoils=pricebook.map(i=>/^CTM48[CD]5CF/.test(i.model)?{...i,cost:0}:i);
  assert.match(planAcOptions(original,noCoils)![3].blocker!,/No priced Champion coil/);
 });
+
+ test('saved draft policy keeps four priced real options and exposes unavailable true-97 cases',()=>{
+ const input={customerId:'synthetic',customerName:'Test',jobType:'Changeout',title:'Repair fixture',equipmentItems:['chp-xc336','chp-ec36bn','chp-z9e080b'],equipmentCost:4365,laborCost:1200,materialsCost:450};
+ const draft=buildQuoteDraft(input,'TEST','2026-10-27');
+ assert.deepEqual(draft.options.map(o=>o.customerPrice),[6492.20,8372.94,8719.01,9454.76]);
+ assert.match(draft.options[3].equipment,/Z9ET080B12SMPS1/);
+ assert.ok(draft.options.slice(1,3).every(o=>o.equipment.includes('Z9ES080B12SMPS1')));
+ for(const id of ['chp-z9e100c16','chp-z9e100c20']) {
+  const q=buildQuoteDraft({...input,equipmentItems:['chp-xc336','chp-ec36bn',id]},'TEST','2026-10-27');
+  assert.ok(!q.options.some(o=>o.tier==='Best'));
+  assert.match(q.unavailableOptions!.find(o=>o.tier==='Best')!.reason,/97% AFUE/);
+  assert.deepEqual(publicFields('quote',q).unavailableOptions,q.unavailableOptions);
+ }
+ });

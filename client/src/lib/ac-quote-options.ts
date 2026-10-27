@@ -7,7 +7,7 @@ export const acOptionDefinitions = [
   { tier: 'Value', label: 'Guardian · parts only', brand: 'Guardian', series: 'RC', rating: 'Catalog rating requires confirmation' },
   { tier: 'Good', label: 'Champion 13.4 SEER2', brand: 'Champion', series: 'XC3', rating: '13.4 SEER2 series' },
   { tier: 'Better', label: 'Champion 14.3 SEER2', brand: 'Champion', series: 'XC4', rating: '14.3 SEER2 series' },
-  { tier: 'Best', label: 'Champion 16+ SEER2 · two-stage furnace', brand: 'Champion', series: 'XC6', rating: '16+ SEER2 series' },
+  { tier: 'Best', label: 'Champion 16+ SEER2 · 97% two-stage furnace', brand: 'Champion', series: 'XC6', rating: '16+ SEER2 series' },
 ] as const;
 export { approximateEfficiencyDisclosure } from '../../../shared/quote-efficiency';
 export type AcOptionPlan = Omit<typeof acOptionDefinitions[number], 'label' | 'rating'> & { label: string; rating: string; reviewNotes?: string[] } & { items?: PricebookItem[]; match?: ReviewedQuoteMatch; blocker?: string };
@@ -38,8 +38,8 @@ export function planAcOptions(selected: PricebookItem[], catalog: PricebookItem[
     if (!outdoor.length) return fail(`No priced ${targetCapacity}-ton ${definition.series} model. No further capacity substitution will be made.`);
     const indoor = definition.tier === 'Good' || definition.tier === 'Better' || retain80
       ? (furnace.brand === 'Champion' && (!retain80 || /^Z8ES/.test(furnace.model)) ? [furnace] : [])
-      : catalog.filter(i => i.category === 'Furnace' && i.model !== 'RG19080C20MPS1' && i.brand === definition.brand && afue(i) === afue(furnace) && furnaceSize(i) === furnaceSize(furnace) && priced(i) && (!requireTwoStage || /^Z[89]ET/.test(i.model)));
-    if (!indoor.length) return fail(`No priced ${definition.brand}${requireTwoStage ? ' two-stage' : ''} furnace retaining ${afue(furnace)}% AFUE and ${furnaceSize(furnace)} input/cabinet/blower. Select a Champion furnace for options 2–3.`);
+      : catalog.filter(i => i.category === 'Furnace' && i.model !== 'RG19080C20MPS1' && i.brand === definition.brand && afue(i) === (requireTwoStage ? '97' : afue(furnace)) && furnaceSize(i) === furnaceSize(furnace) && priced(i) && (!requireTwoStage || /^Z[89]ET/.test(i.model)));
+    if (!indoor.length) return fail(`No priced ${definition.brand}${requireTwoStage ? ' two-stage' : ''} furnace retaining ${requireTwoStage ? '97' : afue(furnace)}% AFUE and ${furnaceSize(furnace)} input/cabinet/blower. Select a Champion furnace for options 2–3.`);
     // XC6 technical guide 6601765-LTG-A-0125, table 5: explicit coil groups,
     // not an AHRI rating. Only the authorized upsized tier may change its coil.
     if (upsized) {

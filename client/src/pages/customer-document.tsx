@@ -1,3 +1,4 @@
+import { UnavailableQuoteOptions, unavailableQuoteOptions, optionOrder } from "@/components/unavailable-quote-options";
 import { QuoteRebates, QuoteRebateTerms } from "@/components/quote-rebates";
 import { CardCheckout } from "@/components/card-checkout";
 import { QuoteHeader, QuoteGuide, QuoteFooter, isServiceOnlyQuote, ServiceQuoteTerms } from "@/components/branded-quote";
@@ -157,10 +158,10 @@ export default function CustomerDocument() {
                     ))}
                   </section>
                 )}
-                <div data-option-count={d.options.length} className={`quote-options grid grid-cols-1 ${d.options.length === 4 ? "md:grid-cols-2 xl:grid-cols-4" : d.options.length === 3 ? "md:grid-cols-3" : d.options.length === 2 ? "md:grid-cols-2" : ""} gap-5 pt-3`}>
+                <div data-option-count={(d.options.length + unavailableQuoteOptions(d).length)} className={`quote-options grid grid-cols-1 ${(d.options.length + unavailableQuoteOptions(d).length) === 4 ? "md:grid-cols-2 xl:grid-cols-4" : (d.options.length + unavailableQuoteOptions(d).length) === 3 ? "md:grid-cols-3" : (d.options.length + unavailableQuoteOptions(d).length) === 2 ? "md:grid-cols-2" : ""} gap-5 pt-3`}>
                   {d.options.map((o: any) => (
                     <Card
-                      key={o.tier}
+                      key={o.tier} style={{ order: optionOrder(o.tier) }}
                       onClick={() => !closed && setOption(o.tier)}
                       className={`quote-option relative cursor-pointer transition-all ${chosenTier === o.tier ? "ring-2 ring-primary shadow-lg" : "hover:shadow-md"} `}
                     >
@@ -216,6 +217,7 @@ export default function CustomerDocument() {
                       </CardContent>
                     </Card>
                   ))}
+                  <UnavailableQuoteOptions quote={d} />
                 </div>
                 {d.options.some((option: any) => option.rebateOffer?.items?.length) && <QuoteRebateTerms />}
                 <section className="rounded-xl border p-5">

@@ -207,6 +207,7 @@ export function publicFields(kind: string, data: Row): Row {
     legacyAcceptance: data.status === "Won" && !data.acceptedScope,
     equipmentItems: data.equipmentItems || [],
     equipmentSelectionMode: data.equipmentSelectionMode,
+    unavailableOptions: (data.unavailableOptions || []).filter((o: Row) => !data.options?.some((available: Row) => available.tier === o.tier)).map((o: Row) => ({ tier: o.tier, label: o.label, reason: o.reason })),
     options: (data.options || []).map((original: Row) => {
       const o = data.acceptedScope?.selectedOption === original.tier ? data.acceptedScope.option : original;
       return ({

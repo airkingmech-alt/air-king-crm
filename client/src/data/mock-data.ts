@@ -131,6 +131,7 @@ export interface Quote {
   status: LeadStatus | "Draft";
   createdAt: string;
   options: QuoteOption[];
+  unavailableOptions?: { tier: QuoteOption["tier"]; label: string; reason: string }[];
   selectedAddOns: string[];
   selectedOption?: string;
   acceptedAt?: string;
