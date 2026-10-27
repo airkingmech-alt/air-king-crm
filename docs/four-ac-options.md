@@ -1,6 +1,6 @@
 # Four AC / furnace / coil options
 
-Prepared on master `03a7e8a` (includes PR #61 document numbering). No live data changes, migrations, merge, deployment, publication, or customer messages were performed.
+Prepared on master `03a7e8a` (includes PR #61 document numbering). The 15 separately approved catalog metadata corrections are now applied; see the final audit below. No migrations, merge, deployment, publication, or customer messages were performed. Earlier inspection sections record the pre-correction state.
 
 ## Behavior
 
@@ -99,3 +99,18 @@ Amounts are saved with each option, publicly projected through an explicit white
 Proposed-only catalog correction manifest: `/tmp/airking-proposed-catalog-corrections.json` (8 RG19 suffix corrections and 7 exact Z9ET AFUE/staging corrections). It is review material, not an applied catalog update.
 
 Rebate-inclusive verification: `npm run check`, all **727** `npm test` cases, `npm run build`, and `node tests/four-options-browser.mjs` pass. Tests cover all supported flyer families, wrong brand/category/prefix, furnace-only offers, base-versus-total-bonus arithmetic, duplicate-model suppression, no invented heat-pump/air-handler combination total, exact 2026 boundaries, public whitelisting, recalculation/manual-edit cleanup, immutable accepted rebate snapshots, unchanged invoice amounts and PDF presentation. PDF text confirms $465/$565 alternatives and the filing deadline. Logs: `/tmp/airking-rebate-{check,full-tests,build,browser}.log`. The synthetic `/tmp/four-options.pdf` now includes rebate examples.
+
+
+## Approved catalog corrections applied October 27, 2026
+
+The user approved the specific eight Guardian suffix and seven Z9ET label corrections. All **15 live rows** were updated atomically and independently reread. The same 15 bundled catalog entries now agree. No missing equipment, supplier prices, match certifications, or efficiency-class policy changes were inferred from that approval.
+
+- Guardian RG19040A10MPS, RG19060A10MPS, RG19060B12MPS, RG19080B12MPS, RG19080C16MPS, RG19100C16MPS, RG19100C20MPS and RG19120D20MPS each gained the supplier-documented final `1`.
+- Z9ET040A10, 060B12, 080B12, 080C16 and 120D20 labels changed from 96%/variable-speed to **97% AFUE, two-stage standard ECM**. Z9ET100C16 changed to **96.8%** and Z9ET100C20 to **96.4%**, with the same corrected staging/motor description. Complete model suffixes and IDs were preserved.
+- Transaction assertions verified exactly 15 changed catalog rows, unchanged catalog row count, identical unrelated rows, and identical prices/IDs/all unrelated fields on corrected rows. Only the approved model/name/description/tier fields and the existing trigger's `updated_at` changed.
+- All **15 quotes, 15 invoices and 2 quote acceptances** remained byte-for-byte identical as serialized database rows during the transaction; a separate read confirmed unchanged checksums: quotes `137a917a05f8356a6c445e90530ab4b5`, invoices `ddced3d41a1c7143fb3e4ce613a6d28e`, acceptances `c42ad5146e08d4def983b318cd5141bf`.
+- A first SQL attempt failed on JSON operator parentheses and rolled back. A read verified no corrections had applied; the corrected transaction then committed successfully. There was no approval denial or uncertain write outcome.
+
+The previous proposed correction manifest is historical review material. The metadata approval is fulfilled. Missing Guardian RG19080C20MPS1 and Champion 80% two-stage supplier prices remain unresolved. Relaxing exact AFUE to an efficiency class, adding equipment/match records, and publishing/deploying remain separate decisions. The stale catalog-discrepancy blocker text was removed; exact-AFUE protection remains. Synthetic tests now explicitly use a fictional exact-96% furnace instead of misrepresenting real Z9ET ratings.
+
+Post-correction verification: 29 affected option, pricebook, pricing, rebate and document-editing tests pass; TypeScript check passes. Logs: `/tmp/airking-catalog-tests.log`, `/tmp/airking-catalog-check.log`.

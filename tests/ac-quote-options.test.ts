@@ -10,11 +10,13 @@ import type { ReviewedQuoteMatch } from '../client/src/lib/quote-matches';
 const byId = (id: string) => pricebook.find(i => i.id === id)!;
 test('all four options use exact reviewed combinations; Guardian is cheapest compatible combination', () => {
   // Synthetic review evidence only. Never add these to the production match registry.
+  // Fictional exact-96% two-stage item proves plumbing only; real Z9ET is 97%.
+  const catalog = pricebook.map(i=>i.id==='chp-z9t080c16'?{...i,model:'Z9ET080C16SYNTHETIC',tier:'96% AFUE'}:i);
   const selected = ['chp-xc336','chp-z9e080c16','chp-ec36cs','chp-hs08'].map(byId);
   const models = ['RC336E2S11','RC436E2S11','XC336E2S11','XC436E2S11','XC636E2S11'];
-  const matches: ReviewedQuoteMatch[] = models.map((condenser,index) => ({condenser,coil:'CTM36C5ADS1',furnace:index<2?'RG19080C16MPS':index===4?'Z9ET080C16SMPS1':'Z9ES080C16SMPS1',ahri:'SYNTHETIC',seer2:13.4,heatingStages:index===4?2:1,furnaceAfue:96}));
+  const matches: ReviewedQuoteMatch[] = models.map((condenser,index) => ({condenser,coil:'CTM36C5ADS1',furnace:index<2?'RG19080C16MPS1':index===4?'Z9ET080C16SYNTHETIC':'Z9ES080C16SMPS1',ahri:'SYNTHETIC',seer2:13.4,heatingStages:index===4?2:1,furnaceAfue:96}));
   const input={customerId:'synthetic',customerName:'Test',jobType:'Changeout',title:'Four synthetic options',equipmentItems:selected.map(i=>i.id),equipmentCost:0,laborCost:960,materialsCost:200,selectedAddOns:[],laborDescription:'Same location and scope'};
-  const draft=buildQuoteDraft(input,'TEST','2026-10-27',pricebook,matches);
+  const draft=buildQuoteDraft(input,'TEST','2026-10-27',catalog,matches);
   assert.deepEqual(draft.options.map(o=>o.tier),['Value','Good','Better','Best']);
   assert.equal(draft.laborCost,960);assert.equal(draft.materialsCost,200);
   assert.equal(draft.laborDescription,input.laborDescription);
@@ -31,28 +33,28 @@ test('all four options use exact reviewed combinations; Guardian is cheapest com
   assert.equal(quoteEditChanges(draft,form).options,undefined);
   const recalculated=recalculateQuoteOption(form.options[1],draft.options[1].equipmentItems!,'960','200');
   assert.equal(Number(recalculated.customerPrice),draft.options[1].customerPrice);
-  const plans = planAcOptions(selected,pricebook,matches)!;
+  const plans = planAcOptions(selected,catalog,matches)!;
   assert.equal(plans.length,4);
   assert.ok(plans.every(p=>p.items),JSON.stringify(plans));
   assert.equal(plans[0].items![0].model,'RC336E2S11');
   assert.equal(plans[0].items![1].brand,'Guardian');
-  assert.equal(plans[3].items![1].model,'Z9ET080C16SMPS1');
+  assert.equal(plans[3].items![1].model,'Z9ET080C16SYNTHETIC');
   for(const plan of plans) {
     assert.equal(plan.items![0].tonnage,3);
     assert.equal(plan.items![2],selected[2]);
     assert.equal(plan.items![3],selected[3]);
   }
   assert.equal(plans[1].items![1],plans[2].items![1]);
-  const cheaper = pricebook.map(i=>i.model==='RC436E2S11'?{...i,cost:100}:i);
+  const cheaper = catalog.map(i=>i.model==='RC436E2S11'?{...i,cost:100}:i);
   assert.equal(planAcOptions(selected,cheaper,matches)![0].items![0].model,'RC436E2S11');
   // Price alone never establishes compatibility.
   assert.equal(planAcOptions(selected,cheaper,matches.filter(m=>m.condenser!=='RC436E2S11'))![0].items![0].model,'RC336E2S11');
   for(const cost of [0,-1,NaN,Infinity]) {
-    const invalid = pricebook.map(i=>i.model==='XC636E2S11'?{...i,cost}:i);
+    const invalid = catalog.map(i=>i.model==='XC636E2S11'?{...i,cost}:i);
     assert.match(planAcOptions(selected,invalid,matches)![3].blocker!,/No priced/);
   }
   const conflict = matches.map(m=>m.heatingStages===2?{...m,furnaceAfue:97}:m);
-  assert.match(planAcOptions(selected,pricebook,conflict)![3].blocker!,/96% AFUE/);
+  assert.match(planAcOptions(selected,catalog,conflict)![3].blocker!,/96% AFUE/);
 });
 test('real catalog blocks unavailable 80% two-stage and half-ton XC6 without changing assumptions',()=>{
   for(const capacity of [1.5,2,2.5,3,3.5,4,5]) {

@@ -37,7 +37,7 @@ export function planAcOptions(selected: PricebookItem[], catalog: PricebookItem[
       if (!match || (definition.tier === 'Best' && (match.heatingStages !== 2 || match.furnaceAfue !== Number(afue(furnace))))) return [];
       return [{ condenser, heat, match }];
     })).sort((a, b) => (a.condenser.cost + a.heat.cost) - (b.condenser.cost + b.heat.cost) || a.condenser.model.localeCompare(b.condenser.model) || a.heat.model.localeCompare(b.heat.model));
-    if (!combinations.length) return fail(`No reviewed match for ${outdoor.map(i => i.model).join('/')} + ${indoor.map(i => i.model).join('/')} + unchanged ${coil.model}${definition.tier === 'Best' ? ` confirming two-stage heat at ${afue(furnace)}% AFUE (catalog Z9ET says 96%; current manufacturer series says 97%)` : ''}.`);
+    if (!combinations.length) return fail(`No reviewed match for ${outdoor.map(i => i.model).join('/')} + ${indoor.map(i => i.model).join('/')} + unchanged ${coil.model}${definition.tier === 'Best' ? ` confirming two-stage heat at ${afue(furnace)}% AFUE` : ''}.`);
     const { condenser, heat, match } = combinations[0];
     // Duplicate model records are ambiguous even if one has a lower price.
     if ([condenser, heat, coil].some(item => catalog.filter(i => i.model === item.model && i.brand === item.brand && i.category === item.category).length !== 1)) return fail('Duplicate model records: confirm the equipment model and price.');
