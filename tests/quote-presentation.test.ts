@@ -18,6 +18,9 @@ test("quote presentation renders logo, contacts, scope, saved add-ons and no-pay
       import { addOnServices } from './client/src/data/pricebook';
       import { buildQuoteDraft } from './client/src/lib/quote-pricing';
       import { publicFields } from './server/crm/core';
+      import { QuoteRebates, QuoteRebateTerms } from './client/src/components/quote-rebates';
+      import { potentialChampionRebates } from './shared/champion-rebates';
+      export function renderRebates(today){const offer=potentialChampionRebates([{brand:'Champion',category:'Condenser',model:'XC636E2S11'},{brand:'Champion',category:'Furnace',model:'Z9ET080C16SMPS1'}]);return renderToStaticMarkup(<><QuoteRebates offer={offer} today={today}/><QuoteRebateTerms/></>)}
       export function renderInvoice(fees=false) {
         const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:Infinity}}});
         client.setQueryData(['public-document','test-invoice'],{kind:'invoice',payments_enabled:true,fee_enabled:fees,payments:fees?[{amount_cents:100000,fee_cents:3000,method:'Visa',paid_at:'2026-09-22'}]:[],document:{
@@ -51,7 +54,14 @@ test("quote presentation renders logo, contacts, scope, saved add-ons and no-pay
       plugins: [{ name: "no-network-crm", setup(b) { b.onResolve({ filter: /^@\/lib\/crm-api$/ }, () => ({ path: "crm", namespace: "test" }));
         b.onLoad({ filter: /.*/, namespace: "test" }, () => ({ contents: "export async function crm(){throw new Error('Network forbidden in presentation test')}" })); } }],
     });
-    const { render, renderInvoice, renderTiered } = await import(pathToFileURL(path.join(temp, "render.mjs")).href);
+    const { render, renderInvoice, renderTiered, renderRebates } = await import(pathToFileURL(path.join(temp, "render.mjs")).href);
+    const rebateHtml=renderRebates('2026-10-27');
+    assert.match(rebateHtml,/\$465 base total or \$565 bonus total/);
+    assert.match(rebateHtml,/Quote price is unchanged/);
+    assert.match(rebateHtml,/60 calendar days/);assert.match(rebateHtml,/45 days after approval/);
+    assert.match(rebateHtml,/Elite or Certified Comfort Expert/);
+    assert.match(rebateHtml,/exact-model and program verification/);
+    assert.match(renderRebates('2027-01-01'),/2026 installation window ended/);
     const invoiceHtml=renderInvoice();
     assert.match(invoiceHtml,/PAY \$3,750.00 IN FULL/);
     assert.match(invoiceHtml,/Rough-in/);assert.match(invoiceHtml,/Lot 12/);
@@ -74,13 +84,13 @@ test("quote presentation renders logo, contacts, scope, saved add-ons and no-pay
     assert.ok(accepted.includes(expectedTotal), "Accepted total includes persisted add-ons");
     assert.match(accepted, /Accepted/);
     assert.doesNotMatch(accepted, /Approve your proposal/);
-    const best=renderTiered('Best');
-    assert.match(best,/CTM48C5CFS1/);assert.doesNotMatch(best,/CTM42C5CES1/);
-    assert.match(best,/4 Ton Champion AC/);assert.match(best,/15.75 SEER2/);
-    assert.match(best,/\$9,974.09/);assert.doesNotMatch(best,/16 SEER/);
-    assert.doesNotMatch(best,/Purchase tax|Internal cost|576.27|6,103.00/);
+    const better=renderTiered('Better');
+    assert.match(better,/CTM42C5CES1/);assert.doesNotMatch(better,/CTM48C5CFS1/);
+    assert.match(better,/3.5 Ton Champion AC/);assert.match(better,/14.3 SEER2/);
+    assert.match(better,/\$9,113.48/);
+    assert.doesNotMatch(better,/Purchase tax|Internal cost|laborWarrantyCost/);
     const good=renderTiered('Good');
-    assert.match(good,/CTM42C5CES1/);assert.match(good,/\$8,435.83/);
+    assert.match(good,/CTM42C5CES1/);assert.match(good,/\$8,748.33/);
     assert.match(good,/13.4 SEER2/);assert.doesNotMatch(good,/13 SEER/);
     const staff = await readFile("client/src/pages/proposal.tsx", "utf8");
     assert.match(staff, /<QuoteHeader/);

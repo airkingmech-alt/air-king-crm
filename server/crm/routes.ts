@@ -1,3 +1,4 @@
+import { quoteEfficiencyDeliveryBody } from '../../shared/quote-efficiency';
 import { documentNumber } from "../../shared/document-number";
 import {registerTextMessages} from "./text-messages";
 import { currentCrownInquiryMetadata, publicCrownCatalog } from "../../shared/crown-tiers";
@@ -737,7 +738,9 @@ export function registerCrm(app: Express) {
           await queueMessage(
             references(row, kind),
             channel,
-            template,
+            kind === 'quote'
+              ? { ...template, body: quoteEfficiencyDeliveryBody(template.body, row.data?.options) }
+              : template,
             `manual:${c.company}:${requestKey}:${channel}`,
             "document_delivery",
             c.id,

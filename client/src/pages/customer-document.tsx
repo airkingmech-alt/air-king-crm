@@ -1,3 +1,4 @@
+import { QuoteRebates, QuoteRebateTerms } from "@/components/quote-rebates";
 import { CardCheckout } from "@/components/card-checkout";
 import { QuoteHeader, QuoteGuide, QuoteFooter, isServiceOnlyQuote, ServiceQuoteTerms } from "@/components/branded-quote";
 import { useState } from "react";
@@ -156,7 +157,7 @@ export default function CustomerDocument() {
                     ))}
                   </section>
                 )}
-                <div className="quote-options grid md:grid-cols-3 gap-5 pt-3">
+                <div data-option-count={d.options.length} className={`quote-options grid grid-cols-1 ${d.options.length === 4 ? "md:grid-cols-2 xl:grid-cols-4" : d.options.length === 3 ? "md:grid-cols-3" : d.options.length === 2 ? "md:grid-cols-2" : ""} gap-5 pt-3`}>
                   {d.options.map((o: any) => (
                     <Card
                       key={o.tier}
@@ -199,6 +200,7 @@ export default function CustomerDocument() {
                             </p>
                           ))}
                         </div>
+                        <QuoteRebates offer={o.rebateOffer} />
                         <Button
                           type="button"
                           className="w-full"
@@ -215,6 +217,7 @@ export default function CustomerDocument() {
                     </Card>
                   ))}
                 </div>
+                {d.options.some((option: any) => option.rebateOffer?.items?.length) && <QuoteRebateTerms />}
                 <section className="rounded-xl border p-5">
                   <h2 className="font-semibold">Enhance Your System</h2>
                   <p className="mb-4 text-xs text-muted-foreground">
@@ -350,7 +353,7 @@ export default function CustomerDocument() {
                     Guarantees
                   </h2>
                   <p>
-                    ✓ 10-year parts and labor warranty on all Champion equipment
+                    ✓ Warranty coverage is listed per option; registration and warranty terms apply
                   </p>
                   <p>
                     ✓ 100% satisfaction guarantee — if you are not happy, we

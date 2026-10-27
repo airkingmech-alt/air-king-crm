@@ -30,7 +30,7 @@ test("changing internal quote costs does not silently raise quoted prices", () =
 });
 test("explicit equipment recalculation keeps exact SKU selections and recalculates the reviewed option", () => {
   const saved = quote(); const form = quoteEditForm(saved); const option = recalculateQuoteOption(form.options[0], ["chp-xc342"], "1000", "300");
-  assert.deepEqual(option.equipmentItems, ["chp-xc342"]); assert.match(option.equipment, /XC3/); assert.equal(option.efficiency, "Matched-system efficiency to be verified");
+  assert.deepEqual(option.equipmentItems, ["chp-xc342"]); assert.match(option.equipment, /XC3/); assert.equal(option.efficiency, "Equipment-series efficiency to be reviewed");
   assert.notEqual(option.customerPrice, form.options[0].customerPrice);
   const legacy = { equipmentItems: ["chp-xc342"], options: [{ tier: "Best", equipmentItems: ["chp-xc342"] }] };
   assert.deepEqual(getQuoteEquipment(legacy, "Best").map(item => item.id), ["chp-xc342"], "explicit edited option must not silently substitute a tier model");
@@ -41,7 +41,7 @@ test("accepted quote edits are blocked and invalid input never prepares a save",
   assert.throws(() => quoteEditChanges({ ...saved, status: "Won" }, form), /draft revision/);
   for (const value of ["", "-1", "1.001", "NaN", "Infinity", "1e3", "100000001"]) assert.throws(() => editMoney(value, "Price"));
   assert.equal(editMoney("0", "Price"), 0);
-  assert.throws(() => quoteEditChanges(saved, { ...form, options: [] }), /one to three/);
+  assert.throws(() => quoteEditChanges(saved, { ...form, options: [] }), /one to four/);
   assert.throws(() => quoteEditChanges(saved, { ...form, title: " " }), /required/);
 });
 test("invoice edit saves changed lines and recomputes a cent-exact total while preserving status and links", () => {
@@ -77,8 +77,8 @@ test("unchanged dialogs still compare with the server and cannot restore stale c
 });
 
 test("changing quote models clears stale model-dependent feature promises", () => {
-  const saved = quote(); const best = quoteEditForm(saved).options.find(option => option.tier === "Best")!;
-  assert.match(best.featureText, /Outdoor capacity steps up/);
+  const saved = quote(); const best = quoteEditForm(saved).options.find(option => option.tier === "Good")!;
+  assert.match(best.featureText, /10-year parts and labor/);
   const changed = recalculateQuoteOption(best, ["chp-xc342"], "1000", "300");
   assert.equal(changed.featureText, "");
   const unchanged = recalculateQuoteOption(best, best.equipmentItems!, "1500", "300");

@@ -1,3 +1,4 @@
+import { QuoteRebates, QuoteRebateTerms } from "@/components/quote-rebates";
 import { documentNumber } from "../../../shared/document-number";
 import { QuoteEditor } from "@/components/document-editors";
 import { DeleteRecord } from "@/components/delete-record";
@@ -366,7 +367,7 @@ export default function Proposal() {
         ) : null}
 
         {/* Good/Better/Best Cards */}
-        <div className="quote-options grid grid-cols-1 md:grid-cols-3 gap-5 mb-6 pt-3">
+        <div data-option-count={quote.options.length} className={`quote-options grid grid-cols-1 ${quote.options.length === 4 ? "md:grid-cols-2 xl:grid-cols-4" : quote.options.length === 3 ? "md:grid-cols-3" : quote.options.length === 2 ? "md:grid-cols-2" : ""} gap-5 mb-6 pt-3`}>
           {quote.options.map((savedOption) => {
             const option = acceptedScope?.selectedOption === savedOption.tier ? { ...savedOption, ...acceptedScope.option } : savedOption;
             const isSelected = selectedTier === option.tier;
@@ -425,6 +426,7 @@ export default function Proposal() {
                     ))}
                   </div>
 
+                  <QuoteRebates offer={option.rebateOffer} />
                   <Button
                     className={`w-full ${isSelected ? "bg-primary text-primary-foreground" : ""}`}
                     variant={isSelected ? "default" : "outline"}
@@ -445,6 +447,7 @@ export default function Proposal() {
           })}
         </div>
 
+        {quote.options.some((option: any) => option.rebateOffer?.items?.length) && <QuoteRebateTerms />}
         {/* Add-ons */}
         <Card className="mb-6">
           <CardContent className="p-5">
@@ -611,7 +614,7 @@ export default function Proposal() {
               <div className="flex items-start gap-2">
                 <Check size={12} className="text-emerald-500 mt-0.5 shrink-0" />
                 <span>
-                  10-year parts and labor warranty on all Champion equipment
+                  Warranty coverage is listed per option; registration and warranty terms apply
                 </span>
               </div>
               <div className="flex items-start gap-2">

@@ -1,3 +1,4 @@
+import { approximateEfficiencyDisclosure } from '../../../shared/quote-efficiency';
 import { documentNumber } from "../../../shared/document-number";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
@@ -77,6 +78,7 @@ function NewHouseQuoteForm({recoveryKey}:{recoveryKey:string}) {
       <label className="block">Service property<select className="block border rounded p-2 w-full bg-background" value={propertyId} onChange={event=>setPropertyId(event.target.value)}><option value="">Select a property</option>{customer?.properties.map(property=><option key={property.id} value={property.id}>{property.address}, {property.city}</option>)}</select></label>
       <Button disabled={!property||!!loadError} onClick={()=>setStarted(true)}>Start New House Bid</Button>
     </div>:<p>{customer?.name} · {property?.address}. Duct and trade allowances require supplier review.</p>}
+    {started&&!readOnly&&<p className="text-sm">{approximateEfficiencyDisclosure} Equipment installation requirements remain subject to installer review.</p>}
     {started&&!readOnly&&<p className="text-sm">{recovery?"Recovered takeoff. ":""}Work is kept in this browser tab while you navigate or refresh. Save a Draft before closing the tab. Cancel discards this work.</p>}
     {started&&<div className="crm-new-house"><NewHouseBuilder key={`${params?.id||`${customerId}:${propertyId}`}:${editing}`} equipment={equipment} ductItems={ductItems} initialState={recovery?.state||snapshot?.state} readOnly={readOnly} busy={busy} onStateChange={remember}
       initialProject={{customer:customer?.name||"",address:[property?.address,property?.city,property?.state,property?.zip].filter(Boolean).join(", "),email:customer?.contacts[0]?.email||"",phone:customer?.contacts[0]?.phone||""}}

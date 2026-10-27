@@ -1,3 +1,4 @@
+import { buildQuoteDraft } from '../client/src/lib/quote-pricing';
 import { after, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
@@ -77,6 +78,7 @@ before(async () => {
   migration = (await readdir("supabase/migrations")).find(name => name.endsWith("_document_edit_guards.sql"))!;
   assert.ok(migration, "editing migration exists");
   await pg.exec(await readFile("supabase/migrations/" + migration, "utf8"));
+  await pg.exec(await readFile("supabase/migrations/20261027215028_four_quote_options.sql", "utf8"));
   afterUpgrade = (await pg.query("select 'quote' kind,to_jsonb(q) row from quotes q union all select 'invoice',to_jsonb(i) from invoices i")).rows;
 });
 after(() => pg.close());
@@ -373,4 +375,56 @@ test("the existing authorized void action still closes unpaid invoices and leave
     await assert.rejects(edit("invoice", original, { customerName: "Stale" }), /record changed/i);
     await assert.rejects(edit("invoice", saved, { customerName: "Locked" }), /content is locked/i);
   }
+});
+
+
+test("four saved option identities survive editing, public projection and acceptance", async () => {
+  const options = ["Value", "Good", "Better", "Best"].map((tier, i) => option({tier, label:`Option ${i+1}`, equipmentItems:[`sku-${tier}`], customerPrice:1000+i*100, laborWarrantyCost:i===0?0:250, features:[i===0?"10-year parts-only warranty; labor coverage not included":"10-year parts and labor warranty"]}));
+  const saved=await edit("quote",await stored("quote","q"),{options});
+  assert.deepEqual(saved.options,options);
+  const publicQuote=publicFields("quote",saved);
+  assert.deepEqual(publicQuote.options.map((o:any)=>o.tier),["Value","Good","Better","Best"]);
+  assert.ok(publicQuote.options.every((o:any)=>o.laborWarrantyCost===undefined));
+  const revised=await edit("quote",saved,{title:"Four options retained"});
+  assert.deepEqual(revised.options,options);
+  await assert.rejects(edit("quote",revised,{options:[...options,option({tier:"Extra"})]}),/1 to 4/);
+  await assert.rejects(edit("quote",revised,{options:[option({tier:"Value",laborWarrantyCost:-1})]}),/amount/);
+  await asRole("service_role", "select crm_staff_convert_quote('airking',$1,'q','Value','[]')", [employee]);
+  const accepted=await stored('quote','q');
+  assert.equal(accepted.acceptedScope.selectedOption,'Value');
+  assert.deepEqual(accepted.acceptedScope.equipmentItems,['sku-Value']);
+  const billed=(await asRole('service_role',"select crm_invoice_accepted_quote('airking',$1,'q') saved",[employee]))[0].saved;
+  assert.equal(billed.amount,1000);
+  assert.equal(billed.quoteAcceptance.selectedOption,'Value');
+
+});
+
+test('accepted rebate offer remains with its selected option and never reduces invoice amount',async()=>{
+  const offer={program:'champion-consumer-2026',source:'DX2410004 · January 16, 2026',installationStart:'2026-01-01',installationEnd:'2026-12-31',items:[{model:'XC636E2S11',family:'XC6',category:'Condenser',base:300,bonusTotal:365},{model:'Z9ET080C16SMPS1',family:'Z9ET',category:'Furnace',base:165,bonusTotal:200}]};
+  const options=['Value','Good','Better','Best'].map((tier,i)=>option({tier,customerPrice:1000+i*100,...(tier==='Best'?{rebateOffer:offer}:{})}));
+  await edit('quote',await stored('quote','q'),{options});
+  await asRole('service_role',"select crm_staff_convert_quote('airking',$1,'q','Best','[]')",[employee]);
+  const accepted=await stored('quote','q');
+  assert.deepEqual(accepted.acceptedScope.option.rebateOffer,offer);
+  assert.deepEqual(publicFields('quote',accepted).options.find((o:any)=>o.tier==='Best').rebateOffer,offer);
+  const billed=(await asRole('service_role',"select crm_invoice_accepted_quote('airking',$1,'q') saved",[employee]))[0].saved;
+  assert.equal(billed.amount,1300);
+  assert.deepEqual(billed.quoteAcceptance.option.rebateOffer,offer);
+});
+
+test('upsized XC6 and replacement coil survive acceptance and invoice snapshots',async()=>{
+ for(const [ac,coil,expectedAc,expectedCoil] of [['chp-xc330','chp-ec30bs','chp-xc636','chp-ec36cs'],['chp-xc342','chp-ec42','chp-xc648','chp-ec48c']]){
+  // Each iteration uses a new isolated quote row, with no live customer records.
+  const id=ac;
+  const draft=buildQuoteDraft({customerId:'customer',customerName:'Synthetic Customer',jobType:'Changeout',title:'Half-size upsize',equipmentItems:[ac,'chp-z8e100c16',coil],equipmentCost:0,laborCost:960,materialsCost:200},id,'2026-10-27');
+  await asRole('service_role',"insert into quotes(id,company_id,customer_id,data) values($1,'airking','customer',$2)",[id,{...quote(),...draft,id}]);
+  await asRole('service_role',"select crm_staff_convert_quote('airking',$1,$2,'Best','[]')",[employee,id]);
+  const accepted=await stored('quote',id);
+  assert.deepEqual(accepted.acceptedScope.equipmentItems,[expectedAc,'chp-z8e100c16',expectedCoil]);
+  const {equipmentCost,purchaseTax,totalCost,...expectedOption}=draft.options[3];
+  assert.deepEqual(accepted.acceptedScope.option,expectedOption);
+  const billed=(await asRole('service_role',"select crm_invoice_accepted_quote('airking',$1,$2) saved",[employee,id]))[0].saved;
+  assert.deepEqual(billed.quoteAcceptance.option,expectedOption);
+  assert.equal(billed.amount,draft.options[3].customerPrice);
+ }
 });

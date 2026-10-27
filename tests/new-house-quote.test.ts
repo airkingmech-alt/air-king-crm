@@ -34,3 +34,14 @@ test("repeated equipment quantities use explicit catalog IDs and do not mutate s
  assert.equal(input.equipmentItems.filter(x=>x===equipment[0].id).length,2);
  assert.deepEqual(multiple,before);
 });
+
+test('new-house flow generates four approximate 80% options without certification and retains takeoff allowances',()=>{
+ const selected=['chp-xc336','chp-z8e100c20','chp-ec36cs'].map(id=>pricebook.find(i=>i.id===id)!);
+ const takeoff=[...selected.map((item,id)=>({id,category:'Equipment',description:item.description,equipmentId:item.id,qty:1,unit:'EA',cost:item.cost})),...lines.slice(2)];
+ const input=newHouseQuoteInput(customer,'qa-property',project,takeoff,{});
+ const quote=buildQuoteDraft(input,'Q-test','2026-10-27',pricebook,[]);
+ assert.equal(quote.options.length,4);
+ assert.equal(quote.materialsCost,30.75);assert.equal(quote.laborCost,3120);
+ assert.ok(quote.options.every(o=>o.efficiency.startsWith('Approx.')&&o.features.some(f=>f.includes('An AHRI-certified rating is not represented'))));
+ assert.equal(quote.options[3].equipmentItems?.[1],selected[1].id);
+});

@@ -12,5 +12,6 @@
   .quote-surface .quote-page { padding: 0 !important; max-width: 100% !important; }
   .quote-surface .quote-header, .quote-surface .quote-option, .quote-surface .quote-summary, .quote-surface .quote-footer { break-inside: avoid; box-shadow: none !important; }
   .quote-surface .quote-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .quote-surface .quote-options[data-option-count="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .quote-surface * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }

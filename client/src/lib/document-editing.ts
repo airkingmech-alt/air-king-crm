@@ -1,3 +1,4 @@
+import { potentialChampionRebates } from "../../../shared/champion-rebates";
 import type { Invoice, Quote, QuoteOption, WorkOrder } from "@/data/mock-data";
 import { calculateQuotePricing } from "./quote-pricing";
 import { formatEquipmentDescription, pricebook } from "@/data/pricebook";
@@ -37,21 +38,22 @@ export function recalculateQuoteOption(option: QuoteOptionForm, equipmentIds: st
     if (!item) throw new Error("An equipment model is no longer in the pricebook. Choose its replacement before recalculating.");
     return item;
   });
-  const pricing = calculateQuotePricing(items.reduce((sum, item) => sum + item.cost, 0), editMoney(laborCost, "Labor cost"), editMoney(materialsCost, "Materials cost"));
   const modelsChanged = JSON.stringify(option.equipmentItems || []) !== JSON.stringify(equipmentIds);
-  return { ...option, featureText: modelsChanged ? "" : option.featureText, equipmentItems: [...equipmentIds], equipment: items.map(item => item.model).join(" + "),
+  const laborWarrantyCost = modelsChanged ? 0 : (option.laborWarrantyCost || 0);
+  const pricing = calculateQuotePricing(items.reduce((sum, item) => sum + item.cost, 0), editMoney(laborCost, "Labor cost") + laborWarrantyCost, editMoney(materialsCost, "Materials cost"));
+  return { ...option, laborWarrantyCost, rebateOffer: potentialChampionRebates(items), featureText: modelsChanged ? "" : option.featureText, equipmentItems: [...equipmentIds], equipment: items.map(item => item.model).join(" + "),
     equipmentSummary: items.map(item => `${formatEquipmentDescription(item)} — ${item.model}`).join("\n"),
-    efficiency: "Matched-system efficiency to be verified", equipmentCost: pricing.equipmentCost,
+    efficiency: modelsChanged ? "Equipment-series efficiency to be reviewed" : option.efficiency, equipmentCost: pricing.equipmentCost,
     purchaseTax: pricing.purchaseTax, totalCost: pricing.totalCost, customerPrice: String(pricing.customerPrice) };
 }
 export function quoteEditChanges(quote: Quote, form: QuoteEditForm) {
   if (quoteIsAccepted(quote)) throw new Error("Create a draft revision to change an accepted quote.");
   if (!quoteJobTypes.includes(form.jobType)) throw new Error("Choose a valid job type.");
-  if (form.options.length < 1 || form.options.length > 3 || new Set(form.options.map(option => option.tier)).size !== form.options.length)
-    throw new Error("Keep one to three options with different tiers.");
+  if (form.options.length < 1 || form.options.length > 4 || new Set(form.options.map(option => option.tier)).size !== form.options.length)
+    throw new Error("Keep one to four options with different tiers.");
   const internalCostsChanged = form.laborCost !== String(quote.laborCost ?? 0) || form.materialsCost !== String(quote.materialsCost ?? 0);
   const options = form.options.map(({ featureText, ...option }) => ({ ...option,
-    ...(internalCostsChanged && quote.pricingVersion === "purchase-tax-v1" && option.equipmentCost !== undefined ? (() => { const costs = calculateQuotePricing(option.equipmentCost!, editMoney(form.laborCost, "Labor cost"), editMoney(form.materialsCost, "Materials cost")); return { totalCost: costs.totalCost, purchaseTax: costs.purchaseTax }; })() : {}),
+    ...(internalCostsChanged && quote.pricingVersion === "purchase-tax-v1" && option.equipmentCost !== undefined ? (() => { const costs = calculateQuotePricing(option.equipmentCost!, editMoney(form.laborCost, "Labor cost") + (option.laborWarrantyCost || 0), editMoney(form.materialsCost, "Materials cost")); return { totalCost: costs.totalCost, purchaseTax: costs.purchaseTax }; })() : {}),
     label: required(option.label, "Option name", 200), equipment: option.equipment.trim(),
     features: featureText.split("\n").map(line => line.trim()).filter(Boolean),
     customerPrice: editMoney(option.customerPrice, `${option.tier} price`) }));

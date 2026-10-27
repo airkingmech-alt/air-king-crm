@@ -100,7 +100,8 @@ export interface QuoteLineItem {
 }
 
 export interface QuoteOption {
-  tier: "Good" | "Better" | "Best";
+  rebateOffer?: import("../../../shared/champion-rebates").ChampionRebateOffer;
+  tier: "Value" | "Good" | "Better" | "Best";
   label: string;
   equipment: string;
   efficiency: string;
@@ -111,6 +112,7 @@ export interface QuoteOption {
   equipmentItems?: string[];
   equipmentCost?: number;
   purchaseTax?: number;
+  laborWarrantyCost?: number;
 }
 
 export interface Quote {
