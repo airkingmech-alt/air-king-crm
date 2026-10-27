@@ -1,3 +1,4 @@
+import { potentialChampionRebates } from "../../../shared/champion-rebates";
 import { addOnServices } from "../../../shared/quote-addons";
 import type { ReviewedQuoteMatch } from "./quote-matches";
 import { planAcOptions } from "./ac-quote-options";
@@ -59,7 +60,7 @@ export function buildQuoteOptions(input: QuoteDraftInput, catalog: PricebookItem
   const option = (items: PricebookItem[], tier: QuoteOption["tier"], label: string): QuoteOption => {
     const pricing = calculateQuotePricing(items.reduce((sum, item) => sum + item.cost, 0), input.laborCost, input.materialsCost);
     return {
-      tier, label, equipment: items.map(item => item.model).join(" + "),
+      tier, label, rebateOffer: potentialChampionRebates(items), equipment: items.map(item => item.model).join(" + "),
       equipmentItems: items.map(item => item.id),
       equipmentSummary: items.map(item => `${formatEquipmentDescription(item.category === "Condenser" ? { ...item, tier: undefined } : item)} — ${item.model}`).join("\n"),
       efficiency: "Matched-system efficiency to be verified",

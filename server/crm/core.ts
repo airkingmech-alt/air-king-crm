@@ -1,3 +1,4 @@
+import { publicChampionRebateOffer } from "../../shared/champion-rebates";
 import { documentNumber } from "../../shared/document-number";
 import { addOnServices } from "../../shared/quote-addons";
 import {
@@ -218,6 +219,7 @@ export function publicFields(kind: string, data: Row): Row {
       features: o.features,
       customerPrice: o.customerPrice,
       isPopular: o.isPopular,
+      rebateOffer: publicChampionRebateOffer(o.rebateOffer),
     }); }),
   };
 }

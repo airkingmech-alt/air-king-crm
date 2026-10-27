@@ -1,3 +1,4 @@
+import { QuoteRebates, QuoteRebateTerms } from "@/components/quote-rebates";
 import { CardCheckout } from "@/components/card-checkout";
 import { QuoteHeader, QuoteGuide, QuoteFooter, isServiceOnlyQuote, ServiceQuoteTerms } from "@/components/branded-quote";
 import { useState } from "react";
@@ -199,6 +200,7 @@ export default function CustomerDocument() {
                             </p>
                           ))}
                         </div>
+                        <QuoteRebates offer={o.rebateOffer} />
                         <Button
                           type="button"
                           className="w-full"
@@ -215,6 +217,7 @@ export default function CustomerDocument() {
                     </Card>
                   ))}
                 </div>
+                {d.options.some((option: any) => option.rebateOffer?.items?.length) && <QuoteRebateTerms />}
                 <section className="rounded-xl border p-5">
                   <h2 className="font-semibold">Enhance Your System</h2>
                   <p className="mb-4 text-xs text-muted-foreground">

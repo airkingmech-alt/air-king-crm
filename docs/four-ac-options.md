@@ -85,3 +85,17 @@ These findings narrow the gaps but do not authorize catalog corrections or certi
 4. Scoped approval for concrete catalog corrections/additions (model suffixes, actual AFUE/staging, missing priced models/coils/accessories), followed separately by publication/deployment approval. Existing customer documents must retain their original snapshots.
 
 Rebate work is pending the separate review of the attached 2026 Champion form. No eligibility, stacking, bonus, or deduction has been assumed or added by this research step.
+
+## Potential 2026 Champion rebates
+
+The attached `Rebatesforchampion2026.pdf` (`libfile_09710ee414588191a5f44b4c182df03b`, DX2410004 updated January 16, 2026) has now been reviewed. New option snapshots list potential offers by Champion brand, equipment category and anchored model family, separately from quoted prices. No customer eligibility or claim approval is assumed.
+
+For this AC/furnace request: XC6 is $300 base **or $365 total bonus**; enhanced furnaces TM8V/TM8Y/TM9V/TM9Y/Z8ET/Z8VT/Z9VT/Z9ET are $165 **or $200**; premium TP9C/TPLC/Z9VV are $220 **or $265**. XC6 plus an enhanced furnace displays $465 base **or $565 total bonus**. A listed furnace can qualify for a potential furnace-only listing on options 2–3. Guardian, coils and XC3/XC4 do not acquire a rebate through their efficiency rating. Existing supported heat-pump and air-handler categories also use the form's explicit family amounts; their equipment selection and pricing behavior is unchanged. Unsupported package/ductless categories are not inferred from model substrings.
+
+Requirements displayed once per proposal: active Champion Elite or Certified Comfort Expert dealer; residential installation January 1–December 31, 2026; homeowner filing within 60 calendar days; qualifying bonus category and evidence; exact-model/program verification; invoice names/addresses, install date, models/serials and purchase price; payment within 45 days **after approval**. Retirees are identified as a current portal category requiring verification. Other incentive stacking and quantity limits are not invented. The program link is used instead of the conflicting flyer/portal phone numbers.
+
+Amounts are saved with each option, publicly projected through an explicit whitelist, preserved in accepted scope, and never deducted from selling price, job cost or invoice amount. Equipment recalculation refreshes eligibility; manual descriptions clear obsolete offers. Rendering warns after the fixed 2026 installation window; no automatic annual rollover occurs. Historical documents without a saved offer are not rewritten.
+
+Proposed-only catalog correction manifest: `/tmp/airking-proposed-catalog-corrections.json` (8 RG19 suffix corrections and 7 exact Z9ET AFUE/staging corrections). It is review material, not an applied catalog update.
+
+Rebate-inclusive verification: `npm run check`, all **727** `npm test` cases, `npm run build`, and `node tests/four-options-browser.mjs` pass. Tests cover all supported flyer families, wrong brand/category/prefix, furnace-only offers, base-versus-total-bonus arithmetic, duplicate-model suppression, no invented heat-pump/air-handler combination total, exact 2026 boundaries, public whitelisting, recalculation/manual-edit cleanup, immutable accepted rebate snapshots, unchanged invoice amounts and PDF presentation. PDF text confirms $465/$565 alternatives and the filing deadline. Logs: `/tmp/airking-rebate-{check,full-tests,build,browser}.log`. The synthetic `/tmp/four-options.pdf` now includes rebate examples.

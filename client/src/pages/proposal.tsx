@@ -1,3 +1,4 @@
+import { QuoteRebates, QuoteRebateTerms } from "@/components/quote-rebates";
 import { documentNumber } from "../../../shared/document-number";
 import { QuoteEditor } from "@/components/document-editors";
 import { DeleteRecord } from "@/components/delete-record";
@@ -425,6 +426,7 @@ export default function Proposal() {
                     ))}
                   </div>
 
+                  <QuoteRebates offer={option.rebateOffer} />
                   <Button
                     className={`w-full ${isSelected ? "bg-primary text-primary-foreground" : ""}`}
                     variant={isSelected ? "default" : "outline"}
@@ -445,6 +447,7 @@ export default function Proposal() {
           })}
         </div>
 
+        {quote.options.some((option: any) => option.rebateOffer?.items?.length) && <QuoteRebateTerms />}
         {/* Add-ons */}
         <Card className="mb-6">
           <CardContent className="p-5">

@@ -1,3 +1,5 @@
+import { QuoteRebates, QuoteRebateTerms } from "@/components/quote-rebates";
+import { potentialChampionRebates } from "../../../shared/champion-rebates";
 import { documentNumber } from "../../../shared/document-number";
 import { MaintenanceQuoteForm } from "@/components/maintenance-quote-form";
 import { LaborDescriptionBuilder } from "@/components/labor-description-builder";
@@ -450,12 +452,15 @@ export default function Quotes() {
             <p>{plan.tier === "Value" ? "10-year parts only" : "10-year parts and labor · $250 warranty allowance"}</p>
             {plan.blocker ? <p role="status" className="text-amber-700">Unavailable: {plan.blocker}</p> : <>
               <p>{plan.items!.map(item => item.model).join(" + ")}</p>
+              <QuoteRebates offer={potentialChampionRebates(plan.items!)} />
               <p>Matched system: {plan.match!.seer2} SEER2 · AHRI {plan.match!.ahri}</p>
               <p className="font-semibold">{fmtCurrencyExact(calculateQuotePricing(plan.items!.reduce((sum, item) => sum + item.cost, 0), labor + (plan.tier === "Value" ? 0 : 250), materials).customerPrice)}</p>
             </>}
           </CardContent></Card>)}
           <p className="md:col-span-2 xl:col-span-4 text-sm text-muted-foreground">Only available options are saved. Labor, materials, selected accessories and scope stay the same. Confirm supplier availability and installation fit.</p>
         </section>}
+
+        {acPlans?.some(plan => plan.items && potentialChampionRebates(plan.items)) && <QuoteRebateTerms />}
 
         <div className="flex gap-2 justify-end">
           <Button variant="outline" onClick={() => setShowBuilder(false)}>

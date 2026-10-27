@@ -100,6 +100,7 @@ export interface QuoteLineItem {
 }
 
 export interface QuoteOption {
+  rebateOffer?: import("../../../shared/champion-rebates").ChampionRebateOffer;
   tier: "Value" | "Good" | "Better" | "Best";
   label: string;
   equipment: string;

@@ -18,6 +18,9 @@ test("quote presentation renders logo, contacts, scope, saved add-ons and no-pay
       import { addOnServices } from './client/src/data/pricebook';
       import { buildQuoteDraft } from './client/src/lib/quote-pricing';
       import { publicFields } from './server/crm/core';
+      import { QuoteRebates, QuoteRebateTerms } from './client/src/components/quote-rebates';
+      import { potentialChampionRebates } from './shared/champion-rebates';
+      export function renderRebates(today){const offer=potentialChampionRebates([{brand:'Champion',category:'Condenser',model:'XC636E2S11'},{brand:'Champion',category:'Furnace',model:'Z9ET080C16SMPS1'}]);return renderToStaticMarkup(<><QuoteRebates offer={offer} today={today}/><QuoteRebateTerms/></>)}
       export function renderInvoice(fees=false) {
         const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:Infinity}}});
         client.setQueryData(['public-document','test-invoice'],{kind:'invoice',payments_enabled:true,fee_enabled:fees,payments:fees?[{amount_cents:100000,fee_cents:3000,method:'Visa',paid_at:'2026-09-22'}]:[],document:{
@@ -51,7 +54,14 @@ test("quote presentation renders logo, contacts, scope, saved add-ons and no-pay
       plugins: [{ name: "no-network-crm", setup(b) { b.onResolve({ filter: /^@\/lib\/crm-api$/ }, () => ({ path: "crm", namespace: "test" }));
         b.onLoad({ filter: /.*/, namespace: "test" }, () => ({ contents: "export async function crm(){throw new Error('Network forbidden in presentation test')}" })); } }],
     });
-    const { render, renderInvoice, renderTiered } = await import(pathToFileURL(path.join(temp, "render.mjs")).href);
+    const { render, renderInvoice, renderTiered, renderRebates } = await import(pathToFileURL(path.join(temp, "render.mjs")).href);
+    const rebateHtml=renderRebates('2026-10-27');
+    assert.match(rebateHtml,/\$465 base total or \$565 bonus total/);
+    assert.match(rebateHtml,/Quote price is unchanged/);
+    assert.match(rebateHtml,/60 calendar days/);assert.match(rebateHtml,/45 days after approval/);
+    assert.match(rebateHtml,/Elite or Certified Comfort Expert/);
+    assert.match(rebateHtml,/exact-model and program verification/);
+    assert.match(renderRebates('2027-01-01'),/2026 installation window ended/);
     const invoiceHtml=renderInvoice();
     assert.match(invoiceHtml,/PAY \$3,750.00 IN FULL/);
     assert.match(invoiceHtml,/Rough-in/);assert.match(invoiceHtml,/Lot 12/);

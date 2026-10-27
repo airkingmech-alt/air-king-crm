@@ -397,3 +397,16 @@ test("four saved option identities survive editing, public projection and accept
   assert.equal(billed.quoteAcceptance.selectedOption,'Value');
 
 });
+
+test('accepted rebate offer remains with its selected option and never reduces invoice amount',async()=>{
+  const offer={program:'champion-consumer-2026',source:'DX2410004 · January 16, 2026',installationStart:'2026-01-01',installationEnd:'2026-12-31',items:[{model:'XC636E2S11',family:'XC6',category:'Condenser',base:300,bonusTotal:365},{model:'Z9ET080C16SMPS1',family:'Z9ET',category:'Furnace',base:165,bonusTotal:200}]};
+  const options=['Value','Good','Better','Best'].map((tier,i)=>option({tier,customerPrice:1000+i*100,...(tier==='Best'?{rebateOffer:offer}:{})}));
+  await edit('quote',await stored('quote','q'),{options});
+  await asRole('service_role',"select crm_staff_convert_quote('airking',$1,'q','Best','[]')",[employee]);
+  const accepted=await stored('quote','q');
+  assert.deepEqual(accepted.acceptedScope.option.rebateOffer,offer);
+  assert.deepEqual(publicFields('quote',accepted).options.find((o:any)=>o.tier==='Best').rebateOffer,offer);
+  const billed=(await asRole('service_role',"select crm_invoice_accepted_quote('airking',$1,'q') saved",[employee]))[0].saved;
+  assert.equal(billed.amount,1300);
+  assert.deepEqual(billed.quoteAcceptance.option.rebateOffer,offer);
+});
