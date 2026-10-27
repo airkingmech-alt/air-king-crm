@@ -1,3 +1,4 @@
+import { buildQuoteDraft } from '../client/src/lib/quote-pricing';
 import { after, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
@@ -409,4 +410,21 @@ test('accepted rebate offer remains with its selected option and never reduces i
   const billed=(await asRole('service_role',"select crm_invoice_accepted_quote('airking',$1,'q') saved",[employee]))[0].saved;
   assert.equal(billed.amount,1300);
   assert.deepEqual(billed.quoteAcceptance.option.rebateOffer,offer);
+});
+
+test('upsized XC6 and replacement coil survive acceptance and invoice snapshots',async()=>{
+ for(const [ac,coil,expectedAc,expectedCoil] of [['chp-xc330','chp-ec30bs','chp-xc636','chp-ec36cs'],['chp-xc342','chp-ec42','chp-xc648','chp-ec48c']]){
+  // Each iteration uses a new isolated quote row, with no live customer records.
+  const id=ac;
+  const draft=buildQuoteDraft({customerId:'customer',customerName:'Synthetic Customer',jobType:'Changeout',title:'Half-size upsize',equipmentItems:[ac,'chp-z8e100c16',coil],equipmentCost:0,laborCost:960,materialsCost:200},id,'2026-10-27');
+  await asRole('service_role',"insert into quotes(id,company_id,customer_id,data) values($1,'airking','customer',$2)",[id,{...quote(),...draft,id}]);
+  await asRole('service_role',"select crm_staff_convert_quote('airking',$1,$2,'Best','[]')",[employee,id]);
+  const accepted=await stored('quote',id);
+  assert.deepEqual(accepted.acceptedScope.equipmentItems,[expectedAc,'chp-z8e100c16',expectedCoil]);
+  const {equipmentCost,purchaseTax,totalCost,...expectedOption}=draft.options[3];
+  assert.deepEqual(accepted.acceptedScope.option,expectedOption);
+  const billed=(await asRole('service_role',"select crm_invoice_accepted_quote('airking',$1,$2) saved",[employee,id]))[0].saved;
+  assert.deepEqual(billed.quoteAcceptance.option,expectedOption);
+  assert.equal(billed.amount,draft.options[3].customerPrice);
+ }
 });

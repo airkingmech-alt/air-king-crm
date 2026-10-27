@@ -57,7 +57,7 @@ test('all four options preserve equipment constraints and choose lowest actual G
   const conflict = matches.map(m=>m.heatingStages===2?{...m,furnaceAfue:97}:m);
   assert.ok(planAcOptions(selected,catalog,conflict)![3].items);
 });
-test('real catalog blocks unreviewed 80% matches and half-ton XC6 without changing assumptions',()=>{
+test('real catalog rounds only authorized half-ton top options and preserves other assumptions',()=>{
   for(const capacity of [1.5,2,2.5,3,3.5,4,5]) {
     const ac=pricebook.find(i=>i.category==='Condenser'&&i.model.startsWith('XC3')&&i.tonnage===capacity)!;
     for(const furnace of [byId('chp-z8e100c16'),byId('chp-z9e080c16')]) {
@@ -65,11 +65,10 @@ test('real catalog blocks unreviewed 80% matches and half-ton XC6 without changi
       const selected=[ac,furnace,coil];const before=structuredClone(selected);
       const plans=planAcOptions(selected,pricebook)!;
       assert.equal(plans.length,4);
-      if([2.5,3.5].includes(capacity)) assert.match(plans[3].blocker!,/Capacity will not be increased/);
-      else if(furnace.tier==='80% AFUE') assert.ok(plans[3].items);
+      if(furnace.tier==='80% AFUE') assert.ok(plans[3].items);
       else assert.ok(plans[3].blocker);
       assert.deepEqual(selected,before);
-      assert.ok(plans.every(p=>!p.items||p.items[0].tonnage===capacity));
+      assert.ok(plans.every(p=>!p.items||p.items[0].tonnage===(p.tier==='Best'&&[2.5,3.5].includes(capacity)?Math.ceil(capacity):capacity)));
     }
   }
 });
@@ -113,7 +112,7 @@ test('verified three-ton Guardian combination retains selected furnace size and 
 });
 
 test('actual 80% catalog generates four options without AHRI and persists disclosure and review notes',()=>{
-  for(const capacity of [1.5,2,3,4,5]) {
+  for(const capacity of [1.5,2,2.5,3,3.5,4,5]) {
     const ac=pricebook.find(i=>i.model.startsWith('XC3')&&i.tonnage===capacity)!;
     const furnace=byId('chp-z8e100c20');
     const coil=pricebook.find(i=>i.category==='Evaporator Coil'&&i.brand==='Champion'&&i.tonnage===capacity)!;
@@ -156,4 +155,32 @@ test('selected real two-stage high-efficiency furnace is retained without certif
  assert.equal(plans[3].items?.[1].tier,'97% AFUE · two-stage standard ECM');
  const baseline=[selected[0],byId('chp-z9e080c16'),selected[2]];
  assert.match(planAcOptions(baseline,pricebook,[])![3].blocker!,/96% AFUE/);
+});
+
+test('half-size top options visibly persist actual condenser, required coil and cost without further fallback',()=>{
+ for(const [base,actual,acId,coilId,topId,newCoilId] of [[2.5,3,'chp-xc330','chp-ec30bs','chp-xc636','chp-ec36cs'],[3.5,4,'chp-xc342','chp-ec42','chp-xc648','chp-ec48c']] as const){
+  const ids=[acId,'chp-z8e100c16',coilId];
+  const draft=buildQuoteDraft({customerId:'synthetic',customerName:'Test',jobType:'Changeout',title:'Half size',equipmentItems:ids,equipmentCost:0,laborCost:960,materialsCost:200},'TEST','2026-10-27',pricebook,[]);
+  assert.equal(draft.options.length,4);
+  const best=draft.options[3];
+  assert.deepEqual(best.equipmentItems,[topId,ids[1],newCoilId]);
+  assert.ok(best.label.includes(`${actual}-ton AC (upsized from ${base} ton)`));
+  assert.match(best.features.join(),/Coil changes from/);
+  assert.equal(best.equipmentCost,[topId,ids[1],newCoilId].map(byId).reduce((n,i)=>n+i.cost,0));
+  for(const o of draft.options.slice(0,3)){assert.equal(byId(o.equipmentItems![0]).tonnage,base);assert.equal(o.equipmentItems![2],coilId);}
+  const selected=ids.map(byId);
+  assert.match(planAcOptions(selected,pricebook.filter(i=>i.id!==topId))![3].blocker!,/No priced/);
+ }
+});
+
+test('upsized XC6 retains a supported original coil, rejects missing replacement prices and flags limited airflow',()=>{
+ const selected=['chp-xc330','chp-z8e080b','chp-ec42'].map(byId);
+ const retained=planAcOptions(selected,pricebook)![3];
+ assert.equal(retained.items?.[2],selected[2]);
+ assert.match(retained.reviewNotes!.join(),/selected coil CTM42C5CES1 is retained/);
+ const original=['chp-xc342','chp-z8e080b','chp-ec42'].map(byId);
+ const best=planAcOptions(original,pricebook)![3];
+ assert.match(best.reviewNotes!.join(),/1200 CFM/);
+ const noCoils=pricebook.map(i=>/^CTM48[CD]5CF/.test(i.model)?{...i,cost:0}:i);
+ assert.match(planAcOptions(original,noCoils)![3].blocker!,/No priced Champion coil/);
 });

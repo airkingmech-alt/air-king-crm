@@ -65,7 +65,7 @@ test("available AC options retain the selected furnace and coil; unavailable opt
   assert.match(q.options[0].efficiency,/13.4 SEER2/);
   assert.match(q.options[1].efficiency,/14.3 SEER2/);
   assert.match(q.internalReviewNote!,/Guardian/);
-  assert.match(q.internalReviewNote!,/No priced 3.5-ton XC6/);
+  assert.match(q.internalReviewNote!,/two-stage furnace retaining 96% AFUE/);
   const partial=buildQuoteOptions(input,pricebook.filter(item=>item.id!=="chp-xc442"));
   assert.deepEqual(partial.options.map(o=>o.tier),["Good"]);
   assert.match(partial.unavailable.join(),/3.5-ton XC4/);

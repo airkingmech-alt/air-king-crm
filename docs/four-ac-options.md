@@ -146,3 +146,16 @@ For high efficiency, selecting an actual Z9ET already allows that same two-stage
 Potential rebates remain driven by the flyer model allowlist, independently of AHRI. An 80% XC6/Z8ES proposal lists $300 base or $365 total bonus for XC6 only; a listed Z9ET contributes its separate potential furnace offer. Prices are not reduced by rebates.
 
 Verification: full suite **733/733** passed before the final small delivery-helper/refined refrigerant changes; the final focused option/editing/new-house suite **24/24** passes, including the additional delivery-copy test. Browser QA passed four selectable desktop/mobile/print cards; PDF extraction confirms the complete AHRI disclaimer. Logs: `/tmp/airking-approx-{tests,focused,check,build,browser}.log`. Publication and migration remain pending separate approval; no new live data was changed.
+
+
+## Approved XC6 half-size and coil changes
+
+The user approved rounding the top XC6 option only: 2.5 → 3 tons and 3.5 → 4 tons. Its saved label states both actual and original size. Other tiers retain their selected capacity and coil. The 1.5-ton XC6 remains 1.5 tons.
+
+The user separately approved changing the top coil when needed. The planner uses explicit groups from manufacturer XC6 technical guide 6601765-LTG-A-0125 table 5: for the 3-ton option CTM36C5[AC]D or CTM42C5CE; for 4 tons CTM48C/D5CF. A supported original coil is retained. Otherwise choose a priced same-capacity Champion CTM coil retaining the original terminal S1/N1 variant, preferring the furnace cabinet code and then actual cost. Missing replacement models/prices block the top option. Cabinet transitions, actual airflow/static pressure, orientation and required 5A1/5C1 metering remain explicitly subject to installer review, not fabricated accessory pricing or certification.
+
+Actual examples: 2.5-ton XC330 + CTM30B5ACS1 becomes XC636 + CTM36C5ADS1 in Best; 3.5-ton XC342 + CTM42C5CES1 becomes XC648 + CTM48C5CFS1. With selected Z8ES100C16SMPS1, the same furnace remains in Champion options. Coil cost is included in equipment cost, purchase tax and quoted price; potential XC6 rebate remains separate. The saved option features identify the previous/new coil and actual condenser capacity. Acceptance/invoice snapshots preserve this chosen equipment and price.
+
+Explicit user publication approval was received after the earlier approval-review denial. The existing Render master-branch service auto-deploys; release will preserve its Node/runtime settings. No customer messages or production test quotes are authorized or needed.
+
+Final half-size/coil validation: **738 tests pass**, including real PostgreSQL acceptance/invoice snapshots for both upsizes; TypeScript/build and browser desktop/mobile/PDF checks pass; production dependency audit reports zero vulnerabilities. PDF text contains actual 4-ton size, new coil model, old/new coil disclosure and approximate-efficiency terms.
