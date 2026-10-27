@@ -1,5 +1,6 @@
 import { addOnServices } from "../../../shared/quote-addons";
-import { reviewedQuoteMatches } from "./quote-matches";
+import type { ReviewedQuoteMatch } from "./quote-matches";
+import { planAcOptions } from "./ac-quote-options";
 import { pricebook, formatEquipmentDescription, type PricebookItem } from "../data/pricebook";
 import type { Quote, QuoteOption } from "../data/mock-data";
 import { dollarsToCents, AIR_KING_MARGIN } from "./pricebook-utils";
@@ -40,7 +41,7 @@ export interface QuoteDraftInput {
   selectedAddOns?: string[];
 }
 
-export function buildQuoteOptions(input: QuoteDraftInput, catalog: PricebookItem[] = pricebook) {
+export function buildQuoteOptions(input: QuoteDraftInput, catalog: PricebookItem[] = pricebook, matches?: readonly ReviewedQuoteMatch[]) {
   if (input.servicePrice !== undefined) {
     if (input.jobType !== "Maintenance" || input.equipmentItems.length || input.equipmentCost !== 0 || input.materialsCost !== 0 || input.selectedAddOns?.length)
       throw new Error("Fixed service pricing requires Maintenance with no equipment, materials, or add-ons.");
@@ -54,9 +55,6 @@ export function buildQuoteOptions(input: QuoteDraftInput, catalog: PricebookItem
     if (!item) throw new Error("Selected equipment is missing from the pricebook. Review the quote before saving.");
     return item;
   });
-  const condensers = selected.filter(item => item.category === "Condenser");
-  const ac = condensers.length === 1 ? condensers[0] : undefined;
-  const supportsTiers = ac?.brand === "Champion" && /^XC[34]/.test(ac.model) && ac.tonnage && !selected.some(item => item.category === "Heat Pump");
   const unavailable: string[] = [];
   const option = (items: PricebookItem[], tier: QuoteOption["tier"], label: string): QuoteOption => {
     const pricing = calculateQuotePricing(items.reduce((sum, item) => sum + item.cost, 0), input.laborCost, input.materialsCost);
@@ -70,48 +68,28 @@ export function buildQuoteOptions(input: QuoteDraftInput, catalog: PricebookItem
       totalCost: pricing.totalCost, customerPrice: pricing.customerPrice,
     };
   };
-  if (!supportsTiers) return { options: [option(selected, "Better", "Selected system")], unavailable };
+  const plans = planAcOptions(selected, catalog, matches);
+  if (!plans) return { options: [option(selected, "Better", "Selected system")], unavailable };
   const options: QuoteOption[] = [];
-  for (const [tier, series, label] of [["Good", "XC3", "Essential"], ["Better", "XC4", "Enhanced"], ["Best", "XC6", "Ultimate"]] as const) {
-    // Owner-approved XC6 rule: its full-size range steps half-ton selections up.
-    // Keep the actual larger capacity visible; matching must still be reviewed.
-    const capacity = series === "XC6" ? Math.ceil(ac.tonnage!) : ac.tonnage;
-    const candidates = catalog.filter(item => item.brand === ac.brand && item.category === "Condenser" && item.tonnage === capacity && item.model.startsWith(series));
-    if (candidates.length !== 1) {
-      unavailable.push(`${tier}: ${capacity}-ton ${series} needs a confirmed model and price`);
+  for (const plan of plans) {
+    if (!plan.items || !plan.match) {
+      unavailable.push(`${plan.label}: ${plan.blocker}`);
       continue;
     }
-    const condenser = candidates[0];
-    const coils = selected.filter(item => item.category === "Evaporator Coil");
-    const furnaces = selected.filter(item => item.category === "Furnace");
-    const reviewed = coils.length === 1 && furnaces.length === 1
-      ? reviewedQuoteMatches.find(match => match.condenser === condenser.model && match.furnace === furnaces[0].model && (capacity !== ac.tonnage || match.coil === coils[0].model))
-      : undefined;
-    const matchedCoils = reviewed ? catalog.filter(item => item.model === reviewed.coil && item.category === "Evaporator Coil" && item.brand === ac.brand) : [];
-    const matchedCoil = matchedCoils.length === 1 ? matchedCoils[0] : undefined;
-    if (capacity !== ac.tonnage && (!reviewed || !matchedCoil)) {
-      unavailable.push(`${tier}: ${capacity}-ton ${series} needs a verified indoor equipment match before it can be quoted`);
-      continue;
-    }
-    const items = selected.map(item => item.id === ac.id ? condenser : matchedCoil && item.id === coils[0]?.id ? matchedCoil : item);
-    const tierOption = option(items, tier, label);
-    if (reviewed) {
-      tierOption.efficiency = `${reviewed.seer2} SEER2 · AHRI ${reviewed.ahri}`;
-      tierOption.features.push("Supplier availability and installation fit to be confirmed");
-    }
-    tierOption.equipment = `${condenser.model} (${capacity}-ton${series === "XC6" ? ", two-stage" : ""}) with selected indoor equipment`;
-    if (capacity !== ac.tonnage) {
-      tierOption.features.unshift(`Outdoor capacity steps up from ${ac.tonnage} to ${capacity} tons with ${matchedCoil!.model} coil`);
-      tierOption.features.push("Larger coil: verify cabinet height, duct fit, and required airflow before installation");
-    }
-    options.push(tierOption);
+    const result = option(plan.items, plan.tier, plan.label);
+    const laborWarrantyCost = plan.tier === "Value" ? 0 : 250;
+    const pricing = calculateQuotePricing(result.equipmentCost!, input.laborCost + laborWarrantyCost, input.materialsCost);
+    Object.assign(result, { laborWarrantyCost, totalCost: pricing.totalCost, customerPrice: pricing.customerPrice });
+    result.efficiency = `${plan.tier === "Value" ? "" : plan.rating + "; "}matched system ${plan.match.seer2} SEER2 · AHRI ${plan.match.ahri}`;
+    result.features = ["Installation as described in the scope of work", plan.tier === "Value" ? "10-year parts-only warranty; labor coverage not included" : "10-year parts and labor warranty", "Warranty registration and proposal terms apply", "Supplier availability and installation fit to be confirmed"];
+    options.push(result);
   }
-  if (!options.length) throw new Error("No same-capacity options are available. Review the pricebook before saving.");
+  if (!options.length) throw new Error(unavailable.join("\n"));
   return { options, unavailable };
 }
 
-export function buildQuoteDraft(input: QuoteDraftInput, id: string, createdAt: string, catalog: PricebookItem[] = pricebook): Quote {
-  const { options, unavailable } = buildQuoteOptions(input, catalog);
+export function buildQuoteDraft(input: QuoteDraftInput, id: string, createdAt: string, catalog: PricebookItem[] = pricebook, matches?: readonly ReviewedQuoteMatch[]): Quote {
+  const { options, unavailable } = buildQuoteOptions(input, catalog, matches);
   const selectedOption = options.find(option => option.equipmentItems?.every((item, index) => item === input.equipmentItems[index])) || options[0];
   const pricing = calculateQuotePricing(selectedOption.equipmentCost || 0, input.laborCost, input.materialsCost);
   return {

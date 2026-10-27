@@ -1,6 +1,16 @@
+export interface ReviewedQuoteMatch {
+  condenser: string;
+  coil: string;
+  furnace: string;
+  ahri: string;
+  seer2: number;
+  // Required for two-stage substitutions; verify the exact model, not just series.
+  furnaceAfue?: number;
+  heatingStages?: 1 | 2;
+}
 // Reviewed AHRI model combinations. Supplier stock and field installation fit
 // still require confirmation. Do not infer matches from nominal tonnage alone.
-export const reviewedQuoteMatches = [
+export const reviewedQuoteMatches: readonly ReviewedQuoteMatch[] = [
   // https://www.ahridirectory.org/details/101/214727374
   { condenser: "XC342E2S11", coil: "CTM42C5CES1", furnace: "Z9ES080C20SMPS1", ahri: "214727374", seer2: 13.4 },
   // https://www.ahridirectory.org/details/101/215419289

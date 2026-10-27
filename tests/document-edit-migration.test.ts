@@ -77,6 +77,7 @@ before(async () => {
   migration = (await readdir("supabase/migrations")).find(name => name.endsWith("_document_edit_guards.sql"))!;
   assert.ok(migration, "editing migration exists");
   await pg.exec(await readFile("supabase/migrations/" + migration, "utf8"));
+  await pg.exec(await readFile("supabase/migrations/20261027215028_four_quote_options.sql", "utf8"));
   afterUpgrade = (await pg.query("select 'quote' kind,to_jsonb(q) row from quotes q union all select 'invoice',to_jsonb(i) from invoices i")).rows;
 });
 after(() => pg.close());
@@ -373,4 +374,26 @@ test("the existing authorized void action still closes unpaid invoices and leave
     await assert.rejects(edit("invoice", original, { customerName: "Stale" }), /record changed/i);
     await assert.rejects(edit("invoice", saved, { customerName: "Locked" }), /content is locked/i);
   }
+});
+
+
+test("four saved option identities survive editing, public projection and acceptance", async () => {
+  const options = ["Value", "Good", "Better", "Best"].map((tier, i) => option({tier, label:`Option ${i+1}`, equipmentItems:[`sku-${tier}`], customerPrice:1000+i*100, laborWarrantyCost:i===0?0:250, features:[i===0?"10-year parts-only warranty; labor coverage not included":"10-year parts and labor warranty"]}));
+  const saved=await edit("quote",await stored("quote","q"),{options});
+  assert.deepEqual(saved.options,options);
+  const publicQuote=publicFields("quote",saved);
+  assert.deepEqual(publicQuote.options.map((o:any)=>o.tier),["Value","Good","Better","Best"]);
+  assert.ok(publicQuote.options.every((o:any)=>o.laborWarrantyCost===undefined));
+  const revised=await edit("quote",saved,{title:"Four options retained"});
+  assert.deepEqual(revised.options,options);
+  await assert.rejects(edit("quote",revised,{options:[...options,option({tier:"Extra"})]}),/1 to 4/);
+  await assert.rejects(edit("quote",revised,{options:[option({tier:"Value",laborWarrantyCost:-1})]}),/amount/);
+  await asRole("service_role", "select crm_staff_convert_quote('airking',$1,'q','Value','[]')", [employee]);
+  const accepted=await stored('quote','q');
+  assert.equal(accepted.acceptedScope.selectedOption,'Value');
+  assert.deepEqual(accepted.acceptedScope.equipmentItems,['sku-Value']);
+  const billed=(await asRole('service_role',"select crm_invoice_accepted_quote('airking',$1,'q') saved",[employee]))[0].saved;
+  assert.equal(billed.amount,1000);
+  assert.equal(billed.quoteAcceptance.selectedOption,'Value');
+
 });

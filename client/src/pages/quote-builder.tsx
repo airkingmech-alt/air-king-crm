@@ -1,6 +1,7 @@
 import { documentNumber } from "../../../shared/document-number";
 import { MaintenanceQuoteForm } from "@/components/maintenance-quote-form";
 import { LaborDescriptionBuilder } from "@/components/labor-description-builder";
+import { planAcOptions } from "@/lib/ac-quote-options";
 import { calculateQuotePricing } from "@/lib/quote-pricing";
 import { guardSave } from "@/lib/confirmed-save";
 import { useState } from "react";
@@ -73,6 +74,7 @@ export default function Quotes() {
   const selectedItems = pricebook.filter((p) =>
     selectedEquipment.includes(p.id),
   );
+  const acPlans = planAcOptions(selectedItems, pricebook);
   const equipmentCost = selectedItems.reduce((sum, item) => sum + item.cost, 0);
   const labor = parseFloat(laborCost) || 0;
   const materials = parseFloat(materialsCost) || 0;
@@ -387,7 +389,7 @@ export default function Quotes() {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Sparkles size={16} className="text-primary" />
-              Pricing Summary
+              {acPlans ? "Selected equipment estimate · before option warranty" : "Pricing Summary"}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -443,13 +445,25 @@ export default function Quotes() {
           </CardContent>
         </Card>
 
+        {acPlans && <section aria-label="AC system options" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {acPlans.map(plan => <Card key={plan.tier}><CardHeader><CardTitle className="text-base">{plan.label}</CardTitle></CardHeader><CardContent className="text-sm space-y-2">
+            <p>{plan.tier === "Value" ? "10-year parts only" : "10-year parts and labor · $250 warranty allowance"}</p>
+            {plan.blocker ? <p role="status" className="text-amber-700">Unavailable: {plan.blocker}</p> : <>
+              <p>{plan.items!.map(item => item.model).join(" + ")}</p>
+              <p>Matched system: {plan.match!.seer2} SEER2 · AHRI {plan.match!.ahri}</p>
+              <p className="font-semibold">{fmtCurrencyExact(calculateQuotePricing(plan.items!.reduce((sum, item) => sum + item.cost, 0), labor + (plan.tier === "Value" ? 0 : 250), materials).customerPrice)}</p>
+            </>}
+          </CardContent></Card>)}
+          <p className="md:col-span-2 xl:col-span-4 text-sm text-muted-foreground">Only available options are saved. Labor, materials, selected accessories and scope stay the same. Confirm supplier availability and installation fit.</p>
+        </section>}
+
         <div className="flex gap-2 justify-end">
           <Button variant="outline" onClick={() => setShowBuilder(false)}>
             Cancel
           </Button>
           <Button
             className="bg-primary text-primary-foreground"
-            disabled={!validCosts || !selectedCustomer || selectedEquipment.length === 0}
+            disabled={!validCosts || !selectedCustomer || selectedEquipment.length === 0 || !!acPlans?.every(plan => !plan.items)}
             onClick={guardSave("create-quote", async () => {
               const customer = customers.find((c) => c.id === selectedCustomer);
               if (!customer) return;

@@ -50,40 +50,26 @@ test("both quote builders use shared pricing and persist separate labor/material
   }
 });
 
-test("actual AC options price each model with shared indoor equipment, labor, materials, and tax", () => {
+test("available AC options retain the selected furnace and coil; unavailable options explain blockers", () => {
   const equipmentItems=["chp-z9e080c20","chp-ec42","chp-xc342"];
   const input={customerId:"synthetic",customerName:"Test",jobType:"Changeout",title:"Test",equipmentCost:4974,laborCost:1000,materialsCost:300,equipmentItems};
   const q=buildQuoteDraft(input,"Q-TEST","2026-09-30");
-  assert.deepEqual(q.options.map(o=>o.tier),["Good","Better","Best"]);
-  assert.deepEqual(q.options.map(o=>o.equipmentItems), [
-    ["chp-z9e080c20","chp-ec42","chp-xc342"],
-    ["chp-z9e080c20","chp-ec42","chp-xc442"],
-    ["chp-z9e080c20","chp-ec48c","chp-xc648"],
-  ]);
-  assert.equal(q.options[0].purchaseTax,474.66); assert.equal(q.options[0].customerPrice,8435.83);
-  assert.equal(q.options[2].equipmentCost,6103); assert.equal(q.options[2].purchaseTax,576.27); assert.equal(q.options[2].customerPrice,9974.09);
-  assert.match(q.options[2].efficiency,/15.75 SEER2/);
-  assert.match(q.options[1].efficiency,/14.3 SEER2/);
-  assert.equal(q.options[1].purchaseTax,498.78); assert.equal(q.options[1].customerPrice,8800.98);
-  for(const o of q.options) {
-    const items=getQuoteEquipment(q,o.tier);
-    assert.deepEqual(items.map(i=>i.id),o.equipmentItems);
-    const equipment=items.reduce((sum,i)=>sum+i.cost,0);
-    assert.equal(o.customerPrice,calculateQuotePricing(equipment,1000,300).customerPrice);
+  assert.deepEqual(q.options.map(o=>o.tier),["Good","Better"]);
+  assert.deepEqual(q.options.map(o=>o.equipmentItems), [equipmentItems,["chp-z9e080c20","chp-ec42","chp-xc442"]]);
+  for (const o of q.options) {
+    assert.equal(o.laborWarrantyCost,250);
+    assert.equal(o.customerPrice,calculateQuotePricing(o.equipmentCost!,1250,300).customerPrice);
+    assert.deepEqual(getQuoteEquipment(q,o.tier).map(i=>i.id),o.equipmentItems);
+    assert.match(o.features.join(),/10-year parts and labor/);
   }
-  assert.match(q.options[2].equipment,/4-ton, two-stage/);
-  assert.match(q.options[2].features.join(),/3.5 to 4 tons/);
-  assert.doesNotMatch(JSON.stringify(q.options),/XC642|Wi-Fi/);
-  assert.deepEqual(q.selectedAddOns, [], "Optional catalog does not add unselected items to the package");
-  const duplicateCoil=buildQuoteOptions(input,[...pricebook,{...pricebook.find(item=>item.id==="chp-ec48c")!,id:"duplicate-coil"}]);
-  assert.deepEqual(duplicateCoil.options.map(o=>o.tier),["Good","Better"]);
-  const noCoil=buildQuoteOptions(input,pricebook.filter(item=>item.id!=="chp-ec48c"));
-  assert.deepEqual(noCoil.options.map(o=>o.tier),["Good","Better"]);
-  assert.match(noCoil.unavailable.join(),/verified indoor equipment match/);
-  const withoutBest=pricebook.filter(item=>item.id!=="chp-xc648");
-  const partial=buildQuoteOptions(input,withoutBest);
-  assert.deepEqual(partial.options.map(o=>o.tier),["Good","Better"]);
-  assert.match(partial.unavailable.join(),/4-ton XC6/);
+  assert.match(q.options[0].efficiency,/13.4 SEER2/);
+  assert.match(q.options[1].efficiency,/14.3 SEER2/);
+  assert.match(q.internalReviewNote!,/Guardian/);
+  assert.match(q.internalReviewNote!,/No priced 3.5-ton XC6/);
+  const partial=buildQuoteOptions(input,pricebook.filter(item=>item.id!=="chp-xc442"));
+  assert.deepEqual(partial.options.map(o=>o.tier),["Good"]);
+  assert.match(partial.unavailable.join(),/3.5-ton XC4/);
+  assert.throws(()=>buildQuoteOptions(input,pricebook.map(i=>i.id==='chp-ec42'?{...i,cost:0}:i)),/missing or invalid price/);
 });
 test("heat pumps and non-XC selections remain their selected equipment without invented tiers",()=>{
   const ids=["chp-xh436"];

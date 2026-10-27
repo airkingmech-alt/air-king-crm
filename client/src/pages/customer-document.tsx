@@ -156,7 +156,7 @@ export default function CustomerDocument() {
                     ))}
                   </section>
                 )}
-                <div className="quote-options grid md:grid-cols-3 gap-5 pt-3">
+                <div data-option-count={d.options.length} className={`quote-options grid grid-cols-1 ${d.options.length === 4 ? "md:grid-cols-2 xl:grid-cols-4" : d.options.length === 3 ? "md:grid-cols-3" : d.options.length === 2 ? "md:grid-cols-2" : ""} gap-5 pt-3`}>
                   {d.options.map((o: any) => (
                     <Card
                       key={o.tier}
@@ -350,7 +350,7 @@ export default function CustomerDocument() {
                     Guarantees
                   </h2>
                   <p>
-                    ✓ 10-year parts and labor warranty on all Champion equipment
+                    ✓ Warranty coverage is listed per option; registration and warranty terms apply
                   </p>
                   <p>
                     ✓ 100% satisfaction guarantee — if you are not happy, we
