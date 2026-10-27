@@ -53,3 +53,35 @@ Manufacturer series descriptions do not establish exact installed-system compati
 - `git diff --check` passed. Latest remote master was rechecked and remains `03a7e8a`.
 
 Local evidence: `/tmp/four-options-desktop.png`, `/tmp/four-options-mobile.png`, `/tmp/four-options.pdf`, `/tmp/airking-tests-final.log`, `/tmp/airking-check.log`, `/tmp/airking-build.log`, `/tmp/airking-browser.log`. Synthetic tests prove the four-option pipeline; they do not resolve the production catalog gaps above.
+
+## Read-only follow-up: live catalog and original supplier files
+
+Checked 2026-10-27 after the initial implementation. This supplements the earlier blocker inventory; no catalog values were changed.
+
+- The live Air King `price_book_items` table has the same legacy Champion XC6/Z9ET and Guardian furnace models, costs and tier labels as the bundled builder catalog, last updated September 15. No Z8ET, Z8VT, TM8 or TM9 furnace entry was found. The newer October 25 Champion entry is a humidifier, not a missing furnace.
+- Library's `Champion Prices.pdf` (`libfile_dbcc5ecddaf481918970510657c24023`) is the February 5 sheet already used by the builder. Its listed Z9ET models have prices, but it has no Z8ET furnace or half-ton XC6 beyond 1.5 ton. No newer furnace price source was found in the targeted Library searches.
+- Library's `Guardian Prices .pdf` (`libfile_7c84ae22de8c8191a5e0df5923eff0ae`) lists RG19 models ending **MPS1**, whereas the bundled and live catalog omit the final **1**. It includes cents-level supplier prices rather than the rounded catalog costs. It does not include RG19080C20MPS1. Correcting those catalog entries requires scoped approval; exact match IDs must not silently treat two model strings as equivalent.
+
+### Resolved manufacturer evidence
+
+The [Johnson Controls Z9ET technical guide, 6556038-BTG-A-1124, table 2 on page 8](https://pimmedia.winsupplyinc.com/pim/SPEC/092025/__UPGZ9ET100C16SM_SPEC.pdf) identifies two-stage standard ECM furnaces. AFUE is 97% for 040A10, 060B12, 080B12, 080C16 and 120D20; 96.8% for 100C16; 96.4% for 100C20. These are precise model ratings, not an unresolved generic 96-versus-97 series discrepancy. None is exactly 96%. The available technical guide has no 080C20 Z9ET. Whether the user intends the top option to retain the high-efficiency category while showing the true higher AFUE needs clarification before relaxing the requested exact-efficiency constraint.
+
+Official YorkNOW system records establish these Guardian combinations (no inference from nominal capacity):
+
+| AHRI / source | Condenser | Furnace | Coil | SEER2 | Remaining blocker |
+| --- | --- | --- | --- | --- | --- |
+| [214727375](https://www.yorknow.com/scfurn214727375v1.html) | RC342E2S11 | RG19080C20MPS1 | CTM42C5CES1 | 13.75 | Furnace absent/unpriced in both accessible catalogs; valve listed as built into coil |
+| [214727326](https://www.yorknow.com/scfurn214727326v1.html) | RC336E2S11 | RG19060B12MPS1 | CTM36B5CDS1 | 13.4 | Stored furnace model lacks final 1; requires catalog correction before exact matching; built-in valve |
+| [216784242](https://www.yorknow.com/scfurn216784242v1.html) | RC336E2S11 | RL18080C16MPS1 | CTM36C5CDS1 | 14.5 | Coil missing from builder catalog, though original Champion sheet contains it; built-in valve |
+| [218366804](https://www.yorknow.com/scfurn218366804v1.html) | RC342E2S11 | RL18080C16MPS1 | CTM42C5CES1 | 13.75 | Requires the listed R454B 3/4-inch Chatleff 5C TXV kit; exact kit identity/price and scope inclusion must be confirmed |
+
+These findings narrow the gaps but do not authorize catalog corrections or certify a substituted coil/valve. No Guardian record was enabled on the strength of a missing accessory, incomplete model string, or unpriced component. Exact Champion XC6 + Z9ET + unchanged-coil combinations were not established by the accessible results; equivalent York YC6/Y92E listings are not treated as Champion XC6/Z9ET certification.
+
+### Truly remaining input / approvals
+
+1. Supplier price and exact model for the selected-input/cabinet/blower 80% two-stage Champion furnace, and for RG19080C20MPS1 when using the 3.5-ton/80K C20 example. Missing TXV kit identity/price is also needed for matches that specify one.
+2. Clarify whether top-option high-efficiency selections may use the verified 96.4/96.8/97% Z9ET rating rather than exactly 96%, while never moving an 80% selection to condensing equipment. No change is assumed.
+3. Approved exact Champion outdoor/furnace/unchanged-coil match evidence, including metering and airflow requirements. Customer-specific airflow/cabinet/orientation constraints are needed only if proposing a different physical furnace configuration.
+4. Scoped approval for concrete catalog corrections/additions (model suffixes, actual AFUE/staging, missing priced models/coils/accessories), followed separately by publication/deployment approval. Existing customer documents must retain their original snapshots.
+
+Rebate work is pending the separate review of the attached 2026 Champion form. No eligibility, stacking, bonus, or deduction has been assumed or added by this research step.
