@@ -30,7 +30,7 @@ test("changing internal quote costs does not silently raise quoted prices", () =
 });
 test("explicit equipment recalculation keeps exact SKU selections and recalculates the reviewed option", () => {
   const saved = quote(); const form = quoteEditForm(saved); const option = recalculateQuoteOption(form.options[0], ["chp-xc342"], "1000", "300");
-  assert.deepEqual(option.equipmentItems, ["chp-xc342"]); assert.match(option.equipment, /XC3/); assert.equal(option.efficiency, "Matched-system efficiency to be verified");
+  assert.deepEqual(option.equipmentItems, ["chp-xc342"]); assert.match(option.equipment, /XC3/); assert.equal(option.efficiency, "Equipment-series efficiency to be reviewed");
   assert.notEqual(option.customerPrice, form.options[0].customerPrice);
   const legacy = { equipmentItems: ["chp-xc342"], options: [{ tier: "Best", equipmentItems: ["chp-xc342"] }] };
   assert.deepEqual(getQuoteEquipment(legacy, "Best").map(item => item.id), ["chp-xc342"], "explicit edited option must not silently substitute a tier model");

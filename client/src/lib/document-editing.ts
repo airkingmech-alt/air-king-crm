@@ -43,7 +43,7 @@ export function recalculateQuoteOption(option: QuoteOptionForm, equipmentIds: st
   const pricing = calculateQuotePricing(items.reduce((sum, item) => sum + item.cost, 0), editMoney(laborCost, "Labor cost") + laborWarrantyCost, editMoney(materialsCost, "Materials cost"));
   return { ...option, laborWarrantyCost, rebateOffer: potentialChampionRebates(items), featureText: modelsChanged ? "" : option.featureText, equipmentItems: [...equipmentIds], equipment: items.map(item => item.model).join(" + "),
     equipmentSummary: items.map(item => `${formatEquipmentDescription(item)} — ${item.model}`).join("\n"),
-    efficiency: "Matched-system efficiency to be verified", equipmentCost: pricing.equipmentCost,
+    efficiency: modelsChanged ? "Equipment-series efficiency to be reviewed" : option.efficiency, equipmentCost: pricing.equipmentCost,
     purchaseTax: pricing.purchaseTax, totalCost: pricing.totalCost, customerPrice: String(pricing.customerPrice) };
 }
 export function quoteEditChanges(quote: Quote, form: QuoteEditForm) {

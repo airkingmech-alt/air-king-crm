@@ -9,7 +9,8 @@ export const acOptionDefinitions = [
   { tier: 'Better', label: 'Champion 14.3 SEER2', brand: 'Champion', series: 'XC4', rating: '14.3 SEER2 series' },
   { tier: 'Best', label: 'Champion 16+ SEER2 · two-stage furnace', brand: 'Champion', series: 'XC6', rating: '16+ SEER2 series' },
 ] as const;
-export type AcOptionPlan = Omit<typeof acOptionDefinitions[number], 'label'> & { label: string } & { items?: PricebookItem[]; match?: ReviewedQuoteMatch; blocker?: string };
+export { approximateEfficiencyDisclosure } from '../../../shared/quote-efficiency';
+export type AcOptionPlan = Omit<typeof acOptionDefinitions[number], 'label' | 'rating'> & { label: string; rating: string; reviewNotes?: string[] } & { items?: PricebookItem[]; match?: ReviewedQuoteMatch; blocker?: string };
 const priced = (item: PricebookItem) => Number.isFinite(item.cost) && item.cost > 0;
 const afue = (item: PricebookItem) => item.tier?.match(/(\d+(?:\.\d+)?)%/)?.[1];
 // Input BTU, cabinet and blower code must be retained. Furnace "tonnage" in
@@ -23,7 +24,7 @@ export function planAcOptions(selected: PricebookItem[], catalog: PricebookItem[
   return acOptionDefinitions.map(baseDefinition => {
     const retain80 = baseDefinition.tier === 'Best' && furnaces.length === 1 && afue(furnaces[0]) === '80';
     const requireTwoStage = baseDefinition.tier === 'Best' && !retain80;
-    const definition = { ...baseDefinition, label: retain80 ? 'Champion 16+ SEER2 · same 80% furnace' : baseDefinition.label };
+    const definition = { ...baseDefinition, label: `Approx. ${retain80 ? 'Champion 16+ SEER2 · same 80% furnace' : baseDefinition.label}` };
     const fail = (blocker: string): AcOptionPlan => ({ ...definition, blocker });
     if (acs.length !== 1 || furnaces.length !== 1 || coils.length !== 1) return fail('Select exactly one AC, furnace and Champion coil.');
     const [ac] = acs, [furnace] = furnaces, [coil] = coils;
@@ -35,15 +36,23 @@ export function planAcOptions(selected: PricebookItem[], catalog: PricebookItem[
       ? (furnace.brand === 'Champion' && (!retain80 || /^Z8ES/.test(furnace.model)) ? [furnace] : [])
       : catalog.filter(i => i.category === 'Furnace' && i.model !== 'RG19080C20MPS1' && i.brand === definition.brand && afue(i) === afue(furnace) && furnaceSize(i) === furnaceSize(furnace) && priced(i) && (!requireTwoStage || /^Z[89]ET/.test(i.model)));
     if (!indoor.length) return fail(`No priced ${definition.brand}${requireTwoStage ? ' two-stage' : ''} furnace retaining ${afue(furnace)}% AFUE and ${furnaceSize(furnace)} input/cabinet/blower. Select a Champion furnace for options 2–3.`);
-    const combinations = outdoor.flatMap(condenser => indoor.flatMap(heat => {
-      const match = matches.find(m => m.condenser === condenser.model && m.furnace === heat.model && m.coil === coil.model);
-      if (!match || (requireTwoStage && (match.heatingStages !== 2 || match.furnaceAfue !== Number(afue(furnace))))) return [];
-      return [{ condenser, heat, match }];
-    })).sort((a, b) => (a.condenser.cost + a.heat.cost) - (b.condenser.cost + b.heat.cost) || a.condenser.model.localeCompare(b.condenser.model) || a.heat.model.localeCompare(b.heat.model));
-    if (!combinations.length) return fail(`No reviewed match for ${outdoor.map(i => i.model).join('/')} + ${indoor.map(i => i.model).join('/')} + unchanged ${coil.model}${requireTwoStage ? ` confirming two-stage heat at ${afue(furnace)}% AFUE` : ''}.`);
+    // Certification is optional. Explicit model families identify R-454B equipment;
+    // unknown physical details remain installer review items, never invented matches.
+    const coilCode = coil.model.match(/^CTM(\d{2})([A-D])(5)/);
+    if (/\bR[- ]?(?:410A|22|32)\b/i.test(`${coil.description} ${coil.tier || ''}`)) return fail('Known refrigerant mismatch: selected coil specifies a different refrigerant from these R-454B condensers.');
+    const combinations = outdoor.flatMap(condenser => indoor.map(heat => ({
+      condenser, heat, match: matches.find(m => m.condenser === condenser.model && m.furnace === heat.model && m.coil === coil.model),
+    }))).sort((a, b) => (a.condenser.cost + a.heat.cost) - (b.condenser.cost + b.heat.cost) || a.condenser.model.localeCompare(b.condenser.model) || a.heat.model.localeCompare(b.heat.model));
     const { condenser, heat, match } = combinations[0];
+    const reviewNotes = ['Installer review required before installation: verify coil application, refrigerant, metering/TXV, cabinet transition, actual blower airflow/static pressure, controls and installation orientation. Any required scope or accessory changes must be confirmed separately.'];
+    if (!coilCode) reviewNotes.push(`Refrigerant and coil application for ${coil.model} are not established by catalog metadata.`);
+    if (coilCode && coilCode[2] !== furnaceSize(heat)![3]) reviewNotes.push('Coil and furnace cabinet codes differ; confirm transition and installation fit.');
+    if (coil.tonnage !== ac.tonnage) reviewNotes.push('Selected coil nominal capacity differs from the condenser; verify this exact coil application without changing selected capacity.');
+    const nominalAirflow = Number(furnaceSize(heat)!.slice(-2)) * 100;
+    if (nominalAirflow < ac.tonnage * 400) reviewNotes.push(`Nominal blower code is ${nominalAirflow} CFM; verify required cooling airflow from manufacturer tables at actual static pressure.`);
+    const rating = `Approx. ${definition.tier === 'Value' ? (condenser.model.startsWith('RC4') ? '14.3' : '13.4') + ' SEER2 series' : definition.rating}`;
     // Duplicate model records are ambiguous even if one has a lower price.
     if ([condenser, heat, coil].some(item => catalog.filter(i => i.model === item.model && i.brand === item.brand && i.category === item.category).length !== 1)) return fail('Duplicate model records: confirm the equipment model and price.');
-    return { ...definition, match, items: selected.map(i => i.id === ac.id ? condenser : i.id === furnace.id ? heat : i) };
+    return { ...definition, rating, reviewNotes, match, items: selected.map(i => i.id === ac.id ? condenser : i.id === furnace.id ? heat : i) };
   });
 }

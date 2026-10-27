@@ -1,7 +1,7 @@
 import { potentialChampionRebates } from "../../../shared/champion-rebates";
 import { addOnServices } from "../../../shared/quote-addons";
 import type { ReviewedQuoteMatch } from "./quote-matches";
-import { planAcOptions } from "./ac-quote-options";
+import { planAcOptions, approximateEfficiencyDisclosure } from "./ac-quote-options";
 import { pricebook, formatEquipmentDescription, type PricebookItem } from "../data/pricebook";
 import type { Quote, QuoteOption } from "../data/mock-data";
 import { dollarsToCents, AIR_KING_MARGIN } from "./pricebook-utils";
@@ -73,7 +73,7 @@ export function buildQuoteOptions(input: QuoteDraftInput, catalog: PricebookItem
   if (!plans) return { options: [option(selected, "Better", "Selected system")], unavailable };
   const options: QuoteOption[] = [];
   for (const plan of plans) {
-    if (!plan.items || !plan.match) {
+    if (!plan.items) {
       unavailable.push(`${plan.label}: ${plan.blocker}`);
       continue;
     }
@@ -81,8 +81,8 @@ export function buildQuoteOptions(input: QuoteDraftInput, catalog: PricebookItem
     const laborWarrantyCost = plan.tier === "Value" ? 0 : 250;
     const pricing = calculateQuotePricing(result.equipmentCost!, input.laborCost + laborWarrantyCost, input.materialsCost);
     Object.assign(result, { laborWarrantyCost, totalCost: pricing.totalCost, customerPrice: pricing.customerPrice });
-    result.efficiency = `${plan.tier === "Value" ? "" : plan.rating + "; "}matched system ${plan.match.seer2} SEER2 · AHRI ${plan.match.ahri}`;
-    result.features = ["Installation as described in the scope of work", plan.tier === "Value" ? "10-year parts-only warranty; labor coverage not included" : "10-year parts and labor warranty", "Warranty registration and proposal terms apply", "Supplier availability and installation fit to be confirmed"];
+    result.efficiency = plan.rating;
+    result.features = ["Installation as described in the scope of work", plan.tier === "Value" ? "10-year parts-only warranty; labor coverage not included" : "10-year parts and labor warranty", "Warranty registration and proposal terms apply", "Supplier availability and installation fit to be confirmed", approximateEfficiencyDisclosure, ...(plan.reviewNotes || [])];
     options.push(result);
   }
   if (!options.length) throw new Error(unavailable.join("\n"));
@@ -105,7 +105,7 @@ export function buildQuoteDraft(input: QuoteDraftInput, id: string, createdAt: s
     equipmentCost: pricing.equipmentCost, laborCost: pricing.laborCost,
     materialsCost: pricing.materialsCost, taxRate: pricing.taxRate,
     purchaseTax: pricing.purchaseTax, pricingVersion: "purchase-tax-v1",
-    internalReviewNote: input.servicePrice !== undefined ? "Fixed service total. Review internal labor costs before accepting; a zero estimate does not establish actual cost." : ["Confirm manufacturer/AHRI matching and supplier availability for each option before sending.", ...unavailable].join(" "),
+    internalReviewNote: input.servicePrice !== undefined ? "Fixed service total. Review internal labor costs before accepting; a zero estimate does not establish actual cost." : ["Confirm supplier availability and review physical installation requirements. Approximate series efficiency is disclosed; AHRI certification is not required to generate options.", ...unavailable].join(" "),
     options,
   };
 }

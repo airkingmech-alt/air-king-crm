@@ -2,7 +2,7 @@
 
 Prepared on master `03a7e8a` (includes PR #61 document numbering). The 15 separately approved catalog metadata corrections are now applied; see the final audit below. No migrations, merge, deployment, publication, or customer messages were performed. Earlier inspection sections record the pre-correction state.
 
-## Behavior
+## Original behavior (superseded by the approximate-efficiency policy below)
 
 Complete AC/furnace/coil selections are evaluated as four fixed option identities:
 
@@ -127,3 +127,22 @@ The previously verified Guardian 3-ton combination is now enabled after the appr
 Actual registry availability: the 3-ton / 060B12 / CTM36B5CDS1 configuration can produce Guardian Value; the 3.5-ton / Z9ES080C20SMPS1 / CTM42C5CES1 configuration produces Champion Good and Better. No complete four-option set or 80% XC6 combination is yet verified. This is a match-evidence limitation, not a claim that other physical combinations are incompatible. No live rows or customer snapshots were changed during this clarification.
 
 Clarification verification: all **730** tests and TypeScript check pass. New regressions cover unchanged 80% furnace/coil, missing match evidence, explicit exclusion even with synthetic price/match, and the real Guardian match without furnace downsizing. Logs: `/tmp/airking-80-full-tests.log`, `/tmp/airking-80-check.log`.
+
+
+## Latest approved policy: approximate efficiency without an AHRI generation gate
+
+The user explicitly removed mandatory AHRI matching for quote generation. Both changeout and new-house creation use the shared planner. Missing certification is no longer an incompatibility or a reason to omit an option. Actual model prices determine Guardian selection; no flat multipliers are used. The same condenser capacity, selected coil/accessories, furnace input/cabinet/blower code and job allowances remain preserved.
+
+Every generated AC option now stores an approximate equipment-series SEER2 rating and this exact disclosure in its features: “SEER/SEER2 ratings shown are approximate equipment-series ratings. Actual installed-system efficiency depends on the complete equipment combination and installation. An AHRI-certified rating is not represented unless specifically provided.” Optional registry evidence is retained internally but is not presented as a certified rating. Guardian RC3/RC4 use 13.4/14.3 SEER2 series labels; Champion XC3/XC4/XC6 use 13.4/14.3/16+ SEER2 series labels.
+
+The saved features flow through staff/public proposals, print/PDF and acceptance snapshots. Manual document delivery appends this disclosure to email/SMS templates only for quotes carrying it; historical quotes/messages are unchanged and repeated inclusion is avoided. No messages were sent. Recalculating an unchanged option preserves its saved efficiency wording. Manual equipment replacements clear stale model-specific promises for review.
+
+Known explicitly described R-410A/R-22/R-32 coil refrigerant conflicts with the R-454B candidates block generation. Unknown model metadata is flagged, not guessed. Cabinet-code differences, differing nominal coil capacity, and potentially limited nominal blower airflow receive specific installer-review notes; metering/TXV, actual airflow/static pressure, controls and orientation must be verified before installation. Notes do not fabricate accessory prices or expand scope. A nominal blower code alone is not treated as proof of actual installed airflow. Unreviewed combinations are proposals subject to installer review, not installation certification.
+
+Functional real-catalog tests now generate all four options at **1.5, 2, 3, 4 and 5 tons** with the selected 80% Z8ES100C20SMPS1 furnace and a selected priced Champion coil. The top option retains that same single-stage furnace. Other 80% codes work where an equivalent priced Guardian furnace exists; unmatched cabinet/blower configurations remain unavailable. At 2.5 and 3.5 tons, XC6 remains unavailable because no same-capacity model is priced. RG19080C20MPS1 remains explicitly excluded.
+
+For high efficiency, selecting an actual Z9ET already allows that same two-stage furnace in the top option without AHRI evidence. A selected 96% Z9ES still cannot silently become a 96.4–97% Z9ET: the earlier specific efficiency-class permission remains unanswered. This is the one remaining policy decision, not an AHRI blocker. No two-stage Z9ET080C20 exists in the reviewed priced catalog, so preserving an 080C20 selection is a separate genuine model limitation.
+
+Potential rebates remain driven by the flyer model allowlist, independently of AHRI. An 80% XC6/Z8ES proposal lists $300 base or $365 total bonus for XC6 only; a listed Z9ET contributes its separate potential furnace offer. Prices are not reduced by rebates.
+
+Verification: full suite **733/733** passed before the final small delivery-helper/refined refrigerant changes; the final focused option/editing/new-house suite **24/24** passes, including the additional delivery-copy test. Browser QA passed four selectable desktop/mobile/print cards; PDF extraction confirms the complete AHRI disclaimer. Logs: `/tmp/airking-approx-{tests,focused,check,build,browser}.log`. Publication and migration remain pending separate approval; no new live data was changed.
