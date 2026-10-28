@@ -159,3 +159,9 @@ Actual examples: 2.5-ton XC330 + CTM30B5ACS1 becomes XC636 + CTM36C5ADS1 in Best
 Explicit user publication approval was received after the earlier approval-review denial. The existing Render master-branch service auto-deploys; release will preserve its Node/runtime settings. No customer messages or production test quotes are authorized or needed.
 
 Final half-size/coil validation: **738 tests pass**, including real PostgreSQL acceptance/invoice snapshots for both upsizes; TypeScript/build and browser desktop/mobile/PDF checks pass; production dependency audit reports zero vulnerabilities. PDF text contains actual 4-ton size, new coil model, old/new coil disclosure and approximate-efficiency terms.
+
+### Approved saved-draft repair (October 27, 2026)
+
+The owner approved automatic true **97% AFUE** two-stage Champion selection for the high-efficiency final option. This supersedes the earlier exact-selected-AFUE blocker for that option only. Options 2–3 retain the selected furnace; the 80% final option retains the same single-stage furnace. Input/cabinet/blower codes still must match. The 96.4% and 96.8% Z9ET models are not treated as 97%, and missing true-97 models remain unavailable.
+
+Unavailable plans now persist separately from purchasable options and render as disabled cards in saved staff proposals, public documents and PDF. They have no invented price and cannot be accepted. Legacy saved quotes are not regenerated automatically. The specifically authorized unsent draft 000003 is rebuilt separately with a current-data concurrency check; other records remain unchanged.

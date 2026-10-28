@@ -1,3 +1,4 @@
+import { UnavailableQuoteOptions, unavailableQuoteOptions, optionOrder } from "@/components/unavailable-quote-options";
 import { QuoteRebates, QuoteRebateTerms } from "@/components/quote-rebates";
 import { documentNumber } from "../../../shared/document-number";
 import { QuoteEditor } from "@/components/document-editors";
@@ -367,13 +368,13 @@ export default function Proposal() {
         ) : null}
 
         {/* Good/Better/Best Cards */}
-        <div data-option-count={quote.options.length} className={`quote-options grid grid-cols-1 ${quote.options.length === 4 ? "md:grid-cols-2 xl:grid-cols-4" : quote.options.length === 3 ? "md:grid-cols-3" : quote.options.length === 2 ? "md:grid-cols-2" : ""} gap-5 mb-6 pt-3`}>
+        <div data-option-count={(quote.options.length + unavailableQuoteOptions(quote).length)} className={`quote-options grid grid-cols-1 ${(quote.options.length + unavailableQuoteOptions(quote).length) === 4 ? "md:grid-cols-2 xl:grid-cols-4" : (quote.options.length + unavailableQuoteOptions(quote).length) === 3 ? "md:grid-cols-3" : (quote.options.length + unavailableQuoteOptions(quote).length) === 2 ? "md:grid-cols-2" : ""} gap-5 mb-6 pt-3`}>
           {quote.options.map((savedOption) => {
             const option = acceptedScope?.selectedOption === savedOption.tier ? { ...savedOption, ...acceptedScope.option } : savedOption;
             const isSelected = selectedTier === option.tier;
             return (
               <Card
-                key={option.tier}
+                key={option.tier} style={{ order: optionOrder(option.tier) }}
                 className={`quote-option relative transition-all cursor-pointer ${
                   isSelected
                     ? "ring-2 ring-primary shadow-lg"
@@ -445,6 +446,7 @@ export default function Proposal() {
               </Card>
             );
           })}
+          <UnavailableQuoteOptions quote={quote} />
         </div>
 
         {quote.options.some((option: any) => option.rebateOffer?.items?.length) && <QuoteRebateTerms />}
