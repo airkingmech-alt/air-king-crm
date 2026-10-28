@@ -1,9 +1,10 @@
+import { formatHomeownerEquipment } from "../../../shared/homeowner-equipment";
 import { buildManualQuoteOptions, type ManualQuoteOptionInput } from "./manual-quote-options";
 import { potentialChampionRebates } from "../../../shared/champion-rebates";
 import { addOnServices } from "../../../shared/quote-addons";
 import type { ReviewedQuoteMatch } from "./quote-matches";
 import { planAcOptions, approximateEfficiencyDisclosure } from "./ac-quote-options";
-import { pricebook, formatEquipmentDescription, type PricebookItem } from "../data/pricebook";
+import { pricebook, type PricebookItem } from "../data/pricebook";
 import type { Quote, QuoteOption } from "../data/mock-data";
 import { dollarsToCents, AIR_KING_MARGIN } from "./pricebook-utils";
 
@@ -69,7 +70,8 @@ export function buildQuoteOptions(input: QuoteDraftInput, catalog: PricebookItem
     return {
       tier, label, rebateOffer: potentialChampionRebates(items), equipment: items.map(item => item.model).join(" + "),
       equipmentItems: items.map(item => item.id),
-      equipmentSummary: items.map(item => `${formatEquipmentDescription(item.category === "Condenser" ? { ...item, tier: undefined } : item)} — ${item.model}`).join("\n"),
+      homeownerEquipment: items.map(formatHomeownerEquipment),
+      equipmentSummary: items.map(formatHomeownerEquipment).join("\n"),
       efficiency: "Matched-system efficiency to be verified",
       features: ["Installation as described in the scope of work", "10-year parts and labor warranty"],
       equipmentCost: pricing.equipmentCost, purchaseTax: pricing.purchaseTax,

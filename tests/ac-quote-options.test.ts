@@ -126,7 +126,9 @@ test('actual 80% catalog generates four options without AHRI and persists disclo
     assert.equal(draft.options[3].equipmentItems?.[1],furnace.id);
     assert.equal(draft.options[3].rebateOffer?.items[0].base,300);
     const publicQuote=publicFields('quote',draft);
-    assert.deepEqual(publicQuote.options[3].features,draft.options[3].features);
+    assert.ok(publicQuote.options[3].features.includes(approximateEfficiencyDisclosure));
+    assert.ok(publicQuote.options[3].features.includes("10-year parts and labor warranty"));
+    assert.ok(publicQuote.options[3].features.includes("Equipment fit and installation requirements will be confirmed before installation."));
   }
 });
 test('known refrigerant mismatch blocks while unknown physical requirements are disclosed',()=>{
@@ -194,6 +196,7 @@ test('upsized XC6 retains a supported original coil, rejects missing replacement
   const q=buildQuoteDraft({...input,equipmentItems:['chp-xc336','chp-ec36bn',id]},'TEST','2026-10-27');
   assert.ok(!q.options.some(o=>o.tier==='Best'));
   assert.match(q.unavailableOptions!.find(o=>o.tier==='Best')!.reason,/97% AFUE/);
-  assert.deepEqual(publicFields('quote',q).unavailableOptions,q.unavailableOptions);
+  assert.deepEqual(publicFields('quote',q).unavailableOptions.map((o:any)=>o.tier),q.unavailableOptions!.map(o=>o.tier));
+  assert.equal(publicFields('quote',q).unavailableOptions[0].reason,'Equipment availability or installation requirements need review.');
  }
  });

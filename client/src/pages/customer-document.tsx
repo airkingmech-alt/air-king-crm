@@ -1,3 +1,4 @@
+import { homeownerEquipmentLines, homeownerOption, homeownerText } from "@shared/homeowner-equipment";
 import { UnavailableQuoteOptions, unavailableQuoteOptions, optionOrder } from "@/components/unavailable-quote-options";
 import { QuoteRebates, QuoteRebateTerms } from "@/components/quote-rebates";
 import { CardCheckout } from "@/components/card-checkout";
@@ -30,9 +31,6 @@ import {
 import { crm } from "@/lib/crm-api";
 import {
   addOnServices,
-  formatEquipmentDescription,
-  getQuoteEquipment,
-  pricebook,
 } from "@/data/pricebook";
 
 const addOnIcons: Record<string, typeof Wind> = {
@@ -101,7 +99,13 @@ export default function CustomerDocument() {
         {error ? (error as Error).message : "Loading your document…"}
       </div>
     );
-  const d = data.document;
+  const originalDocument = data.document;
+  const d = data.kind === "quote" ? { ...originalDocument,
+    title: homeownerText(originalDocument.title || "", originalDocument.options || []),
+    scope: homeownerText(originalDocument.scope || "", originalDocument.options || []),
+    options: (originalDocument.options || []).map((o: any) => ({ ...o, ...homeownerOption(o), label: homeownerText(o.label || "", [o]) })),
+    unavailableOptions: (originalDocument.unavailableOptions || []).map((o: any) => ({ ...o, label: homeownerText(o.label || "", originalDocument.options || []), reason: "Equipment availability or installation requirements need review." })),
+  } : originalDocument;
   const closed =
     ["Won", "Lost", "Accepted", "Declined", "Expired", "Cancelled"].includes(
       d.status,
@@ -133,29 +137,10 @@ export default function CustomerDocument() {
                   <h2 className="font-bold text-sm mb-2">Scope of work</h2>
                   <p className="whitespace-pre-wrap text-sm text-muted-foreground leading-7">{d.scope}</p>
                 </section>
-                {d.equipmentItems?.length > 0 && (
+                {d.options.some((o: any) => homeownerEquipmentLines(o).length > 0) && (
                   <section className="rounded-xl border p-5 space-y-3">
                     <h2 className="font-semibold">Equipment Included</h2>
-                    {d.status === "Won" && <p className="text-sm">{selectedQuoteOption?.equipmentSummary || selectedQuoteOption?.equipment || "See the original accepted proposal"}</p>}
-                    {(d.status === "Won" ? [] : getQuoteEquipment(d, chosenTier)).map((item: any) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center gap-3 rounded-lg border p-3"
-                      >
-                        <div className="rounded-lg bg-sky-50 p-2 text-sky-600">
-                          <Zap size={15} />
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">
-                            {formatEquipmentDescription(d.equipmentSelectionMode === "explicit" && item.category === "Condenser" ? { ...item, tier: undefined } : item)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {item.model}
-                          </p>
-                        </div>
-                        <Badge variant="outline">{item.brand}</Badge>
-                      </div>
-                    ))}
+                    {selectedQuoteOption ? homeownerEquipmentLines(selectedQuoteOption).map((description, index) => <p key={index} className="text-sm rounded-lg border p-3">{description}</p>) : <p className="text-sm text-muted-foreground">Choose an option below to see its equipment.</p>}
                   </section>
                 )}
                 <div data-option-count={(d.options.length + unavailableQuoteOptions(d).length)} className={`quote-options grid grid-cols-1 ${(d.options.length + unavailableQuoteOptions(d).length) === 4 ? "md:grid-cols-2 xl:grid-cols-4" : (d.options.length + unavailableQuoteOptions(d).length) === 3 ? "md:grid-cols-3" : (d.options.length + unavailableQuoteOptions(d).length) === 2 ? "md:grid-cols-2" : ""} gap-5 pt-3`}>
@@ -184,8 +169,8 @@ export default function CustomerDocument() {
                           </p>
                         </div>
                         <div className="space-y-2 text-xs">
-                          <p className="font-semibold text-muted-foreground">
-                            {o.equipment}
+                          <p className="font-semibold text-muted-foreground whitespace-pre-line">
+                            {o.equipmentSummary || o.equipment}
                           </p>
                           <p className="font-medium text-primary">
                             {o.efficiency}
@@ -201,7 +186,7 @@ export default function CustomerDocument() {
                             </p>
                           ))}
                         </div>
-                        <QuoteRebates offer={o.rebateOffer} />
+                        <QuoteRebates offer={o.rebateOffer} homeowner />
                         <Button
                           type="button"
                           className="w-full"

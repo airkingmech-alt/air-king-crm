@@ -36,7 +36,7 @@ try {
   for(let i=0;i<4;i++){await evaluate(`document.querySelectorAll('.quote-option')[${i}].click()`);assert.ok(await evaluate(`document.querySelectorAll('.quote-option')[${i}].className.includes('ring-2')`));}
   assert.ok(await evaluate("document.body.innerText.includes('An AHRI-certified rating is not represented unless specifically provided')"));
   assert.ok(await evaluate("document.body.innerText.includes('$465 base total or $565 bonus total') && document.body.innerText.includes('60 calendar days')"));
-  assert.ok(await evaluate("document.body.innerText.includes('Z9ET080B12SMPS1') && document.body.innerText.includes('$9,454.76') && document.body.innerText.includes('97%')"));
+  assert.ok(await evaluate("!document.body.innerText.includes('Z9ET080B12SMPS1') && document.body.innerText.includes('80,000 BTU Champion furnace') && document.body.innerText.includes('$9,454.76') && document.body.innerText.includes('97%')"));
   await writeFile('/tmp/four-options-desktop.png',Buffer.from((await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true})).data,'base64'));
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   assert.equal(await evaluate("getComputedStyle(document.querySelector('.quote-options')).gridTemplateColumns.split(' ').length"),1);
@@ -49,7 +49,7 @@ try {
   for(let i=0;i<50;i++){if(await evaluate("document.body.innerText.includes('Unavailable')"))break;await new Promise(r=>setTimeout(r,100))}
   assert.equal(await evaluate("document.querySelectorAll('.quote-option').length"),4);
   assert.equal(await evaluate("document.querySelectorAll('.quote-option[aria-disabled=true] button').length"),0);
-  assert.ok(await evaluate("document.body.innerText.includes('97% AFUE') && !Array.from(document.querySelectorAll('button')).some(b=>b.textContent==='Select Best')"));
+  assert.ok(await evaluate("document.body.innerText.includes('Unavailable') && !Array.from(document.querySelectorAll('button')).some(b=>b.textContent==='Select Best')"));
   await writeFile('/tmp/four-options-unavailable.pdf',Buffer.from((await send('Page.printToPDF',{printBackground:true})).data,'base64'));
   console.log('PASS: four selectable public cards, desktop four columns, mobile one column without overflow, print two columns/PDF. Potential rebate alternatives and requirements shown without price deductions. Synthetic only.');
 } finally {ws?.close();chrome?.kill();await vite?.close();await rm(fixture,{recursive:true,force:true});await rm(profile,{recursive:true,force:true,maxRetries:5,retryDelay:100});}

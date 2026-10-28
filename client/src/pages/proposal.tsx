@@ -1,3 +1,4 @@
+import { homeownerEquipmentLines, homeownerOption, homeownerText } from "@shared/homeowner-equipment";
 import { UnavailableQuoteOptions, unavailableQuoteOptions, optionOrder } from "@/components/unavailable-quote-options";
 import { QuoteRebates, QuoteRebateTerms } from "@/components/quote-rebates";
 import { documentNumber } from "../../../shared/document-number";
@@ -49,9 +50,6 @@ import { useToast } from "@/hooks/use-toast";
 import { fmtCurrency, fmtCurrencyExact } from "@/data/mock-data";
 import {
   addOnServices,
-  formatEquipmentDescription,
-  pricebook,
-  getQuoteEquipment,
 } from "@/data/pricebook";
 import { useData } from "@/context/data-context";
 import { crm } from "@/lib/crm-api";
@@ -309,7 +307,7 @@ export default function Proposal() {
         </Card>
 
         <div className="space-y-5 mb-6">
-          <QuoteHeader number={documentNumber(quote)} title={quote.title} customerName={quote.customerName} status={quote.status} createdAt={quote.createdAt} />
+          <QuoteHeader number={documentNumber(quote)} title={homeownerText(acceptedScope?.title || quote.title, quote.options)} customerName={quote.customerName} status={quote.status} createdAt={quote.createdAt} />
           {!accepted && !isServiceOnlyQuote(quote) && <QuoteGuide />}
           {quote.status === "Draft" && <div className="no-print rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Draft only. Saving does not send this quote to the customer.</div>}
           {quote.internalReviewNote && <div className="no-print rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><strong>Internal review:</strong> {quote.internalReviewNote}</div>}
@@ -323,56 +321,23 @@ export default function Proposal() {
           </div>}
           <section className="rounded-xl border bg-card p-5 sm:p-6">
             <h2 className="text-sm font-bold mb-2">Scope of work</h2>
-            <p className="text-sm text-muted-foreground leading-7 whitespace-pre-wrap">{quote.laborDescription || quote.title}</p>
+            <p className="text-sm text-muted-foreground leading-7 whitespace-pre-wrap">{homeownerText(acceptedScope?.laborDescription || quote.laborDescription || quote.title, quote.options)}</p>
           </section>
         </div>
 
-        {/* Equipment List */}
-        {(quote.equipmentItems?.length || quote.options.some(option => option.equipmentItems?.length)) ? (
-          <Card className="mb-6">
-            <CardContent className="p-5">
-              <h2 className="text-sm font-semibold mb-1">Equipment Included</h2>
-              <p className="text-xs text-muted-foreground mb-4">
-                {selectedTier
-                  ? quote.equipmentSelectionMode === "explicit" ? "Selected equipment" : `Equipment for the ${selectedTier} package`
-                  : "Select a package below to see included equipment"}
-              </p>
-              <div className="space-y-2">
-                {accepted && <p className="text-sm">{acceptedScope?.option.equipmentSummary || acceptedScope?.option.equipment || selectedOption?.equipmentSummary || selectedOption?.equipment || "See the original accepted proposal"}</p>}
-                {(accepted || !selectedTier ? [] : getQuoteEquipment(quote, selectedTier)).map((item) => {
-                  if (!item) return null;
-                  return (
-                    <div
-                      key={item.id}
-                      className="flex items-center gap-3 p-2 rounded-lg border border-border"
-                    >
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-50 dark:bg-sky-950/30 text-sky-600 dark:text-sky-400 shrink-0">
-                        <Zap size={14} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium">
-                          {formatEquipmentDescription(quote.equipmentSelectionMode === "explicit" && item.category === "Condenser" ? { ...item, tier: undefined } : item)}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {item.model}
-                        </p>
-                      </div>
-                      <Badge variant="outline" className="text-[10px] shrink-0">
-                        {item.brand}
-                      </Badge>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
+        {/* Display saved plain-language specifications; technical models remain internal. */}
+        {quote.options.some(option => homeownerEquipmentLines(option).length > 0) && <Card className="mb-6"><CardContent className="p-5 space-y-3">
+          <h2 className="text-sm font-semibold">Equipment Included</h2>
+          {billingOption ? homeownerEquipmentLines(billingOption).map((description, index) => <p key={index} className="text-sm rounded-lg border p-3">{description}</p>) : <p className="text-xs text-muted-foreground">Select an option below to see its equipment.</p>}
+        </CardContent></Card>}
 
         {/* Good/Better/Best Cards */}
         <div data-option-count={(quote.options.length + unavailableQuoteOptions(quote).length)} className={`quote-options grid grid-cols-1 ${(quote.options.length + unavailableQuoteOptions(quote).length) === 4 ? "md:grid-cols-2 xl:grid-cols-4" : (quote.options.length + unavailableQuoteOptions(quote).length) === 3 ? "md:grid-cols-3" : (quote.options.length + unavailableQuoteOptions(quote).length) === 2 ? "md:grid-cols-2" : ""} gap-5 mb-6 pt-3`}>
           {quote.options.map((savedOption) => {
             const option = acceptedScope?.selectedOption === savedOption.tier ? { ...savedOption, ...acceptedScope.option } : savedOption;
             const isSelected = selectedTier === option.tier;
+            const homeowner = homeownerOption(option);
+            const optionName = homeownerText(option.label, [option]);
             return (
               <Card
                 key={option.tier} style={{ order: optionOrder(option.tier) }}
@@ -397,7 +362,7 @@ export default function Proposal() {
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       {option.manualConfiguration ? "Option" : option.tier}
                     </p>
-                    <p className="text-lg font-bold mt-1">{option.label}</p>
+                    <p className="text-lg font-bold mt-1">{optionName}</p>
                   </div>
 
                   <div className="text-center mb-4">
@@ -410,14 +375,14 @@ export default function Proposal() {
                   </div>
 
                   <div className="space-y-2 mb-4">
-                    <p className="text-xs font-semibold text-muted-foreground mb-1">
-                      {option.equipment}
+                    <p className="text-xs font-semibold text-muted-foreground mb-1 whitespace-pre-line">
+                      {homeowner.equipmentSummary || homeowner.equipment}
                     </p>
                     <p className="text-xs font-medium text-primary">
-                      {option.efficiency}
+                      {homeowner.efficiency}
                     </p>
                     <Separator className="my-2" />
-                    {option.features.map((feature, i) => (
+                    {homeowner.features.map((feature, i) => (
                       <div key={i} className="flex items-start gap-2">
                         <Check
                           size={14}
@@ -428,7 +393,8 @@ export default function Proposal() {
                     ))}
                   </div>
 
-                  <QuoteRebates offer={option.rebateOffer} />
+                  <details className="no-print text-xs mb-4" onClick={event => event.stopPropagation()}><summary className="cursor-pointer text-muted-foreground">Internal equipment details</summary><p className="mt-2 whitespace-pre-line">{option.equipment}</p>{option.equipmentSummary !== option.equipment && <p className="whitespace-pre-line">{option.equipmentSummary}</p>}<p>{option.efficiency}</p>{option.features.filter(feature => !homeowner.features.includes(feature)).map((feature, index) => <p key={index} className="mt-1">{feature}</p>)}</details>
+                  <QuoteRebates offer={option.rebateOffer} homeowner />
                   <Button
                     className={`w-full ${isSelected ? "bg-primary text-primary-foreground" : ""}`}
                     variant={isSelected ? "default" : "outline"}
@@ -440,15 +406,17 @@ export default function Proposal() {
                         <Check size={14} className="mr-1.5" /> Selected
                       </>
                     ) : (
-                      `Select ${option.manualConfiguration ? option.label : option.tier}`
+                      `Select ${option.manualConfiguration ? optionName : option.tier}`
                     )}
                   </Button>
                 </CardContent>
               </Card>
             );
           })}
-          <UnavailableQuoteOptions quote={quote} />
+          <UnavailableQuoteOptions quote={{ ...quote, unavailableOptions: quote.unavailableOptions?.map(o => ({ ...o, label: homeownerText(o.label, quote.options), reason: "Equipment availability or installation requirements need review." })) }} />
         </div>
+
+          {!!quote.unavailableOptions?.length && <details className="no-print text-xs"><summary className="cursor-pointer">Internal unavailable option details</summary>{quote.unavailableOptions.map(o => <p key={o.tier}>{o.label}: {o.reason}</p>)}</details>}
 
         {quote.options.some((option: any) => option.rebateOffer?.items?.length) && <QuoteRebateTerms />}
         {/* Add-ons */}
@@ -514,7 +482,7 @@ export default function Proposal() {
               <h2 className="text-sm font-semibold mb-3">Your Selection</h2>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span>{billingOption?.label} Package</span>
+                  <span>{homeownerText(billingOption?.label || "", billingOption ? [billingOption] : [])} Package</span>
                   <span className="font-medium">
                     {quoteMoney(billingOption?.customerPrice || 0)}
                   </span>

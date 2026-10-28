@@ -100,6 +100,7 @@ export interface QuoteLineItem {
 }
 
 export interface QuoteOption {
+  homeownerEquipment?: string[];
   manualConfiguration?: boolean;
   manualEquipment?: import("./pricebook").PricebookItem[];
   laborCost?: number;

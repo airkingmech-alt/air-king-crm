@@ -1,8 +1,9 @@
+import { formatHomeownerEquipment } from "../../../shared/homeowner-equipment";
 import { buildManualQuoteOption, manualOptionInput } from "./manual-quote-options";
 import { potentialChampionRebates } from "../../../shared/champion-rebates";
 import type { Invoice, Quote, QuoteOption, WorkOrder } from "@/data/mock-data";
 import { calculateQuotePricing } from "./quote-pricing";
-import { formatEquipmentDescription, pricebook } from "@/data/pricebook";
+import { pricebook } from "@/data/pricebook";
 
 export const quoteJobTypes = ["Changeout", "Service Call", "New Construction", "Maintenance", "Commercial"] as const;
 export const quoteIsAccepted = (quote: Quote) => quote.status === "Won" || !!quote.acceptedScope;
@@ -47,7 +48,7 @@ export function recalculateQuoteOption(option: QuoteOptionForm, equipmentIds: st
   const laborWarrantyCost = modelsChanged ? 0 : (option.laborWarrantyCost || 0);
   const pricing = calculateQuotePricing(items.reduce((sum, item) => sum + item.cost, 0), editMoney(laborCost, "Labor cost") + laborWarrantyCost, editMoney(materialsCost, "Materials cost"));
   return { ...option, laborWarrantyCost, rebateOffer: potentialChampionRebates(items), featureText: modelsChanged ? "" : option.featureText, equipmentItems: [...equipmentIds], equipment: items.map(item => item.model).join(" + "),
-    equipmentSummary: items.map(item => `${formatEquipmentDescription(item)} — ${item.model}`).join("\n"),
+    homeownerEquipment: items.map(formatHomeownerEquipment), equipmentSummary: items.map(formatHomeownerEquipment).join("\n"),
     efficiency: modelsChanged ? "Equipment-series efficiency to be reviewed" : option.efficiency, equipmentCost: pricing.equipmentCost,
     purchaseTax: pricing.purchaseTax, totalCost: pricing.totalCost, customerPrice: String(pricing.customerPrice) };
 }
