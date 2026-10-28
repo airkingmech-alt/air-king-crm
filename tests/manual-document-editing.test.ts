@@ -1,0 +1,52 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { buildManualQuoteOption } from '../client/src/lib/manual-quote-options';
+import { quoteEditForm, quoteEditChanges, recalculateQuoteOption } from '../client/src/lib/document-editing';
+import type { Quote } from '../client/src/data/mock-data';
+import { pricebook } from '../client/src/data/pricebook';
+const option = (tier: 'Value' | 'Best', cost = 1200) => buildManualQuoteOption({ tier, label: tier === 'Value' ? 'Budget choice' : 'Comfort package', equipmentItems: ['chp-xc636','chp-z9t080','chp-ec36bn'], laborCost: cost, materialsCost: 450, partsWarranty: true, laborWarranty: true, rebateConfirmed: false }, pricebook, '2026-10-27');
+const quote = (): Quote => ({ id:'Q-MANUAL', customerId:'synthetic', customerName:'Test', jobType:'Changeout', title:'Manual options', status:'Draft', createdAt:'2026-10-27', laborCost:1200, materialsCost:450, taxRate:.09, pricingVersion:'purchase-tax-v1', selectedAddOns:[], options:[option('Value'),option('Best',1800)] });
+test('manual saved alternatives retain independent allowances and snapshots on ordinary edits',()=>{
+ const saved = JSON.parse(JSON.stringify(quote()));
+ const form = quoteEditForm(saved); form.title='New title'; form.laborCost='9999';
+ const changes=quoteEditChanges(saved,form);
+ assert.equal(changes.options,undefined);
+ assert.deepEqual(saved.options.map((o:any)=>o.laborCost),[1200,1800]);
+ form.options[0].label='Renamed option';
+ const renamed:any=quoteEditChanges(saved,form);
+ assert.equal(renamed.options[0].label,'Renamed option');
+ assert.equal(renamed.options[1].customerPrice,saved.options[1].customerPrice);
+ assert.equal(renamed.options[0].customerPrice,saved.options[0].customerPrice);
+ assert.ok(!('manualLaborText' in renamed.options[0]));
+});
+test('manual warranty and labor changes recalculate only the edited option and keep price override',()=>{
+ const saved=quote(),form=quoteEditForm(saved);
+ form.options[0].laborWarranty=false;
+ form.options[0].manualLaborText='1400';
+ form.options[0].customerPriceOverride=9999.95;
+ const changes:any=quoteEditChanges(saved,form);
+ assert.equal(changes.options[0].laborWarrantyCost,0);
+ assert.equal(changes.options[0].laborCost,1400);
+ assert.equal(changes.options[0].customerPrice,9999.95);
+ assert.ok(!changes.options[0].features.includes('10-year labor warranty'));
+ assert.deepEqual(changes.options[1],saved.options[1]);
+ assert.throws(()=>quoteEditChanges({...saved,status:'Won'},form),/draft revision/);
+});
+test('manual equipment recalculation clears confirmed rebate and preserves manual rows and individual costs',()=>{
+ const saved=quote(); saved.options[0].rebateConfirmed=true;
+ saved.options[0].rebateOffer={program:'champion-consumer-2026',source:'DX2410004 · January 16, 2026',installationStart:'2026-01-01',installationEnd:'2026-12-31',items:[{model:'XC636E2S11',family:'XC6',category:'Condenser',base:300,bonusTotal:365}]};
+ saved.options[0].manualEquipment=[{id:'manual-part',model:'TEST-ACCESSORY',brand:'Champion',category:'Accessory',cost:10,description:'Test accessory'}];
+ const form=quoteEditForm(saved);
+ const changed=recalculateQuoteOption(form.options[0],['chp-xc336','chp-z9e080b','chp-ec36bn'],'9999','9999');
+ assert.equal(changed.rebateConfirmed,false);assert.equal(changed.rebateOffer,undefined);
+ assert.equal(changed.laborCost,1200);assert.equal(changed.materialsCost,450);
+ assert.equal(changed.manualEquipment?.[0].model,'TEST-ACCESSORY');
+ assert.equal(changed.laborWarrantyCost,350);
+});
+test('removing a manual item recalculates only its containing alternative',()=>{
+ const saved=quote();saved.options[0].manualEquipment=[{id:'manual-part',model:'TEST-ACCESSORY',brand:'Champion',category:'Accessory',cost:10,description:'Test accessory'}];
+ const form=quoteEditForm(saved);form.options[0].manualEquipment=[];
+ const changes:any=quoteEditChanges(saved,form);
+ assert.deepEqual(changes.options[0].manualEquipment,[]);
+ assert.deepEqual(changes.options[1],saved.options[1]);
+});

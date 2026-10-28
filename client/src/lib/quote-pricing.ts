@@ -1,3 +1,4 @@
+import { buildManualQuoteOptions, type ManualQuoteOptionInput } from "./manual-quote-options";
 import { potentialChampionRebates } from "../../../shared/champion-rebates";
 import { addOnServices } from "../../../shared/quote-addons";
 import type { ReviewedQuoteMatch } from "./quote-matches";
@@ -28,6 +29,7 @@ export function calculateQuotePricing(equipment: number, labor: number, material
 }
 
 export interface QuoteDraftInput {
+  manualOptions?: ManualQuoteOptionInput[];
   servicePrice?: number;
   newHouseSnapshot?: import("./new-house-quote").NewHouseSnapshot;
   customerId: string;
@@ -43,6 +45,10 @@ export interface QuoteDraftInput {
 }
 
 export function buildQuoteOptions(input: QuoteDraftInput, catalog: PricebookItem[] = pricebook, matches?: readonly ReviewedQuoteMatch[]) {
+  if (input.manualOptions !== undefined) {
+    if (input.servicePrice !== undefined || input.newHouseSnapshot) throw new Error("Manual options cannot be combined with another quote workflow.");
+    return { options: buildManualQuoteOptions(input.manualOptions, catalog), unavailable: [] as string[], unavailableOptions: [] as NonNullable<Quote["unavailableOptions"]> };
+  }
   if (input.servicePrice !== undefined) {
     if (input.jobType !== "Maintenance" || input.equipmentItems.length || input.equipmentCost !== 0 || input.materialsCost !== 0 || input.selectedAddOns?.length)
       throw new Error("Fixed service pricing requires Maintenance with no equipment, materials, or add-ons.");
@@ -93,14 +99,14 @@ export function buildQuoteOptions(input: QuoteDraftInput, catalog: PricebookItem
 
 export function buildQuoteDraft(input: QuoteDraftInput, id: string, createdAt: string, catalog: PricebookItem[] = pricebook, matches?: readonly ReviewedQuoteMatch[]): Quote {
   const { options, unavailable, unavailableOptions } = buildQuoteOptions(input, catalog, matches);
-  const selectedOption = options.find(option => option.equipmentItems?.every((item, index) => item === input.equipmentItems[index])) || options[0];
-  const pricing = calculateQuotePricing(selectedOption.equipmentCost || 0, input.laborCost, input.materialsCost);
+  const selectedOption = input.manualOptions ? options[0] : options.find(option => option.equipmentItems?.every((item, index) => item === input.equipmentItems[index])) || options[0];
+  const pricing = calculateQuotePricing(selectedOption.equipmentCost || 0, selectedOption.laborCost ?? input.laborCost, selectedOption.materialsCost ?? input.materialsCost);
   return {
     id, customerId: input.customerId, customerName: input.customerName,
     ...(input.newHouseSnapshot ? {newHouseSnapshot: input.newHouseSnapshot} : {}),
     jobType: input.jobType as Quote["jobType"], title: input.title,
     status: "Draft", createdAt,
-    equipmentItems: [...input.equipmentItems], equipmentSelectionMode: "explicit",
+    equipmentItems: [...(input.manualOptions ? selectedOption.equipmentItems || [] : input.equipmentItems)], equipmentSelectionMode: "explicit",
     laborDescription: input.laborDescription,
     selectedAddOns: [...(input.selectedAddOns || [])],
     addOnCatalog: input.servicePrice !== undefined ? [] : addOnServices.map(addOn => ({ ...addOn })),

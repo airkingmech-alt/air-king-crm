@@ -73,7 +73,19 @@ try {
     assert.equal(await evaluate("window.__qa.records.quotes[1].jobType"),'Maintenance');
     await openMaintenance();await fill();await evaluate("window.__qa.delay=700");await click('[data-testid="save-maintenance"]');await evaluate("location.hash='/quotes'");await wait("location.hash==='#/quotes' && window.__qa.records.quotes.length===3");
     await new Promise(r=>setTimeout(r,200));assert.equal(await evaluate("location.hash"),'#/quotes');
-    console.log('PASS: both real quote entry routes, empty validation, exact $99, zero equipment, duplicate clicks, failure retention, cancel/reopen, mobile, and navigation during pending save. Synthetic records only.');
+    await evaluate("location.hash='/customers/qa-customer';window.__qa.delay=0");
+    await click('[data-testid="button-customer-new-quote"]');await wait("!!document.querySelector('[data-testid=manual-quote-builder]')");
+    assert.equal(await evaluate("document.querySelectorAll('[data-testid=manual-option]').length"),0);
+    await button('Add option');await set('select[aria-label="Option 1 add Condenser"]','chp-xc336');
+    await wait("document.querySelector('[aria-label=\"Option 1 pricing\"]').innerText.includes('$4,654.19')");
+    await button('Duplicate option');await wait("document.querySelectorAll('[data-testid=manual-option]').length===2");
+    await set('input[aria-label="Option 2 labor cost"]','1300');
+    await evaluate("Array.from(document.querySelectorAll('[data-testid=manual-option]')[1].querySelectorAll('label')).find(e=>e.textContent.includes('10-year labor warranty')).querySelector('input').click()");
+    await click('[data-testid="button-generate-quote"]');await wait("!document.querySelector('[data-testid=manual-quote-builder]')");
+    const manual=await evaluate("window.__qa.records.quotes[3]");assert.equal(manual.options.length,2);
+    assert.ok(manual.options.every(o=>o.manualConfiguration));assert.equal(manual.options[0].laborCost,1200);assert.equal(manual.options[1].laborCost,1300);assert.equal(manual.options[1].laborWarrantyCost,350);
+    assert.equal(manual.options[1].customerPrice-manual.options[0].customerPrice,562.5);
+    console.log('PASS: both maintenance routes plus customer-detail manual quote builder; empty validation, exact $99, no equipment, duplicate clicks, failure retention, cancel/reopen, mobile, pending-save navigation, independent manual options and $350 warranty. Synthetic records only.');
 
   }
 } finally {ws?.close();chrome?.kill();await vite?.close();await rm(fixture,{recursive:true,force:true});await rm(profile,{recursive:true,force:true}).catch(()=>{});}

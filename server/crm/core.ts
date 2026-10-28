@@ -212,6 +212,7 @@ export function publicFields(kind: string, data: Row): Row {
       const o = data.acceptedScope?.selectedOption === original.tier ? data.acceptedScope.option : original;
       return ({
       tier: o.tier,
+      manualConfiguration: o.manualConfiguration === true,
       label: o.label,
       equipment: o.equipment,
       equipmentSummary: o.equipmentSummary,

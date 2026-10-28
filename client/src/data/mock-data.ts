@@ -100,6 +100,14 @@ export interface QuoteLineItem {
 }
 
 export interface QuoteOption {
+  manualConfiguration?: boolean;
+  manualEquipment?: import("./pricebook").PricebookItem[];
+  laborCost?: number;
+  materialsCost?: number;
+  partsWarranty?: boolean;
+  laborWarranty?: boolean;
+  rebateConfirmed?: boolean;
+  customerPriceOverride?: number;
   rebateOffer?: import("../../../shared/champion-rebates").ChampionRebateOffer;
   tier: "Value" | "Good" | "Better" | "Best";
   label: string;

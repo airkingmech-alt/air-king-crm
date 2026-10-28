@@ -1,3 +1,4 @@
+import { buildManualQuoteOption, manualOptionInput } from "./manual-quote-options";
 import { potentialChampionRebates } from "../../../shared/champion-rebates";
 import type { Invoice, Quote, QuoteOption, WorkOrder } from "@/data/mock-data";
 import { calculateQuotePricing } from "./quote-pricing";
@@ -21,7 +22,7 @@ function required(value: string, label: string, max = 2000) {
   if (!text || text.length > max) throw new Error(`${label} is required and must be ${max} characters or fewer.`);
   return text;
 }
-export type QuoteOptionForm = Omit<QuoteOption, "customerPrice" | "features"> & { customerPrice: string; featureText: string };
+export type QuoteOptionForm = Omit<QuoteOption, "customerPrice" | "features"> & { customerPrice: string; featureText: string; manualLaborText?: string; manualMaterialsText?: string };
 export type QuoteEditForm = {
   customerName: string; title: string; jobType: Quote["jobType"]; laborDescription: string;
   laborCost: string; materialsCost: string; options: QuoteOptionForm[]; selectedAddOns: string[];
@@ -29,10 +30,14 @@ export type QuoteEditForm = {
 export function quoteEditForm(quote: Quote): QuoteEditForm {
   return { customerName: quote.customerName, title: quote.title, jobType: quote.jobType,
     laborDescription: quote.laborDescription || "", laborCost: String(quote.laborCost ?? 0), materialsCost: String(quote.materialsCost ?? 0),
-    options: quote.options.map(option => ({ ...structuredClone(option), customerPrice: String(option.customerPrice), featureText: (option.features || []).join("\n") })),
+    options: quote.options.map(option => ({ ...structuredClone(option), customerPrice: String(option.customerPrice), featureText: (option.features || []).join("\n"), ...(option.manualConfiguration ? { manualLaborText: String(option.laborCost ?? 0), manualMaterialsText: String(option.materialsCost ?? 0) } : {}) })),
     selectedAddOns: [...(quote.selectedAddOns || [])] };
 }
 export function recalculateQuoteOption(option: QuoteOptionForm, equipmentIds: string[], laborCost: string, materialsCost: string): QuoteOptionForm {
+  if (option.manualConfiguration) {
+    const changed = JSON.stringify(option.equipmentItems || []) !== JSON.stringify(equipmentIds);
+    return refreshManualOption({ ...option, equipmentItems: [...equipmentIds], rebateConfirmed: changed ? false : option.rebateConfirmed });
+  }
   const items = equipmentIds.map(id => {
     const item = pricebook.find(candidate => candidate.id === id);
     if (!item) throw new Error("An equipment model is no longer in the pricebook. Choose its replacement before recalculating.");
@@ -46,17 +51,37 @@ export function recalculateQuoteOption(option: QuoteOptionForm, equipmentIds: st
     efficiency: modelsChanged ? "Equipment-series efficiency to be reviewed" : option.efficiency, equipmentCost: pricing.equipmentCost,
     purchaseTax: pricing.purchaseTax, totalCost: pricing.totalCost, customerPrice: String(pricing.customerPrice) };
 }
+// Recalculate only this option; quote-level allowances never spread across manual alternatives.
+export function refreshManualOption(option: QuoteOptionForm): QuoteOptionForm {
+  const result = buildManualQuoteOption({ ...manualOptionInput({ ...option, customerPrice: editMoney(option.customerPrice || "0", "Customer price"), features: option.featureText.split("\n") }),
+    laborCost: editMoney(option.manualLaborText ?? String(option.laborCost ?? 0), "Option labor cost"),
+    materialsCost: editMoney(option.manualMaterialsText ?? String(option.materialsCost ?? 0), "Option materials cost") });
+  const { rebateOffer: _rebate, customerPriceOverride: _override, ...base } = option;
+  return { ...base, ...result, customerPrice: String(result.customerPrice), featureText: result.features.join("\n") };
+}
 export function quoteEditChanges(quote: Quote, form: QuoteEditForm) {
   if (quoteIsAccepted(quote)) throw new Error("Create a draft revision to change an accepted quote.");
   if (!quoteJobTypes.includes(form.jobType)) throw new Error("Choose a valid job type.");
   if (form.options.length < 1 || form.options.length > 4 || new Set(form.options.map(option => option.tier)).size !== form.options.length)
     throw new Error("Keep one to four options with different tiers.");
   const internalCostsChanged = form.laborCost !== String(quote.laborCost ?? 0) || form.materialsCost !== String(quote.materialsCost ?? 0);
-  const options = form.options.map(({ featureText, ...option }) => ({ ...option,
+  const options = form.options.map(({ featureText, manualLaborText, manualMaterialsText, ...option }) => {
+    if (option.manualConfiguration) {
+      const original = quote.options.find(o => o.tier === option.tier);
+      const configurationKeys = ["equipmentItems", "manualEquipment", "partsWarranty", "laborWarranty", "rebateConfirmed", "customerPriceOverride"] as const;
+      const changed = !original || configurationKeys.some(key => JSON.stringify(option[key]) !== JSON.stringify(original[key])) || manualLaborText !== String(original.laborCost ?? 0) || manualMaterialsText !== String(original.materialsCost ?? 0);
+      if (changed) {
+        const updated = refreshManualOption({ ...option, featureText, manualLaborText, manualMaterialsText });
+        const { featureText: updatedFeatures, manualLaborText: _labor, manualMaterialsText: _materials, ...saved } = updated;
+        return { ...saved, features: updatedFeatures.split("\n"), customerPrice: Number(updated.customerPrice) };
+      }
+      return { ...option, label: required(option.label, "Option name", 200), features: featureText.split("\n").map(line => line.trim()).filter(Boolean), customerPrice: editMoney(option.customerPrice, "Customer price") };
+    }
+    return ({ ...option,
     ...(internalCostsChanged && quote.pricingVersion === "purchase-tax-v1" && option.equipmentCost !== undefined ? (() => { const costs = calculateQuotePricing(option.equipmentCost!, editMoney(form.laborCost, "Labor cost") + (option.laborWarrantyCost || 0), editMoney(form.materialsCost, "Materials cost")); return { totalCost: costs.totalCost, purchaseTax: costs.purchaseTax }; })() : {}),
     label: required(option.label, "Option name", 200), equipment: option.equipment.trim(),
     features: featureText.split("\n").map(line => line.trim()).filter(Boolean),
-    customerPrice: editMoney(option.customerPrice, `${option.tier} price`) }));
+    customerPrice: editMoney(option.customerPrice, `${option.tier} price`) }); });
   const changes: Record<string, unknown> = { customerName: required(form.customerName, "Customer name", 300),
     title: required(form.title, "Quote title"), jobType: form.jobType, laborDescription: form.laborDescription.trim(),
     laborCost: editMoney(form.laborCost, "Labor cost"), materialsCost: editMoney(form.materialsCost, "Materials cost"),

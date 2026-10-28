@@ -173,7 +173,7 @@ export default function CustomerDocument() {
                       <CardContent className="quote-option-content p-5 space-y-4">
                         <div className="text-center">
                           <p className="text-xs font-semibold uppercase text-muted-foreground">
-                            {o.tier}
+                            {o.manualConfiguration ? "Option" : o.tier}
                           </p>
                           <h2 className="text-lg font-bold">{o.label}</h2>
                           <p className="mt-3 text-2xl font-extrabold">
@@ -212,7 +212,7 @@ export default function CustomerDocument() {
                         >
                           {chosenTier === o.tier
                             ? "Selected"
-                            : `Select ${o.tier}`}
+                            : `Select ${o.manualConfiguration ? o.label : o.tier}`}
                         </Button>
                       </CardContent>
                     </Card>

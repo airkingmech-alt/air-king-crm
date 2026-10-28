@@ -40,14 +40,16 @@ test("legacy options and prices are not repriced when rendered", () => {
   getQuoteEquipment(legacy,"Better"); publicFields("quote",legacy);
   assert.equal(JSON.stringify(legacy),before);
 });
-test("both quote builders use shared pricing and persist separate labor/material inputs", () => {
+test("both standard quote entry points use independent options with shared pricing", () => {
   for (const name of ["customer-detail", "quote-builder"]) {
     const source=readFileSync(`client/src/pages/${name}.tsx`,"utf8");
-    assert.match(source,/calculateQuotePricing\(/);
-    assert.match(source,/laborCost: labor/); assert.match(source,/materialsCost: materials/);
-    assert.match(source,/Purchase tax \(9% equipment \+ materials\)/);
-    assert.doesNotMatch(source,/sellingPriceFromCost/);
+    assert.match(source,/<ManualQuoteBuilder/);
+    assert.doesNotMatch(source,/createQuote\(\{/);
   }
+  const form=readFileSync("client/src/components/manual-quote-builder.tsx","utf8");
+  assert.match(form,/manualOptions/);
+  assert.match(form,/laborCost: first.laborCost/);
+  assert.match(form,/materialsCost: first.materialsCost/);
 });
 
 test("available AC options retain the selected furnace and coil; unavailable options explain blockers", () => {
