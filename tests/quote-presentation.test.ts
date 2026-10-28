@@ -37,14 +37,14 @@ test("quote presentation renders logo, contacts, scope, saved add-ons and no-pay
         const html=renderToStaticMarkup(<QueryClientProvider client={client}><Router ssrPath='/customer/test-quote'><Route path='/customer/:token'><CustomerDocument /></Route></Router></QueryClientProvider>);
         client.clear();return html;
       }
-      export function render(status) {
+      export function render(status, manual=false) {
         const client = new QueryClient({defaultOptions:{queries:{retry:false,gcTime:Infinity}}});
         const addon = addOnServices[0];
         client.setQueryData(['public-document','test-quote'], {kind:'quote', document:{
           number:'Q-TEST',title:'Champion Comfort System',customerName:'Test Customer',
           createdAt:'2026-09-16',scope:'Remove old equipment and install the selected system.',status,
           selectedOption: status==='Won'?'Better':null,selectedAddOns:status==='Won'?[addon.id]:[],
-          options:[{tier:'Better',label:'Enhanced',customerPrice:5000,equipment:'Champion',features:['Included installation']}]
+          options:[{manualConfiguration:manual,tier:'Better',label:manual?'My custom package':'Enhanced',customerPrice:5000,equipment:'Champion',features:['Included installation']}]
         }});
         const html=renderToStaticMarkup(<QueryClientProvider client={client}><Router ssrPath='/customer/test-quote'><Route path='/customer/:token'><CustomerDocument /></Route></Router></QueryClientProvider>);
         client.clear(); return {html,addon};
@@ -69,6 +69,9 @@ test("quote presentation renders logo, contacts, scope, saved add-ons and no-pay
     const feeHtml=renderInvoice(true);
     assert.match(feeHtml,/up to 3%/);assert.match(feeHtml,/Cash, check, debit and prepaid have no added fee/);
     assert.match(feeHtml,/CONTINUE TO SECURE CHECKOUT/);assert.match(feeHtml,/Credit-card fee: \$30.00/);assert.match(feeHtml,/\$1,030.00/);
+    const manual = render("Draft", true).html;
+    assert.match(manual, /Select My custom package/);
+    assert.doesNotMatch(manual, /Select Better/);
     const pending = render("Quote Sent").html;
     assert.match(pending, /alt="Air King logo"/);
     assert.match(pending, /Mechanical Services LLC/);

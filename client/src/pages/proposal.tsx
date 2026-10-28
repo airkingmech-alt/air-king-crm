@@ -315,9 +315,10 @@ export default function Proposal() {
           {quote.internalReviewNote && <div className="no-print rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><strong>Internal review:</strong> {quote.internalReviewNote}</div>}
           {quote.pricingVersion === "purchase-tax-v1" && <div className="no-print rounded-lg border p-3 text-xs space-y-1" aria-label="Internal quote costs">
             <p className="font-semibold">Internal cost breakdown</p>
-            <p>Equipment: {fmtCurrencyExact(costOption?.equipmentCost ?? quote.equipmentCost ?? 0)} · Materials: {fmtCurrencyExact(quote.materialsCost)}</p>
+            <p>Equipment: {fmtCurrencyExact(costOption?.equipmentCost ?? quote.equipmentCost ?? 0)} · Materials: {fmtCurrencyExact(costOption?.manualConfiguration ? (costOption.materialsCost ?? quote.materialsCost) : quote.materialsCost)}</p>
             <p>Purchase tax (9% equipment + materials): {fmtCurrencyExact(costOption?.purchaseTax ?? quote.purchaseTax ?? 0)}</p>
-            <p>Labor (no purchase tax): {fmtCurrencyExact(quote.laborCost)}</p>
+            <p>Labor (no purchase tax): {fmtCurrencyExact(costOption?.manualConfiguration ? (costOption.laborCost ?? quote.laborCost) : quote.laborCost)}</p>
+            {!!costOption?.laborWarrantyCost && <p>Labor warranty allowance (no purchase tax): {fmtCurrencyExact(costOption.laborWarrantyCost)}</p>}
             <p>Total internal cost: {fmtCurrencyExact(costOption?.totalCost || 0)} · Quoted customer price: {fmtCurrencyExact(costOption?.customerPrice || 0)}</p>
           </div>}
           <section className="rounded-xl border bg-card p-5 sm:p-6">
@@ -394,7 +395,7 @@ export default function Proposal() {
                 <CardContent className="quote-option-content p-5">
                   <div className="text-center mb-4">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      {option.tier}
+                      {option.manualConfiguration ? "Option" : option.tier}
                     </p>
                     <p className="text-lg font-bold mt-1">{option.label}</p>
                   </div>
@@ -439,7 +440,7 @@ export default function Proposal() {
                         <Check size={14} className="mr-1.5" /> Selected
                       </>
                     ) : (
-                      `Select ${option.tier}`
+                      `Select ${option.manualConfiguration ? option.label : option.tier}`
                     )}
                   </Button>
                 </CardContent>

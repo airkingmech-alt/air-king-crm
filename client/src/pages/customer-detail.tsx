@@ -1,4 +1,5 @@
 import { documentNumber } from "../../../shared/document-number";
+import { ManualQuoteBuilder } from "@/components/manual-quote-builder";
 import { MaintenanceQuoteForm } from "@/components/maintenance-quote-form";
 import { AddressAttribution } from "@/components/address-attribution";
 import { CustomerEditor } from "@/components/customer-editor";
@@ -9,9 +10,7 @@ import { formatServiceAddress } from "../../../shared/service-address";
 import { CustomerImportSummary, CustomerBillingAddress, CustomerContactChannels } from "@/components/customer-import-details";
 import { useCustomerNotes } from "@/lib/customer-notes";
 import { normalizeLeadSource } from "../../../shared/customer-lead-source";
-import { LaborDescriptionBuilder } from "@/components/labor-description-builder";
 import { DeleteRecord } from "@/components/delete-record";
-import { calculateQuotePricing } from "@/lib/quote-pricing";
 import { guardSave } from "@/lib/confirmed-save";
 import { CustomerCommunications } from "@/pages/communications";
 import { EquipmentScanner } from "@/components/equipment-scanner";
@@ -42,9 +41,6 @@ import {
   Clock,
   MessageSquare,
   Settings,
-  Search,
-  X,
-  TrendingUp,
   Sparkles,
   Camera,
   Upload,
@@ -76,12 +72,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useData } from "@/context/data-context";
 import {
-  customers as seedCustomers,
-  quotes,
   fmtCurrency,
-  fmtCurrencyExact,
 } from "@/data/mock-data";
-import { pricebook, addOnServices } from "@/data/pricebook";
+import { pricebook } from "@/data/pricebook";
 
 const activityIcons: Record<string, typeof Phone> = {
   call: Phone,
@@ -126,7 +119,6 @@ export default function CustomerDetail() {
     addPhoto,
     quotes: contextQuotes,
     invoices,
-    createQuote,
     createInvoice,
   } = useData();
   const customer = customers.find((c) => c.id === id);
@@ -149,19 +141,7 @@ export default function CustomerDetail() {
 
   // Quote dialog state
   const [showQuoteDialog, setShowQuoteDialog] = useState(false);
-  const [quoteStep, setQuoteStep] = useState(1);
   const [jobType, setJobType] = useState<string>("Changeout");
-  const [eqSearch, setEqSearch] = useState("");
-  const [eqFilter, setEqFilter] = useState<string>("All");
-  const [selectedEquipment, setSelectedEquipment] = useState<string[]>([]);
-  const [selectedAddOns, setSelectedAddOns] = useState<string[]>([]);
-  const [scopeNotes, setScopeNotes] = useState("");
-  const [laborCost, setLaborCost] = useState("1200");
-  const [laborDesc, setLaborDesc] = useState(
-    "Remove old equipment, install new system, reconnect electrical and refrigerant lines",
-  );
-  const [materialsCost, setMaterialsCost] = useState("450");
-  const [eqDropdown, setEqDropdown] = useState("");
 
   const customerQuotes = contextQuotes.filter((q) => q.customerId === id);
   const customerInvoices = invoices.filter(
@@ -179,105 +159,7 @@ export default function CustomerDetail() {
   ) : null;
   const customerPhotos = getPhotos(id || "");
 
-  // Equipment filtering
-  const categories = [
-    "All",
-    "Heat Pump",
-    "Condenser",
-    "Air Handler",
-    "Evaporator Coil",
-    "Furnace",
-    "Heat Strip",
-    "Accessory",
-  ];
-  const filteredEquipment = pricebook.filter((p) => {
-    const matchesSearch =
-      p.model.toLowerCase().includes(eqSearch.toLowerCase()) ||
-      p.description.toLowerCase().includes(eqSearch.toLowerCase());
-    const matchesFilter = eqFilter === "All" || p.category === eqFilter;
-    return matchesSearch && matchesFilter;
-  });
-
-  const toggleEquipment = (eid: string) => {
-    setSelectedEquipment((prev) =>
-      prev.includes(eid) ? prev.filter((x) => x !== eid) : [...prev, eid],
-    );
-  };
-  const toggleAddOn = (aid: string) => {
-    setSelectedAddOns((prev) =>
-      prev.includes(aid) ? prev.filter((x) => x !== aid) : [...prev, aid],
-    );
-  };
-
-  // Pricing calculations
-  const selectedItems = pricebook.filter((p) =>
-    selectedEquipment.includes(p.id),
-  );
-  const equipmentCost = selectedItems.reduce((sum, item) => sum + item.cost, 0);
-  const labor = parseFloat(laborCost) || 0;
-  const materials = parseFloat(materialsCost) || 0;
-  const validCosts = [equipmentCost, labor, materials].every(value => Number.isFinite(value) && value >= 0);
-  const { totalCost, customerPrice, purchaseTax } = calculateQuotePricing(
-    validCosts ? equipmentCost : 0, validCosts ? labor : 0, validCosts ? materials : 0,
-  );
-  const grossProfit = customerPrice - totalCost;
-  const margin =
-    customerPrice > 0
-      ? ((grossProfit / customerPrice) * 100).toFixed(1)
-      : "0.0";
-  const addOnsTotal = addOnServices
-    .filter((a) => selectedAddOns.includes(a.id))
-    .reduce((sum, a) => sum + a.price, 0);
-  const grandTotal = customerPrice + addOnsTotal;
-
-  const resetQuoteForm = () => {
-    setQuoteStep(1);
-    setJobType("Changeout");
-    setEqSearch("");
-    setEqFilter("All");
-    setSelectedEquipment([]);
-    setScopeNotes("");
-    setSelectedAddOns([]);
-    setLaborCost("1200");
-    setLaborDesc(
-      "Remove old equipment, install new system, reconnect electrical and refrigerant lines",
-    );
-    setMaterialsCost("450");
-    setEqDropdown("");
-  };
-
-  const handleCreateQuote = guardSave("pages/customer-detail.tsx:handleCreateQuote", async () => {
-    if (selectedEquipment.length === 0) {
-      toast({
-        title: "No equipment selected",
-        description: "Please select at least one equipment item.",
-        variant: "destructive",
-      });
-      return;
-    }
-    const truncatedDesc =
-      laborDesc.length > 50
-        ? laborDesc.substring(0, 50).replace(/\s+\S*$/, "") + "…"
-        : laborDesc;
-    const newQuote = await createQuote({
-      customerId: customer?.id || "",
-      customerName: customer?.name || "",
-      jobType: jobType,
-      title: `${jobType} — ${selectedEquipment.length} item(s) · ${truncatedDesc}`,
-      equipmentCost,
-      laborCost: labor,
-      materialsCost: materials,
-      equipmentItems: selectedEquipment,
-      laborDescription: laborDesc,
-      selectedAddOns,
-    });
-    toast({
-      title: "Draft quote saved",
-      description: `${documentNumber(newQuote)} for ${customer?.name} — ${fmtCurrencyExact(grandTotal)} total. View it in the Quotes tab or the Quotes page.`,
-    });
-    setShowQuoteDialog(false);
-    resetQuoteForm();
-  });
+  const resetQuoteForm = () => setJobType("Changeout");
 
   const handleAddNote = guardSave("pages/customer-detail.tsx:handleAddNote", async () => {
     if (!noteText.trim()) {
@@ -723,7 +605,7 @@ export default function CustomerDetail() {
                               key={opt.tier}
                               className="text-xs px-2 py-1 rounded border border-border"
                             >
-                              <span className="font-semibold">{opt.tier}</span>:{" "}
+                              <span className="font-semibold">{opt.manualConfiguration ? opt.label : opt.tier}</span>:{" "}
                               {fmtCurrency(opt.customerPrice)}
                             </div>
                           ))}
@@ -1056,443 +938,20 @@ export default function CustomerDetail() {
       </Dialog>
 
       {/* New Quote Dialog */}
-      <Dialog
-        open={showQuoteDialog}
-        onOpenChange={(open) => {
-          setShowQuoteDialog(open);
-          if (!open) resetQuoteForm();
-        }}
-      >
-        <DialogContent className="w-[calc(100%-2rem)] max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <Dialog open={showQuoteDialog} onOpenChange={open => { setShowQuoteDialog(open); if (!open) resetQuoteForm(); }}>
+        <DialogContent className="w-[calc(100%-2rem)] max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileText size={18} />
-              New Quote — {customer.name}
-            </DialogTitle>
-            <DialogDescription>
-              {jobType === "Maintenance" ? "Describe the service and set the complete customer total." : "Build a draft with equipment from the pricebook. Champion XC3/XC4 selections generate actual model-priced options; other selections stay as chosen."}
-            </DialogDescription>
+            <DialogTitle className="flex items-center gap-2"><FileText size={18} />New Quote — {customer.name}</DialogTitle>
+            <DialogDescription>{jobType === "Maintenance" ? "Describe the service and set the complete customer total." : "Add independent options with their own equipment, price, warranty selections and confirmed potential rebates."}</DialogDescription>
           </DialogHeader>
-
-          {/* Step indicator */}
-          {jobType !== "Maintenance" && <div className="flex items-center gap-2 mb-2">
-            {[1, 2, 3].map((s) => (
-              <div key={s} className="flex items-center gap-2">
-                <div
-                  className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold ${
-                    quoteStep >= s
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {s}
-                </div>
-                {s < 3 && (
-                  <div
-                    className={`h-px w-8 ${quoteStep > s ? "bg-primary" : "bg-border"}`}
-                  />
-                )}
-              </div>
-            ))}
-            <span className="text-xs text-muted-foreground ml-2">
-              {quoteStep === 1
-                ? "Job Type"
-                : quoteStep === 2
-                  ? "Equipment"
-                  : "Pricing Summary"}
-            </span>
-          </div>}
-
-          <Separator />
-
-          {/* Step 1: Job Type */}
-          {quoteStep === 1 && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Job Type</Label>
-                <Select value={jobType} onValueChange={setJobType}>
-                  <SelectTrigger data-testid="select-quote-job-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {jobTypes.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {t}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {jobType === "Maintenance" ? <MaintenanceQuoteForm customer={customer} onCancel={() => { setShowQuoteDialog(false); resetQuoteForm(); }} onSaved={() => { setShowQuoteDialog(false); resetQuoteForm(); }} /> : <>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="labor-cost">Labor Cost</Label>
-                  <div className="relative">
-                    <DollarSign
-                      size={16}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                    />
-                    <Input
-                      id="labor-cost"
-                      type="number"
-                      value={laborCost}
-                      onChange={(e) => setLaborCost(e.target.value)}
-                      className="pl-9"
-                      data-testid="input-labor-cost"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="materials-cost">Materials Cost</Label>
-                  <div className="relative">
-                    <DollarSign
-                      size={16}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                    />
-                    <Input
-                      id="materials-cost"
-                      type="number"
-                      value={materialsCost}
-                      onChange={(e) => setMaterialsCost(e.target.value)}
-                      className="pl-9"
-                      data-testid="input-materials-cost"
-                    />
-                  </div>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="labor-desc">Labor Description</Label>
-                <Textarea
-                  id="labor-desc"
-                  value={laborDesc}
-                  onChange={(e) => setLaborDesc(e.target.value)}
-                  rows={2}
-                  className="text-sm"
-                  placeholder="Describe the labor being performed..."
-                  data-testid="input-labor-desc"
-                />
-              </div>
-              <div className="rounded-lg bg-sky-50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/30 p-3 text-xs text-muted-foreground">
-                <p className="flex items-center gap-1.5 font-medium text-sky-700 dark:text-sky-400">
-                  <Sparkles size={14} /> Pricing Formula
-                </p>
-                <p className="mt-1">
-                  Customer price = Total Internal Cost ÷ 0.80 (20% margin).
-                  Internal costs are never shown to customers.
-                </p>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowQuoteDialog(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => setQuoteStep(2)}
-                  data-testid="button-quote-next-1"
-                >
-                  Next: Select Equipment
-                </Button>
-              </DialogFooter>
-              </>}
-            </div>
-          )}
-
-          {/* Step 2: Equipment Selection */}
-          {quoteStep === 2 && (
-            <div className="space-y-3">
-              {/* Equipment Dropdown */}
-              <div className="space-y-2">
-                <Label className="text-xs font-semibold">
-                  Select Equipment
-                </Label>
-                <Select
-                  value={eqDropdown}
-                  onValueChange={(val) => {
-                    if (!selectedEquipment.includes(val)) {
-                      setSelectedEquipment((prev) => [...prev, val]);
-                    }
-                    setEqDropdown("");
-                  }}
-                >
-                  <SelectTrigger
-                    className="h-9 text-sm"
-                    data-testid="select-equipment-dropdown"
-                  >
-                    <SelectValue placeholder="Browse and select equipment..." />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[300px]">
-                    {categories
-                      .filter((c) => c !== "All")
-                      .map((cat) => (
-                        <div key={cat}>
-                          <p className="text-[10px] font-bold text-muted-foreground px-2 py-1 uppercase tracking-wide">
-                            {cat}
-                          </p>
-                          {filteredEquipment
-                            .filter((p) => p.category === cat)
-                            .map((item) => (
-                              <SelectItem
-                                key={item.id}
-                                value={item.id}
-                                className="text-xs"
-                              >
-                                {item.model} — {fmtCurrency(item.cost)}
-                              </SelectItem>
-                            ))}
-                        </div>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="relative flex-1 min-w-[180px]">
-                  <Search
-                    size={16}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  />
-                  <Input
-                    placeholder="Search model or description..."
-                    value={eqSearch}
-                    onChange={(e) => setEqSearch(e.target.value)}
-                    className="pl-9 h-9 text-sm"
-                  />
-                </div>
-                <Select value={eqFilter} onValueChange={setEqFilter}>
-                  <SelectTrigger className="w-[140px] h-9 text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Selected items summary */}
-              {selectedItems.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedItems.map((item) => (
-                    <Badge
-                      key={item.id}
-                      variant="secondary"
-                      className="text-[10px] gap-1 pr-1"
-                    >
-                      {item.model}
-                      <button
-                        onClick={() => toggleEquipment(item.id)}
-                        className="hover:text-destructive"
-                      >
-                        <X size={10} />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
-
-              {/* Equipment list */}
-              <div className="max-h-[280px] overflow-y-auto space-y-1 rounded-lg border border-border p-1">
-                {filteredEquipment.slice(0, 50).map((item) => {
-                  const isSelected = selectedEquipment.includes(item.id);
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => toggleEquipment(item.id)}
-                      className={`w-full text-left p-2 rounded-md transition-colors flex items-center gap-2 ${
-                        isSelected
-                          ? "bg-primary/10 border border-primary/30"
-                          : "hover:bg-muted/50 border border-transparent"
-                      }`}
-                    >
-                      <div
-                        className={`flex h-4 w-4 items-center justify-center rounded shrink-0 ${
-                          isSelected
-                            ? "bg-primary text-primary-foreground"
-                            : "border border-border"
-                        }`}
-                      >
-                        {isSelected && <CheckCircle2 size={12} />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold truncate">
-                          {item.model}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground truncate">
-                          {item.description}
-                        </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-xs font-medium">
-                          {fmtCurrency(item.cost)}
-                        </p>
-                        <p className="text-[9px] text-muted-foreground">
-                          {item.brand}
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })}
-                {filteredEquipment.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-4">
-                    No equipment found.
-                  </p>
-                )}
-              </div>
-
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setQuoteStep(1)}>
-                  Back
-                </Button>
-                <Button
-                  onClick={() => setQuoteStep(3)}
-                  disabled={selectedEquipment.length === 0}
-                  data-testid="button-quote-next-2"
-                >
-                  Next: Add-ons & Summary
-                </Button>
-              </DialogFooter>
-            </div>
-          )}
-
-          {/* Step 3: Add-ons & Pricing Summary */}
-          {quoteStep === 3 && (
-            <div className="space-y-4">
-              {/* Add-on services */}
-              <div>
-                <Label className="text-xs font-semibold mb-2 block">
-                  Optional Add-Ons
-                </Label>
-                <div className="grid grid-cols-1 gap-1.5">
-                  {addOnServices.map((addon) => {
-                    const isSelected = selectedAddOns.includes(addon.id);
-                    return (
-                      <button
-                        key={addon.id}
-                        onClick={() => toggleAddOn(addon.id)}
-                        className={`w-full text-left p-2 rounded-md transition-colors flex items-center gap-2 ${
-                          isSelected
-                            ? "bg-primary/10 border border-primary/30"
-                            : "hover:bg-muted/50 border border-transparent"
-                        }`}
-                      >
-                        <div
-                          className={`flex h-4 w-4 items-center justify-center rounded shrink-0 ${
-                            isSelected
-                              ? "bg-primary text-primary-foreground"
-                              : "border border-border"
-                          }`}
-                        >
-                          {isSelected && <CheckCircle2 size={12} />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium">{addon.name}</p>
-                          <p className="text-[10px] text-muted-foreground truncate">
-                            {addon.description}
-                          </p>
-                        </div>
-                        <p className="text-xs font-semibold shrink-0">
-                          {fmtCurrency(addon.price)}
-                        </p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <Separator />
-
-              <LaborDescriptionBuilder equipment={selectedItems} addOns={addOnServices.filter(a => selectedAddOns.includes(a.id))} scope={scopeNotes} onScopeChange={setScopeNotes} onApply={setLaborDesc} />
-
-              {/* Pricing Summary */}
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">
-                    Equipment ({selectedItems.length} items)
-                  </span>
-                  <span className="font-medium">
-                    {fmtCurrencyExact(equipmentCost)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">Labor</span>
-                  <span className="font-medium">{fmtCurrencyExact(labor)}</span>
-                </div>
-                {laborDesc && (
-                  <p className="text-[10px] text-muted-foreground/70 pl-2">
-                    {laborDesc}
-                  </p>
-                )}
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">Materials</span>
-                  <span className="font-medium">{fmtCurrencyExact(materials)}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">Purchase tax (9% equipment + materials)</span>
-                  <span className="font-medium">{fmtCurrencyExact(purchaseTax)}</span>
-                </div>
-                <div className="flex justify-between text-xs pt-1 border-t border-border">
-                  <span className="text-muted-foreground font-medium">
-                    Total Internal Cost
-                  </span>
-                  <span className="font-bold">{fmtCurrencyExact(totalCost)}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">
-                    Customer Price (÷ 0.80)
-                  </span>
-                  <span className="font-medium text-sky-600">
-                    {fmtCurrencyExact(customerPrice)}
-                  </span>
-                </div>
-                {addOnsTotal > 0 && (
-                  <div className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">Add-Ons</span>
-                    <span className="font-medium">
-                      {fmtCurrencyExact(addOnsTotal)}
-                    </span>
-                  </div>
-                )}
-                <Separator />
-                <div className="flex justify-between items-center pt-1">
-                  <span className="text-sm font-semibold">Customer Total</span>
-                  <span className="text-lg font-bold text-primary">
-                    {fmtCurrencyExact(grandTotal)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-[10px] text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <TrendingUp size={11} /> Gross Profit:{" "}
-                    {fmtCurrencyExact(grossProfit)}
-                  </span>
-                  <span>Margin: {margin}%</span>
-                </div>
-              </div>
-
-              <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 p-2 text-[10px] text-muted-foreground">
-                Internal costs shown here are for your reference only and will
-                not appear on the customer-facing proposal.
-              </div>
-
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setQuoteStep(2)}>
-                  Back
-                </Button>
-                <Button
-                  onClick={handleCreateQuote}
-                  data-testid="button-submit-quote"
-                  disabled={!validCosts}
-                  className="bg-primary text-primary-foreground"
-                >
-                  <FileText size={14} className="mr-1.5" /> Save Draft Quote
-                </Button>
-              </DialogFooter>
-            </div>
-          )}
+          <div className="space-y-2">
+            <Label>Job Type</Label>
+            <Select value={jobType} onValueChange={setJobType}>
+              <SelectTrigger data-testid="select-quote-job-type"><SelectValue /></SelectTrigger>
+              <SelectContent>{jobTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          {jobType === "Maintenance" ? <MaintenanceQuoteForm customer={customer} onCancel={() => { setShowQuoteDialog(false); resetQuoteForm(); }} onSaved={() => { setShowQuoteDialog(false); resetQuoteForm(); }} /> : <ManualQuoteBuilder customerId={customer.id} jobType={jobType as import("@/data/mock-data").Quote["jobType"]} onCancel={() => { setShowQuoteDialog(false); resetQuoteForm(); }} onSaved={() => { setShowQuoteDialog(false); resetQuoteForm(); }} />}
         </DialogContent>
       </Dialog>
 

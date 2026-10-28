@@ -1,8 +1,11 @@
+import { potentialChampionRebates, championRebateSummary } from "../../../shared/champion-rebates";
+import { QuoteRebates } from "./quote-rebates";
+import { refreshManualOption } from "@/lib/document-editing";
 import { documentNumber } from "../../../shared/document-number";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { Pencil, Plus, Trash2 } from "lucide-react";
-import type { Invoice, Quote } from "@/data/mock-data";
+import type { Invoice, Quote, QuoteOption } from "@/data/mock-data";
 import { fmtCurrencyExact } from "@/data/mock-data";
 import { pricebook, addOnServices, getQuoteEquipment } from "@/data/pricebook";
 import { useData } from "@/context/data-context";
@@ -32,7 +35,7 @@ function EquipmentEditor({ option, initialIds, labor, materials, onApply }: { op
   return <details className="rounded-md border p-3 text-sm">
     <summary className="cursor-pointer font-medium">Change equipment / recalculate price</summary>
     <div className="mt-3 space-y-3">
-      <p className="text-xs text-muted-foreground">This uses current model costs, 9% purchase tax on equipment and materials, and a 20% margin. Confirm matching and availability after changing models. Prices change only when you apply below. Changing models clears the old included features so you can review and enter the new equipment’s coverage.</p>
+      <p className="text-xs text-muted-foreground">This uses current model costs, 9% purchase tax on equipment and materials, and a 20% margin. Confirm matching and availability after changing models. Prices change only when you apply below. Changing models requires reviewing coverage and confirming any suggested rebate again.</p>
       <Field label={`${option.tier} equipment search`}><Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search model or description" /></Field>
       <Field label={`${option.tier} add equipment`}><select className={selectClass} value="" onChange={event => { if (event.target.value && !ids.includes(event.target.value)) setIds([...ids, event.target.value]); }}>
         <option value="">Choose equipment…</option>
@@ -43,6 +46,38 @@ function EquipmentEditor({ option, initialIds, labor, materials, onApply }: { op
       <Button type="button" variant="outline" onClick={() => { try { onApply(recalculateQuoteOption(option, ids, labor, materials)); setError(""); } catch (error) { setError(errorMessage(error)); } }}>Apply equipment & recalculate {option.tier.toLowerCase()} price</Button>
     </div>
   </details>;
+}
+
+function ManualOptionSettings({ option, savedOption, onChange }: { option: QuoteOptionForm; savedOption?: QuoteOption; onChange: (changes: Partial<QuoteOptionForm>) => void }) {
+  let preview: QuoteOptionForm | undefined; let error = "";
+  const pricingKeys = ["equipmentItems", "manualEquipment", "partsWarranty", "laborWarranty", "rebateConfirmed", "customerPriceOverride"] as const;
+  const changed = !savedOption || pricingKeys.some(key => JSON.stringify(option[key]) !== JSON.stringify(savedOption[key])) || option.manualLaborText !== String(savedOption.laborCost ?? 0) || option.manualMaterialsText !== String(savedOption.materialsCost ?? 0);
+  try { preview = changed ? refreshManualOption(option) : option; } catch (cause) { error = errorMessage(cause); }
+  const suggestion = potentialChampionRebates(pricebook.filter(item => option.equipmentItems?.includes(item.id)));
+  const rebateWindow = suggestion ? championRebateSummary(suggestion) : undefined;
+  return <div className="space-y-3" aria-label={`${option.label} pricing and coverage`}>
+    <div className="grid gap-3 sm:grid-cols-2">
+      <Field label="This option labor cost ($)"><Input inputMode="decimal" value={option.manualLaborText ?? String(option.laborCost ?? 0)} onChange={e => onChange({ manualLaborText: e.target.value })} required /></Field>
+      <Field label="This option materials cost ($)"><Input inputMode="decimal" value={option.manualMaterialsText ?? String(option.materialsCost ?? 0)} onChange={e => onChange({ manualMaterialsText: e.target.value })} required /></Field>
+    </div>
+    <label className="flex gap-2 text-sm"><input type="checkbox" checked={!!option.partsWarranty} onChange={e => onChange({ partsWarranty: e.target.checked })} />10-year parts warranty</label>
+    <label className="flex gap-2 text-sm"><input type="checkbox" checked={!!option.laborWarranty} onChange={e => onChange({ laborWarranty: e.target.checked })} />10-year labor warranty · $350 internal cost allowance</label>
+    {suggestion && <QuoteRebates offer={suggestion} />}
+    <label className="flex gap-2 text-sm"><input type="checkbox" checked={!!option.rebateConfirmed} disabled={!suggestion || (!option.rebateConfirmed && (rebateWindow?.expired || rebateWindow?.beforeWindow))} onChange={e => onChange({ rebateConfirmed: e.target.checked })} />Include the suggested potential rebate after my review</label>
+    {!suggestion && <p className="text-xs text-muted-foreground">No potential rebate found for the selected pricebook models.</p>}
+    {option.manualEquipment?.map((item, index) => <div key={item.id} className="grid gap-2 rounded border p-3 sm:grid-cols-2">
+      <Field label="Manual brand"><select className={selectClass} value={item.brand} onChange={e => onChange({ rebateConfirmed: false, manualEquipment: option.manualEquipment!.map((row, i) => i === index ? { ...row, brand: e.target.value as typeof item.brand } : row) })}><option>Champion</option><option>Guardian</option></select></Field>
+      <Field label="Manual category"><select className={selectClass} value={item.category} onChange={e => onChange({ rebateConfirmed: false, manualEquipment: option.manualEquipment!.map((row, i) => i === index ? { ...row, category: e.target.value as typeof item.category } : row) })}>{["Condenser","Furnace","Evaporator Coil","Heat Pump","Air Handler","Heat Strip","Accessory"].map(category => <option key={category}>{category}</option>)}</select></Field>
+      <Field label="Manual model"><Input value={item.model} onChange={e => onChange({ rebateConfirmed: false, manualEquipment: option.manualEquipment!.map((row, i) => i === index ? { ...row, model: e.target.value } : row) })} /></Field>
+      <Field label="Manual equipment cost ($)"><Input type="number" min="0.01" step="0.01" value={item.cost} onChange={e => onChange({ rebateConfirmed: false, manualEquipment: option.manualEquipment!.map((row, i) => i === index ? { ...row, cost: Number(e.target.value) } : row) })} /></Field>
+      <Field label="Manual description"><Input value={item.description} onChange={e => onChange({ rebateConfirmed: false, manualEquipment: option.manualEquipment!.map((row, i) => i === index ? { ...row, description: e.target.value } : row) })} /></Field>
+      <Button type="button" variant="outline" onClick={() => onChange({ rebateConfirmed: false, manualEquipment: option.manualEquipment!.filter((_, i) => i !== index) })}>Remove manual equipment</Button>
+    </div>)}
+    <Button type="button" variant="outline" onClick={() => onChange({ rebateConfirmed: false, manualEquipment: [...(option.manualEquipment || []), { id: `manual-${crypto.randomUUID()}`, brand: 'Champion', category: 'Accessory', model: '', description: '', cost: 0 }] })}>Add manual equipment</Button>
+    <label className="flex gap-2 text-sm"><input type="checkbox" checked={option.customerPriceOverride !== undefined} onChange={e => onChange({ customerPriceOverride: e.target.checked ? Number(preview?.customerPrice || option.customerPrice) : undefined })} />Override this option’s calculated selling price</label>
+    {option.customerPriceOverride !== undefined && <Field label="This option selling price ($)"><Input type="number" min="0.01" step="0.01" value={option.customerPriceOverride} onChange={e => onChange({ customerPriceOverride: Number(e.target.value) })} required /></Field>}
+    {error ? <p role="alert" className="text-destructive text-sm">{error}</p> : <div className="rounded bg-muted p-3 text-sm space-y-1"><p>Internal total: {fmtCurrencyExact(preview!.totalCost)}</p><p className="font-semibold">This option selling price: {fmtCurrencyExact(Number(preview!.customerPrice))}</p><p className="text-xs">Only the customer’s selected option is charged. Rebates do not reduce this price.</p></div>}
+  </div>;
 }
 
 export function QuoteEditor({ quote }: { quote: Quote }) {
@@ -78,21 +113,23 @@ export function QuoteEditor({ quote }: { quote: Quote }) {
             </div>
             <Field label="Quote title"><Input value={form.title} onChange={event => setForm({ ...form, title: event.target.value })} maxLength={2000} required /></Field>
             <Field label="Scope / labor description"><Textarea value={form.laborDescription} onChange={event => setForm({ ...form, laborDescription: event.target.value })} rows={4} maxLength={10000} /></Field>
-            <div className="grid gap-3 sm:grid-cols-2">
+            {!form.options.every(option => option.manualConfiguration) && <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Internal labor cost ($)"><Input inputMode="decimal" value={form.laborCost} onChange={event => setForm({ ...form, laborCost: event.target.value })} required /></Field>
               <Field label="Internal materials cost ($)"><Input inputMode="decimal" value={form.materialsCost} onChange={event => setForm({ ...form, materialsCost: event.target.value })} required /></Field>
-            </div>
-            <p className="text-xs text-muted-foreground">Quoted prices stay as entered. Use each option's recalculation control to apply new labor, materials, or equipment costs.</p>
+            </div>}
+            <p className="text-xs text-muted-foreground">Manual options keep their own labor, materials, warranty and price settings. Quoted prices stay as entered. Use each option's recalculation control to apply new labor, materials, or equipment costs.</p>
             {form.options.map((option, index) => <section key={option.tier} className="min-w-0 rounded-lg border p-4 space-y-3">
-              <div className="flex justify-between items-center gap-2"><h3 className="font-semibold">{option.tier} option</h3>{form.options.length > 1 && <Button variant="ghost" size="sm" type="button" aria-label={`Remove ${option.tier} option`} onClick={() => setForm({ ...form, options: form.options.filter((_, i) => i !== index) })}><Trash2 size={14} /></Button>}</div>
-              <div className="grid gap-3 sm:grid-cols-2"><Field label={`${option.tier} option name`}><Input value={option.label} maxLength={200} required onChange={event => setOption(index, { label: event.target.value })} /></Field><Field label={`${option.tier} customer price ($)`}><Input inputMode="decimal" value={option.customerPrice} required onChange={event => setOption(index, { customerPrice: event.target.value })} /></Field></div>
-              <Field label={`${option.tier} equipment description`}><Textarea value={option.equipmentSummary ?? option.equipment} rows={3} maxLength={10000} onChange={event => setOption(index, { equipment: event.target.value, equipmentSummary: event.target.value, equipmentItems: [], rebateOffer: undefined, ...(option.equipmentItems?.length ? { featureText: "", efficiency: "Manual equipment description; verify matching and efficiency" } : {}) })} /></Field>
+              <div className="flex justify-between items-center gap-2"><h3 className="font-semibold">{option.manualConfiguration ? option.label : `${option.tier} option`}</h3>{form.options.length > 1 && <Button variant="ghost" size="sm" type="button" aria-label={`Remove ${option.tier} option`} onClick={() => setForm({ ...form, options: form.options.filter((_, i) => i !== index) })}><Trash2 size={14} /></Button>}</div>
+              <div className="grid gap-3 sm:grid-cols-2"><Field label={`${option.tier} option name`}><Input value={option.label} maxLength={200} required onChange={event => setOption(index, { label: event.target.value })} /></Field>{!option.manualConfiguration && <Field label={`${option.tier} customer price ($)`}><Input inputMode="decimal" value={option.customerPrice} required onChange={event => setOption(index, { customerPrice: event.target.value })} /></Field>}</div>
+              {option.manualConfiguration && <ManualOptionSettings option={option} savedOption={(original || quote).options.find(o => o.tier === option.tier)} onChange={changes => setOption(index, changes)} />}
+              {!option.manualConfiguration && <><Field label={`${option.tier} equipment description`}><Textarea value={option.equipmentSummary ?? option.equipment} rows={3} maxLength={10000} onChange={event => setOption(index, { equipment: event.target.value, equipmentSummary: event.target.value, equipmentItems: [], rebateOffer: undefined, ...(option.equipmentItems?.length ? { featureText: "", efficiency: "Manual equipment description; verify matching and efficiency" } : {}) })} /></Field>
               <p className="text-xs text-muted-foreground">Typing a manual equipment description clears this option’s model list and model-specific features for review. Use the equipment control below to select exact models.</p>
               <Field label={`${option.tier} efficiency / match details`}><Input value={option.efficiency} maxLength={2000} onChange={event => setOption(index, { efficiency: event.target.value })} /></Field>
-              <Field label={`${option.tier} included features (one per line)`}><Textarea value={option.featureText} maxLength={10000} onChange={event => setOption(index, { featureText: event.target.value })} /></Field>
+              <Field label={`${option.tier} included features (one per line)`}><Textarea value={option.featureText} maxLength={10000} onChange={event => setOption(index, { featureText: event.target.value })} /></Field></>}
               <EquipmentEditor option={option} initialIds={getQuoteEquipment(original || quote, option.tier).map(item => item.id)} labor={form.laborCost} materials={form.materialsCost} onApply={updated => setOption(index, updated)} />
+              {option.manualConfiguration && form.options.length < 4 && <Button type="button" variant="outline" onClick={() => { const tier = (["Value", "Good", "Better", "Best"] as const).find(t => !form.options.some(o => o.tier === t))!; setForm({ ...form, options: [...form.options, { ...structuredClone(option), tier, label: `${option.label} copy`, rebateConfirmed: false, rebateOffer: undefined }] }); }}>Duplicate option</Button>}
             </section>)}
-            {form.options.length < 4 && <Button variant="outline" type="button" onClick={() => { const tier = (["Value", "Good", "Better", "Best"] as const).find(tier => !form.options.some(option => option.tier === tier))!; setForm({ ...form, options: [...form.options, { tier, label: `${tier} option`, equipment: "", efficiency: "Matched-system efficiency to be verified", totalCost: 0, customerPrice: "", featureText: "", equipmentItems: [] }] }); }}><Plus size={14} className="mr-1.5" />Add option</Button>}
+            {form.options.length < 4 && <Button variant="outline" type="button" onClick={() => { const tier = (["Value", "Good", "Better", "Best"] as const).find(tier => !form.options.some(option => option.tier === tier))!; setForm({ ...form, options: [...form.options, { ...(form.options.every(o => o.manualConfiguration) ? { manualConfiguration: true, laborCost: 1200, materialsCost: 450, manualLaborText: "1200", manualMaterialsText: "450", partsWarranty: false, laborWarranty: false, rebateConfirmed: false } : {}), tier, label: `Option ${form.options.length + 1}`, equipment: "", efficiency: "Matched-system efficiency to be verified", totalCost: 0, customerPrice: "", featureText: "", equipmentItems: [] }] }); }}><Plus size={14} className="mr-1.5" />Add option</Button>}
             <section className="space-y-2"><h3 className="font-semibold text-sm">Selected add-ons</h3>{(quote.addOnCatalog || addOnServices).map(addon => <label key={addon.id} className="flex gap-2 items-start text-sm"><input type="checkbox" className="mt-1" checked={form.selectedAddOns.includes(addon.id)} onChange={event => setForm({ ...form, selectedAddOns: event.target.checked ? [...form.selectedAddOns, addon.id] : form.selectedAddOns.filter(id => id !== addon.id) })} /><span>{addon.name} · {fmtCurrencyExact(addon.price)}</span></label>)}</section>
           </fieldset>
           {error && <p role="alert" className="text-sm text-destructive" data-testid="document-edit-error">{error}</p>}

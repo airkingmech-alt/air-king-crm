@@ -428,3 +428,31 @@ test('upsized XC6 and replacement coil survive acceptance and invoice snapshots'
   assert.equal(billed.amount,draft.options[3].customerPrice);
  }
 });
+
+test('manual option costs, warranties and overrides persist through database reload, acceptance and invoice without combining alternatives',async()=>{
+ const { buildManualQuoteOption }=await import('../client/src/lib/manual-quote-options');
+ const { pricebook }=await import('../client/src/data/pricebook');
+ const configs=['Value','Good','Better','Best'].map((tier,i)=>({tier:tier as 'Value'|'Good'|'Better'|'Best',label:`Custom package ${i+1}`,equipmentItems:['chp-xc636','chp-z9t080','chp-ec36bn'],laborCost:700+i*100,materialsCost:100+i*25,partsWarranty:i!==1,laborWarranty:i>1,rebateConfirmed:i===3,...(i===2?{customerPriceOverride:8999.99}:{})}));
+ const options=configs.map(c=>buildManualQuoteOption(c,pricebook,'2026-10-27'));
+ for(const [i,config] of configs.entries()) {
+  const id=`manual-option-${i}`;
+  const original=await insert('quotes',quote({id,options,selectedOption:undefined,selectedAddOns:[]}));
+  const revised=await edit('quote',original,{title:'Four independent packages'},id);
+  const reloaded=await stored('quote',id);
+  assert.deepEqual(reloaded.options,options);
+  assert.equal(revised.options[i].laborWarrantyCost,i>1?350:0);
+  await asRole('service_role',"select crm_staff_convert_quote('airking',$1,$2,$3,'[]')",[employee,id,config.tier]);
+  const accepted=await stored('quote',id);
+  assert.equal(accepted.acceptedScope.amount,options[i].customerPrice);
+  assert.equal(accepted.acceptedScope.option.label,config.label);
+  assert.equal(accepted.acceptedScope.option.partsWarranty,config.partsWarranty);
+  assert.equal(accepted.acceptedScope.option.laborWarranty,config.laborWarranty);
+  const pub=publicFields('quote',accepted);
+  assert.equal(pub.options[i].laborCost,undefined);assert.equal(pub.options[i].laborWarrantyCost,undefined);
+  const billed=(await asRole('service_role',"select crm_invoice_accepted_quote('airking',$1,$2) saved",[employee,id]))[0].saved;
+  assert.equal(billed.amount,options[i].customerPrice);
+  assert.ok(billed.items[0].description.includes(config.label));
+  assert.equal(billed.quoteAcceptance.option.rebateConfirmed,config.rebateConfirmed);
+  await assert.rejects(edit('quote',accepted,{options},id),/locked|accepted/i);
+ }
+});
