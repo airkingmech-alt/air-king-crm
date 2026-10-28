@@ -13,6 +13,7 @@ import { normalizeLeadSource } from "../../../shared/customer-lead-source";
 import { DeleteRecord } from "@/components/delete-record";
 import { guardSave } from "@/lib/confirmed-save";
 import { CustomerCommunications } from "@/pages/communications";
+import { EquipmentEditor } from "@/components/equipment-editor";
 import { EquipmentScanner } from "@/components/equipment-scanner";
 
 function photoAnalysisText(value: string) {
@@ -478,7 +479,10 @@ export default function CustomerDetail() {
 
         {/* Properties & Equipment Tab */}
         <TabsContent value="properties" className="space-y-4">
-          <EquipmentScanner customer={customer} />
+          <div className="flex flex-wrap gap-2">
+            <EquipmentEditor key={customer.id} customer={customer} />
+            <EquipmentScanner customer={customer} />
+          </div>
           {customer.properties.map((prop) => (
             <Card key={prop.id}>
               <CardHeader className="pb-3">
@@ -516,8 +520,8 @@ export default function CustomerDetail() {
                             {sys.status}
                           </span>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Model: {sys.model} · Serial: {sys.serial}
+                        <p className="text-xs text-muted-foreground mt-0.5 break-words">
+                          Model: {sys.model || "Not recorded"} · Serial: {sys.serial || "Not recorded"}
                         </p>
                         <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5 text-xs text-muted-foreground">
                           <span>Installed: {sys.installDate}</span>
@@ -534,6 +538,7 @@ export default function CustomerDetail() {
                             <span>Filter: {sys.filterSize}</span>
                           )}
                         </div>
+                        <div className="mt-2"><EquipmentEditor key={sys.id} customer={customer} propertyId={prop.id} system={sys} /></div>
                         {sys.notes && (
                           <p className="text-xs text-muted-foreground mt-1.5 italic">
                             {sys.notes}
