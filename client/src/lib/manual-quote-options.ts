@@ -1,4 +1,5 @@
-import { pricebook, formatEquipmentDescription, type PricebookItem } from '../data/pricebook';
+import { formatHomeownerEquipment } from "../../../shared/homeowner-equipment";
+import { pricebook, type PricebookItem } from '../data/pricebook';
 import type { QuoteOption } from '../data/mock-data';
 import { calculateQuotePricing } from './quote-pricing';
 import { approximateEfficiencyDisclosure } from '../../../shared/quote-efficiency';
@@ -74,8 +75,8 @@ export function buildManualQuoteOption(input: ManualQuoteOptionInput, catalog: P
     ...(manual.length ? ['Manually entered equipment requires supplier price, model and installation review.'] : []),
   ];
   return {tier:input.tier,label:input.label.trim(),manualConfiguration:true,
-    equipmentItems:[...input.equipmentItems],manualEquipment:manual,
-    equipment:items.map(i=>i.model).join(' + '),equipmentSummary:items.map(i=>`${formatEquipmentDescription(i.category==='Condenser'?{...i,tier:undefined}:i)} — ${i.model}`).join('\n'),
+    equipmentItems:[...input.equipmentItems],manualEquipment:manual,homeownerEquipment:items.map(formatHomeownerEquipment),
+    equipment:items.map(i=>i.model).join(' + '),equipmentSummary:items.map(formatHomeownerEquipment).join('\n'),
     efficiency:ratings.join('; ')||'Equipment efficiency to be verified',features,
     laborCost,materialsCost,partsWarranty:input.partsWarranty,laborWarranty:input.laborWarranty,rebateConfirmed:input.rebateConfirmed,
     laborWarrantyCost,equipmentCost,purchaseTax:pricing.purchaseTax,totalCost:pricing.totalCost,

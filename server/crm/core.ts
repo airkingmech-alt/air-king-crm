@@ -1,3 +1,4 @@
+import { homeownerOption, homeownerText } from "../../shared/homeowner-equipment";
 import { publicChampionRebateOffer } from "../../shared/champion-rebates";
 import { documentNumber } from "../../shared/document-number";
 import { addOnServices } from "../../shared/quote-addons";
@@ -194,8 +195,8 @@ export function publicFields(kind: string, data: Row): Row {
   return {
     number: documentNumber(data),
     customerName: data.customerName,
-    title: data.acceptedScope?.title || data.title,
-    scope: data.acceptedScope?.laborDescription || data.laborDescription || data.title,
+    title: homeownerText(data.acceptedScope?.title || data.title, data.options || []),
+    scope: homeownerText(data.acceptedScope?.laborDescription || data.laborDescription || data.title, data.options || []),
     status: data.status,
     expiresAt: data.expiresAt,
     createdAt: data.createdAt,
@@ -207,18 +208,16 @@ export function publicFields(kind: string, data: Row): Row {
     legacyAcceptance: data.status === "Won" && !data.acceptedScope,
     equipmentItems: data.equipmentItems || [],
     equipmentSelectionMode: data.equipmentSelectionMode,
-    unavailableOptions: (data.unavailableOptions || []).filter((o: Row) => !data.options?.some((available: Row) => available.tier === o.tier)).map((o: Row) => ({ tier: o.tier, label: o.label, reason: o.reason })),
+    unavailableOptions: (data.unavailableOptions || []).filter((o: Row) => !data.options?.some((available: Row) => available.tier === o.tier)).map((o: Row) => ({ tier: o.tier, label: homeownerText(o.label, data.options || []), reason: "Equipment availability or installation requirements need review." })),
     options: (data.options || []).map((original: Row) => {
       const o = data.acceptedScope?.selectedOption === original.tier ? data.acceptedScope.option : original;
       return ({
       tier: o.tier,
       manualConfiguration: o.manualConfiguration === true,
-      label: o.label,
-      equipment: o.equipment,
-      equipmentSummary: o.equipmentSummary,
+      label: homeownerText(o.label, [o]),
+      ...homeownerOption(o),
       equipmentItems: o.equipmentItems,
-      efficiency: o.efficiency,
-      features: o.features,
+
       customerPrice: o.customerPrice,
       isPopular: o.isPopular,
       rebateOffer: publicChampionRebateOffer(o.rebateOffer),

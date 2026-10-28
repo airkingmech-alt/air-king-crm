@@ -68,6 +68,7 @@ try {
   await send('Page.reload');await settle();for(let i=0;i<100;i++){if(await evaluate("!!window.__saved && document.querySelectorAll('.quote-option').length===2"))break;await settle()}
   assert.equal(await evaluate('window.__saved.options[1].customerPrice'),9999);
   assert.ok(await evaluate("document.body.innerText.includes('Standard choice') && document.body.innerText.includes('Premium choice') && document.body.innerText.includes('$465 base total or $565 bonus total')"));
+  assert.ok(await evaluate("!document.body.innerText.includes('XC336E2S11') && !document.body.innerText.includes('XC636E2S11') && !document.body.innerText.includes('CTM36B5ADN1') && !document.body.innerText.includes('Z9ET080B12SMPS1') && document.body.innerText.includes('3-ton, 13.4 SEER2 Champion AC') && document.body.innerText.includes('97% efficient, 80,000 BTU Champion furnace')"));
   await send('Emulation.setEmulatedMedia',{media:'print'});const pdf=await send('Page.printToPDF',{printBackground:true});await writeFile('/tmp/manual-options.pdf',Buffer.from(pdf.data,'base64'));
   console.log('PASS: empty start, add/duplicate/remove, independent equipment and prices, separate warranty selections, $350 labor allowance, confirmed rebate, price override, saved reload, mobile layout and PDF. Synthetic only.');
 

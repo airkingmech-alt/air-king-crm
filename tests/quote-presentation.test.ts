@@ -88,12 +88,12 @@ test("quote presentation renders logo, contacts, scope, saved add-ons and no-pay
     assert.match(accepted, /Accepted/);
     assert.doesNotMatch(accepted, /Approve your proposal/);
     const better=renderTiered('Better');
-    assert.match(better,/CTM42C5CES1/);assert.doesNotMatch(better,/CTM48C5CFS1/);
-    assert.match(better,/3.5 Ton Champion AC/);assert.match(better,/14.3 SEER2/);
+    assert.match(better,/3.5-ton Champion coil/);assert.doesNotMatch(better,/CTM42C5CES1|CTM48C5CFS1/);
+    assert.match(better,/3.5-ton, 14.3 SEER2 Champion AC/);assert.match(better,/14.3 SEER2/);
     assert.match(better,/\$9,113.48/);
     assert.doesNotMatch(better,/Purchase tax|Internal cost|laborWarrantyCost/);
     const good=renderTiered('Good');
-    assert.match(good,/CTM42C5CES1/);assert.match(good,/\$8,748.33/);
+    assert.match(good,/3.5-ton Champion coil/);assert.doesNotMatch(good,/CTM42C5CES1/);assert.match(good,/\$8,748.33/);
     assert.match(good,/13.4 SEER2/);assert.doesNotMatch(good,/13 SEER/);
     const staff = await readFile("client/src/pages/proposal.tsx", "utf8");
     assert.match(staff, /<QuoteHeader/);
