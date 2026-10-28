@@ -4,6 +4,8 @@ import { z } from "zod";
 import { caller, db, entity, result } from "./core";
 import { analysisSchema, confirmedEquipment, equipmentFields } from "../../shared/equipment-analysis";
 
+import { manualEquipmentInput, sameEquipment } from "../../shared/manual-equipment";
+
 const wrap = (fn:(req:Request,res:Response)=>Promise<unknown>) => async(req:Request,res:Response) => {
   res.set("Cache-Control","no-store");
   try { await fn(req,res); } catch(e:any) {
@@ -36,6 +38,36 @@ export async function analyzeNameplate(image:string) {
   try {return analysisSchema.parse(JSON.parse(text));} catch {throw new Error("The analysis could not be verified. Please retry with a clearer photo.");}
 }
 export function registerEquipmentAnalysis(app:Express) {
+  app.post("/api/equipment/manual",wrap(async(req,res)=>{
+    const user=await access(req);
+    const input=manualEquipmentInput.parse(req.body);
+    const row=await entity("customers",input.customerId,user.company);
+    const properties=row.data.properties || [];
+    const property=properties.find((p:any)=>p.id===input.propertyId);
+    if(!property) throw new Error("Choose an existing customer property.");
+    const systems=property.systems || [];
+    const previousProperty=properties.find((p:any)=>(p.systems || []).some((s:any)=>s.manualRequestId===input.requestId || s.manualCreationRequestId===input.requestId));
+    const previous=previousProperty?.systems.find((s:any)=>s.manualRequestId===input.requestId || s.manualCreationRequestId===input.requestId);
+    if(previous) {
+      if(previousProperty.id!==property.id || !sameEquipment(previous,input.equipment) || (input.systemId && previous.id!==input.systemId))
+        throw Object.assign(new Error("This save was already completed. Reopen the equipment to make another change."),{status:409});
+      return res.json({equipment:previous});
+    }
+    const existing=input.systemId ? systems.find((s:any)=>s.id===input.systemId) : null;
+    if(input.systemId && !existing) throw new Error("Equipment was not found at this property.");
+    if(existing && !sameEquipment(existing,input.original!))
+      throw Object.assign(new Error("This equipment changed. Close and reopen the editor to review the latest details."),{status:409});
+    const equipment={...existing,...input.equipment,id:existing?.id || "sys-"+randomUUID(),
+      installDate:existing?.installDate || "",status:existing?.status || "Active",
+      manualCreationRequestId:existing?.manualCreationRequestId || (!existing ? input.requestId : undefined),
+      manualRequestId:input.requestId,manuallyUpdatedAt:new Date().toISOString(),manuallyUpdatedBy:user.id};
+    const data={...row.data,properties:properties.map((p:any)=>p.id!==property.id ? p : {...p,
+      systems:existing ? systems.map((s:any)=>s.id===existing.id?equipment:s) : [...systems,equipment]})};
+    const saved=await result(db().from("customers").update({data,updated_at:new Date().toISOString()})
+      .eq("id",row.id).eq("company_id",user.company).eq("updated_at",row.updated_at).select("id").maybeSingle());
+    if(!saved) throw Object.assign(new Error("Customer information changed. Try saving again; if this equipment changed, reopen it to review."),{status:409});
+    res.json({equipment});
+  }));
   app.post("/api/equipment/analyze",wrap(async(req,res)=>{
     const user=await access(req);
     const input=z.object({customerId:z.string().min(1),image:z.string().max(7_000_100),fileName:z.string().max(250)}).parse(req.body);
