@@ -1,3 +1,4 @@
+import { accessoryDescription } from '@shared/quote-accessories';
 import { documentNumber } from "../../../shared/document-number";
 import { ServiceAddressActions } from "@/components/service-address-actions";
 import { jobServiceAddress } from "../../../shared/service-address";
@@ -481,6 +482,7 @@ export default function Schedule() {
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {wo.description}
                     </p>
+                    {!!quotes.find(q => q.id === wo.quoteId)?.acceptedScope?.option.accessories?.length && <p className="text-xs mt-1"><span className="font-medium">Approved accessories:</span>{" "}{quotes.find(q => q.id === wo.quoteId)!.acceptedScope!.option.accessories!.map(accessoryDescription).join('; ')}</p>}
                     {!!getSelectedAddOnIds(wo).length && (
                       <p className="text-xs text-foreground mt-1">
                         <span className="font-medium">Add-ons:</span>{" "}
@@ -569,6 +571,7 @@ export default function Schedule() {
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {wo.description}
                   </p>
+                  {!!quotes.find(q => q.id === wo.quoteId)?.acceptedScope?.option.accessories?.length && <p className="text-xs mt-1"><span className="font-medium">Approved accessories:</span>{" "}{quotes.find(q => q.id === wo.quoteId)!.acceptedScope!.option.accessories!.map(accessoryDescription).join('; ')}</p>}
                   {!!getSelectedAddOnIds(wo).length && (
                     <p className="text-xs text-foreground mt-1">
                       <span className="font-medium">Add-ons:</span>{" "}

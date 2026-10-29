@@ -1,3 +1,4 @@
+import { accessoryTotals, accessoryDescription, type QuoteAccessory } from '../../../shared/quote-accessories';
 import { formatHomeownerEquipment } from "../../../shared/homeowner-equipment";
 import { pricebook, type PricebookItem } from '../data/pricebook';
 import type { QuoteOption } from '../data/mock-data';
@@ -10,6 +11,7 @@ export const manualOptionTiers: QuoteOption['tier'][] = ['Value', 'Good', 'Bette
 export interface ManualQuoteOptionInput {
   tier: QuoteOption['tier']; label: string; equipmentItems: string[];
   manualEquipment?: PricebookItem[];
+  accessories?: QuoteAccessory[];
   laborCost: number; materialsCost: number;
   partsWarranty: boolean; laborWarranty: boolean; rebateConfirmed: boolean;
   customerPriceOverride?: number;
@@ -22,6 +24,7 @@ function money(value: number, label: string, positive = false) {
 export function manualOptionInput(option: QuoteOption): ManualQuoteOptionInput {
   if (!option.manualConfiguration) throw new Error('This option uses the previous quote workflow.');
   return { tier: option.tier, label: option.label, equipmentItems: [...(option.equipmentItems || [])], manualEquipment: structuredClone(option.manualEquipment || []),
+    ...(option.accessories ? {accessories: structuredClone(option.accessories)} : {}),
     laborCost: option.laborCost ?? 0, materialsCost: option.materialsCost ?? 0,
     partsWarranty: !!option.partsWarranty, laborWarranty: !!option.laborWarranty, rebateConfirmed: !!option.rebateConfirmed,
     ...(option.customerPriceOverride !== undefined ? {customerPriceOverride:option.customerPriceOverride} : {}) };
@@ -56,7 +59,11 @@ export function buildManualQuoteOption(input: ManualQuoteOptionInput, catalog: P
   const laborCost=money(input.laborCost,'Labor cost'), materialsCost=money(input.materialsCost,'Materials cost');
   const equipmentCost=items.reduce((sum,i)=>sum+Math.round(i.cost*100),0)/100;
   const laborWarrantyCost=input.laborWarranty ? MANUAL_LABOR_WARRANTY_COST : 0;
-  const pricing=calculateQuotePricing(equipmentCost,laborCost+laborWarrantyCost,materialsCost);
+  const accessories = structuredClone(input.accessories || []);
+  const accessory = accessoryTotals(accessories);
+  const pricing=calculateQuotePricing(equipmentCost,laborCost+laborWarrantyCost,materialsCost+accessory.materialCost);
+  pricing.totalCost = Math.round((pricing.totalCost + accessory.serviceCost)*100)/100;
+  pricing.customerPrice = Math.round((pricing.customerPrice + accessory.servicePrice)*100)/100;
   if(pricing.totalCost>100000000 || pricing.customerPrice>100000000) throw new Error('Option total is too large.');
   const suggested=potentialChampionRebates(selected);
   if(input.rebateConfirmed && (!suggested || championRebateSummary(suggested,today).expired || championRebateSummary(suggested,today).beforeWindow)) throw new Error('No current suggested rebate is available for these pricebook models.');
@@ -75,8 +82,10 @@ export function buildManualQuoteOption(input: ManualQuoteOptionInput, catalog: P
     ...(manual.length ? ['Manually entered equipment requires supplier price, model and installation review.'] : []),
   ];
   return {tier:input.tier,label:input.label.trim(),manualConfiguration:true,
-    equipmentItems:[...input.equipmentItems],manualEquipment:manual,homeownerEquipment:items.map(formatHomeownerEquipment),
-    equipment:items.map(i=>i.model).join(' + '),equipmentSummary:items.map(formatHomeownerEquipment).join('\n'),
+    equipmentItems:[...input.equipmentItems],manualEquipment:manual,
+    ...(input.accessories ? {accessories} : {}),
+    homeownerEquipment:[...items.map(formatHomeownerEquipment), ...accessories.map(accessoryDescription)],
+    equipment:items.map(i=>i.model).join(' + '),equipmentSummary:[...items.map(formatHomeownerEquipment), ...accessories.map(accessoryDescription)].join('\n'),
     efficiency:ratings.join('; ')||'Equipment efficiency to be verified',features,
     laborCost,materialsCost,partsWarranty:input.partsWarranty,laborWarranty:input.laborWarranty,rebateConfirmed:input.rebateConfirmed,
     laborWarrantyCost,equipmentCost,purchaseTax:pricing.purchaseTax,totalCost:pricing.totalCost,

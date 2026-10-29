@@ -18,7 +18,7 @@ test('homeowner proposal and rebate presentation show saved specifications witho
    import {QuoteRebates} from './client/src/components/quote-rebates';
    import {potentialChampionRebates} from './shared/champion-rebates';
    const rebateOffer=potentialChampionRebates([{brand:'Champion',category:'Furnace',model:'Z9ET080B12SMPS1'}]);
-   const option={tier:'Good',label:'Comfort choice',manualConfiguration:true,customerPrice:9454.76,equipmentItems:['chp-xc336','chp-ec36bn','chp-z9t080'],equipment:'XC336E2S11 + CTM36B5ADN1 + Z9ET080B12SMPS1',equipmentSummary:'3-ton Champion AC — XC336E2S11\\n3-ton Champion coil — CTM36B5ADN1\\n97% efficient, 80,000 BTU Champion furnace — Z9ET080B12SMPS1',homeownerEquipment:['13.4 SEER2, 3-ton Champion AC','3-ton Champion coil','97% efficient, 80,000 BTU Champion furnace'],efficiency:'XC336E2S11: approx. 13.4 SEER2 equipment series',features:['10-year parts warranty','10-year labor warranty'],rebateOffer};
+   const option={tier:'Good',label:'Comfort choice',manualConfiguration:true,customerPrice:9454.76,equipmentItems:['chp-xc336','chp-ec36bn','chp-z9t080'],equipment:'XC336E2S11 + CTM36B5ADN1 + Z9ET080B12SMPS1',equipmentSummary:'3-ton Champion AC — XC336E2S11\\n3-ton Champion coil — CTM36B5ADN1\\n97% efficient, 80,000 BTU Champion furnace — Z9ET080B12SMPS1',homeownerEquipment:['13.4 SEER2, 3-ton Champion AC','3-ton Champion coil','97% efficient, 80,000 BTU Champion furnace','2 each × HVAC Surge Protector (ADDON-surge-protector)'],efficiency:'XC336E2S11: approx. 13.4 SEER2 equipment series',features:['10-year parts warranty','10-year labor warranty'],rebateOffer};
    export function render(status){
     const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:Infinity}}});
     const document={number:'TEST',title:'Install XC336E2S11 equipment',scope:'Install the selected XC336E2S11 equipment and complete startup.',customerName:'Test Customer',status,selectedOption:'Good',selectedAddOns:[],addOnCatalog:[],equipmentItems:option.equipmentItems,equipmentSelectionMode:'explicit',options:[option]};
@@ -40,6 +40,7 @@ test('homeowner proposal and rebate presentation show saved specifications witho
    assert.match(html,/13\.4 SEER2/);assert.match(html,/3-ton Champion coil/);
    assert.match(html,/97% efficient, 80,000 BTU Champion furnace/);
    assert.match(html,/\$9,454\.76/);
+   assert.match(html,/2 each × HVAC Surge Protector/);
    assert.match(html,/10-year parts warranty/);assert.match(html,/10-year labor warranty/);
    assert.match(html,/Champion furnace/);assert.match(html,/\$165 base rebate/);assert.match(html,/\$200 total bonus/);
   }
@@ -48,6 +49,7 @@ test('homeowner proposal and rebate presentation show saved specifications witho
   assert.ok(technical.some((section:string)=>section.includes('XC336E2S11')&&section.includes('CTM36B5ADN1')&&section.includes('Z9ET080B12SMPS1')),'staff keeps exact models in print-hidden technical details');
   const printable=technical.reduce((html:string,section:string)=>html.replace(section,''),staff);
   assert.doesNotMatch(printable,/XC336E2S11|CTM36B5ADN1|Z9ET080B12SMPS1/);
+  assert.match(printable,/2 each × HVAC Surge Protector/);
   assert.match(printable,/97% efficient, 80,000 BTU Champion furnace/);
   assert.match(internalRebate(),/Z9ET080B12SMPS1/,'internal rebate review retains its exact model');
  } finally {await rm(temp,{recursive:true,force:true});}

@@ -69,7 +69,7 @@ export function quoteEditChanges(quote: Quote, form: QuoteEditForm) {
   const options = form.options.map(({ featureText, manualLaborText, manualMaterialsText, ...option }) => {
     if (option.manualConfiguration) {
       const original = quote.options.find(o => o.tier === option.tier);
-      const configurationKeys = ["equipmentItems", "manualEquipment", "partsWarranty", "laborWarranty", "rebateConfirmed", "customerPriceOverride"] as const;
+      const configurationKeys = ["equipmentItems", "accessories", "manualEquipment", "partsWarranty", "laborWarranty", "rebateConfirmed", "customerPriceOverride"] as const;
       const changed = !original || configurationKeys.some(key => JSON.stringify(option[key]) !== JSON.stringify(original[key])) || manualLaborText !== String(original.laborCost ?? 0) || manualMaterialsText !== String(original.materialsCost ?? 0);
       if (changed) {
         const updated = refreshManualOption({ ...option, featureText, manualLaborText, manualMaterialsText });

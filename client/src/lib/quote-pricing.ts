@@ -1,3 +1,4 @@
+import { optionAccessoryServiceIds } from '../../../shared/quote-accessories';
 import { formatHomeownerEquipment } from "../../../shared/homeowner-equipment";
 import { buildManualQuoteOptions, type ManualQuoteOptionInput } from "./manual-quote-options";
 import { potentialChampionRebates } from "../../../shared/champion-rebates";
@@ -47,6 +48,7 @@ export interface QuoteDraftInput {
 
 export function buildQuoteOptions(input: QuoteDraftInput, catalog: PricebookItem[] = pricebook, matches?: readonly ReviewedQuoteMatch[]) {
   if (input.manualOptions !== undefined) {
+    if (input.selectedAddOns?.some(id => optionAccessoryServiceIds.includes(id))) throw new Error("Select installation accessories within each option.");
     if (input.servicePrice !== undefined || input.newHouseSnapshot) throw new Error("Manual options cannot be combined with another quote workflow.");
     return { options: buildManualQuoteOptions(input.manualOptions, catalog), unavailable: [] as string[], unavailableOptions: [] as NonNullable<Quote["unavailableOptions"]> };
   }
@@ -111,10 +113,10 @@ export function buildQuoteDraft(input: QuoteDraftInput, id: string, createdAt: s
     equipmentItems: [...(input.manualOptions ? selectedOption.equipmentItems || [] : input.equipmentItems)], equipmentSelectionMode: "explicit",
     laborDescription: input.laborDescription,
     selectedAddOns: [...(input.selectedAddOns || [])],
-    addOnCatalog: input.servicePrice !== undefined ? [] : addOnServices.map(addOn => ({ ...addOn })),
+    addOnCatalog: input.servicePrice !== undefined ? [] : addOnServices.filter(addOn => !input.manualOptions || !optionAccessoryServiceIds.includes(addOn.id)).map(addOn => ({ ...addOn })),
     equipmentCost: pricing.equipmentCost, laborCost: pricing.laborCost,
     materialsCost: pricing.materialsCost, taxRate: pricing.taxRate,
-    purchaseTax: pricing.purchaseTax, pricingVersion: "purchase-tax-v1",
+    purchaseTax: input.manualOptions ? selectedOption.purchaseTax : pricing.purchaseTax, pricingVersion: "purchase-tax-v1",
     internalReviewNote: input.servicePrice !== undefined ? "Fixed service total. Review internal labor costs before accepting; a zero estimate does not establish actual cost." : ["Confirm supplier availability and review physical installation requirements. Approximate series efficiency is disclosed; AHRI certification is not required to generate options.", ...unavailable].join(" "),
     options, unavailableOptions,
   };

@@ -19,8 +19,9 @@ test("real editor controls distinguish ordinary documents, accepted quotes and r
       bundle: true, platform: "node", format: "esm", packages: "external", jsx: "automatic",
       plugins: [{ name: "synthetic-editor-dependencies", setup(b) {
         b.onResolve({ filter: /^@\/context\/data-context$/ }, () => ({ path: "data", namespace: "qa" }));
-        b.onResolve({ filter: /^@\/lib\/supabase$/ }, () => ({ path: "supabase", namespace: "qa" }));
-        b.onLoad({ filter: /.*/, namespace: "qa" }, args => ({ contents: args.path === "data" ? 'export function useData(){return {workOrders:[],acceptSavedRecord(){throw Error("No writes in render test")}}}' : 'export const supabase={rpc(){throw Error("Network forbidden in render test")}}' }));
+        b.onResolve({ filter: /^(?:@\/lib\/supabase|\.\/supabase)$/ }, () => ({ path: "supabase", namespace: "qa" }));
+        b.onResolve({ filter: /^@\/context\/auth-context$/ }, () => ({ path: "auth", namespace: "qa" }));
+        b.onLoad({ filter: /.*/, namespace: "qa" }, args => ({ contents: args.path === "auth" ? 'export function useAuth(){return {profile:null}}' : args.path === "data" ? 'export function useData(){return {workOrders:[],acceptSavedRecord(){throw Error("No writes in render test")}}}' : 'export const selectSessionPersistence=()=>{}; export const supabase={rpc(){throw Error("Network forbidden in render test")}}' }));
       } }],
     });
     const { render } = await import(pathToFileURL(path.join(temp, "render.mjs")).href);

@@ -1,3 +1,4 @@
+import { QuoteAccessoryPicker } from './quote-accessory-picker';
 import { potentialChampionRebates, championRebateSummary } from "../../../shared/champion-rebates";
 import { QuoteRebates } from "./quote-rebates";
 import { refreshManualOption } from "@/lib/document-editing";
@@ -50,15 +51,16 @@ function EquipmentEditor({ option, initialIds, labor, materials, onApply }: { op
 
 function ManualOptionSettings({ option, savedOption, onChange }: { option: QuoteOptionForm; savedOption?: QuoteOption; onChange: (changes: Partial<QuoteOptionForm>) => void }) {
   let preview: QuoteOptionForm | undefined; let error = "";
-  const pricingKeys = ["equipmentItems", "manualEquipment", "partsWarranty", "laborWarranty", "rebateConfirmed", "customerPriceOverride"] as const;
+  const pricingKeys = ["equipmentItems", "accessories", "manualEquipment", "partsWarranty", "laborWarranty", "rebateConfirmed", "customerPriceOverride"] as const;
   const changed = !savedOption || pricingKeys.some(key => JSON.stringify(option[key]) !== JSON.stringify(savedOption[key])) || option.manualLaborText !== String(savedOption.laborCost ?? 0) || option.manualMaterialsText !== String(savedOption.materialsCost ?? 0);
   try { preview = changed ? refreshManualOption(option) : option; } catch (cause) { error = errorMessage(cause); }
   const suggestion = potentialChampionRebates(pricebook.filter(item => option.equipmentItems?.includes(item.id)));
   const rebateWindow = suggestion ? championRebateSummary(suggestion) : undefined;
   return <div className="space-y-3" aria-label={`${option.label} pricing and coverage`}>
+    {option.accessories !== undefined && <QuoteAccessoryPicker value={option.accessories} onChange={accessories => onChange({accessories})} optionNumber={["Value", "Good", "Better", "Best"].indexOf(option.tier) + 1} />}
     <div className="grid gap-3 sm:grid-cols-2">
       <Field label="This option labor cost ($)"><Input inputMode="decimal" value={option.manualLaborText ?? String(option.laborCost ?? 0)} onChange={e => onChange({ manualLaborText: e.target.value })} required /></Field>
-      <Field label="This option materials cost ($)"><Input inputMode="decimal" value={option.manualMaterialsText ?? String(option.materialsCost ?? 0)} onChange={e => onChange({ manualMaterialsText: e.target.value })} required /></Field>
+      <Field label="This option other materials cost (excludes listed accessory parts) ($)"><Input inputMode="decimal" value={option.manualMaterialsText ?? String(option.materialsCost ?? 0)} onChange={e => onChange({ manualMaterialsText: e.target.value })} required /></Field>
     </div>
     <label className="flex gap-2 text-sm"><input type="checkbox" checked={!!option.partsWarranty} onChange={e => onChange({ partsWarranty: e.target.checked })} />10-year parts warranty</label>
     <label className="flex gap-2 text-sm"><input type="checkbox" checked={!!option.laborWarranty} onChange={e => onChange({ laborWarranty: e.target.checked })} />10-year labor warranty · $350 internal cost allowance</label>
@@ -129,7 +131,7 @@ export function QuoteEditor({ quote }: { quote: Quote }) {
               <EquipmentEditor option={option} initialIds={getQuoteEquipment(original || quote, option.tier).map(item => item.id)} labor={form.laborCost} materials={form.materialsCost} onApply={updated => setOption(index, updated)} />
               {option.manualConfiguration && form.options.length < 4 && <Button type="button" variant="outline" onClick={() => { const tier = (["Value", "Good", "Better", "Best"] as const).find(t => !form.options.some(o => o.tier === t))!; setForm({ ...form, options: [...form.options, { ...structuredClone(option), tier, label: `${option.label} copy`, rebateConfirmed: false, rebateOffer: undefined }] }); }}>Duplicate option</Button>}
             </section>)}
-            {form.options.length < 4 && <Button variant="outline" type="button" onClick={() => { const tier = (["Value", "Good", "Better", "Best"] as const).find(tier => !form.options.some(option => option.tier === tier))!; setForm({ ...form, options: [...form.options, { ...(form.options.every(o => o.manualConfiguration) ? { manualConfiguration: true, laborCost: 1200, materialsCost: 450, manualLaborText: "1200", manualMaterialsText: "450", partsWarranty: false, laborWarranty: false, rebateConfirmed: false } : {}), tier, label: `Option ${form.options.length + 1}`, equipment: "", efficiency: "Matched-system efficiency to be verified", totalCost: 0, customerPrice: "", featureText: "", equipmentItems: [] }] }); }}><Plus size={14} className="mr-1.5" />Add option</Button>}
+            {form.options.length < 4 && <Button variant="outline" type="button" onClick={() => { const tier = (["Value", "Good", "Better", "Best"] as const).find(tier => !form.options.some(option => option.tier === tier))!; setForm({ ...form, options: [...form.options, { ...(form.options.every(o => o.manualConfiguration) ? { manualConfiguration: true, ...(form.options.some(o => o.accessories !== undefined) ? { accessories: [] } : {}), laborCost: 1200, materialsCost: 450, manualLaborText: "1200", manualMaterialsText: "450", partsWarranty: false, laborWarranty: false, rebateConfirmed: false } : {}), tier, label: `Option ${form.options.length + 1}`, equipment: "", efficiency: "Matched-system efficiency to be verified", totalCost: 0, customerPrice: "", featureText: "", equipmentItems: [] }] }); }}><Plus size={14} className="mr-1.5" />Add option</Button>}
             <section className="space-y-2"><h3 className="font-semibold text-sm">Selected add-ons</h3>{(quote.addOnCatalog || addOnServices).map(addon => <label key={addon.id} className="flex gap-2 items-start text-sm"><input type="checkbox" className="mt-1" checked={form.selectedAddOns.includes(addon.id)} onChange={event => setForm({ ...form, selectedAddOns: event.target.checked ? [...form.selectedAddOns, addon.id] : form.selectedAddOns.filter(id => id !== addon.id) })} /><span>{addon.name} · {fmtCurrencyExact(addon.price)}</span></label>)}</section>
           </fieldset>
           {error && <p role="alert" className="text-sm text-destructive" data-testid="document-edit-error">{error}</p>}

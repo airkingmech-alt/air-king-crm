@@ -100,6 +100,7 @@ export interface QuoteLineItem {
 }
 
 export interface QuoteOption {
+  accessories?: import("../../../shared/quote-accessories").QuoteAccessory[];
   homeownerEquipment?: string[];
   manualConfiguration?: boolean;
   manualEquipment?: import("./pricebook").PricebookItem[];

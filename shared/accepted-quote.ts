@@ -11,7 +11,7 @@ export interface AcceptedQuoteScope {
   laborDescription: string;
   selectedOption: string;
   selectedAddOns: string[];
-  option: { tier: string; label: string; customerPrice: number; equipment?: string; equipmentSummary?: string; equipmentItems?: string[] };
+  option: { accessories?: import("./quote-accessories").QuoteAccessory[]; tier: string; label: string; customerPrice: number; equipment?: string; equipmentSummary?: string; equipmentItems?: string[] };
   addOns: AddOnService[];
   items: { description: string; amount: number }[];
   equipmentItems: string[];

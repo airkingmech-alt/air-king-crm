@@ -17,11 +17,12 @@ try {
   await writeFile(path.join(fixture,"mock-auth.ts"),'export function useAuth(){return {profile:{id:"test-owner",company_id:"test-company",full_name:"QA Owner",role:"owner",permissions:{}}};}');
   await writeFile(path.join(fixture,"mock-api.ts"),'export async function crm(path){if(path==="crm/addresses/autocomplete")return {suggestions:[],available:false};throw Error("Unexpected synthetic API request: "+path)}');
   await writeFile(path.join(fixture,"mock-supabase.ts"),`
-    const initial={customers:[{id:"qa-customer",name:"Synthetic Customer",type:"Residential",contacts:[{name:"Synthetic Customer",phone:"5555550100",email:"test@example.invalid",role:"Primary"}],properties:[{id:"qa-property",address:"100 Test Street, Unit 2",street:"100 Test Street",unit:"Unit 2",city:"Test City",state:"MO",zip:"00000",systems:[{id:"qa-system",model:"KEEP-ME"}]}],billingAddress:{street:"200 Billing Street",unit:"",city:"Other City",state:"MO",postalCode:"00001"},leadSource:"Other",leadStatus:"New",activity:[],tags:[],createdAt:"2026-10-08"}],quotes:[],invoices:[],work_orders:[],memberships:[]};
+    const accessory={id:"catalog-surge",name:"HVAC Surge Protector",sku:"ADDON-surge-protector",category:"Add-ons",item_type:"service",unit:"each",cost_cents:0,price_cents:19900,active:true};
+    const initial={price_book_items:[accessory],customers:[{id:"qa-customer",name:"Synthetic Customer",type:"Residential",contacts:[{name:"Synthetic Customer",phone:"5555550100",email:"test@example.invalid",role:"Primary"}],properties:[{id:"qa-property",address:"100 Test Street, Unit 2",street:"100 Test Street",unit:"Unit 2",city:"Test City",state:"MO",zip:"00000",systems:[{id:"qa-system",model:"KEEP-ME"}]}],billingAddress:{street:"200 Billing Street",unit:"",city:"Other City",state:"MO",postalCode:"00001"},leadSource:"Other",leadStatus:"New",activity:[],tags:[],createdAt:"2026-10-08"}],quotes:[],invoices:[],work_orders:[],memberships:[]};
     const stored=localStorage.getItem("maintenance-qa");window.__qa={records:stored?JSON.parse(stored):initial,saves:0,fail:false,delay:0};
     const persist=()=>localStorage.setItem("maintenance-qa",JSON.stringify(window.__qa.records));
     export function extractEntities(rows){return rows.map(row=>row.data)}
-    export const supabase={from(table){return {select(){return this},order(){return this},async range(){return {data:(window.__qa.records[table]||[]).map(data=>({data:structuredClone(data)})),error:null}}}},async rpc(name,p){
+    export const supabase={from(table){return {select(){return this},eq(){return this},order(){return this},async range(){return {data:(window.__qa.records[table]||[]).map(data=>table==="price_book_items"?structuredClone(data):({data:structuredClone(data)})),error:null}}}},async rpc(name,p){
       const q=window.__qa;q.saves++;await new Promise(resolve=>setTimeout(resolve,q.delay));if(q.fail)return {data:null,error:{message:"Synthetic offline failure"}};
       if(name==="crm_save_records"){const saved=[];for(const rec of p.p_records){const rows=q.records[rec.table],old=rows.find(row=>row.id===rec.id);if(old&&JSON.stringify(old)!==JSON.stringify(rec.previous))return {data:null,error:{message:"This record changed. Refresh and review before saving again."}};const data=structuredClone(rec.data);q.records[rec.table]=[...rows.filter(row=>row.id!==rec.id),data];saved.push(data)}persist();return {data:saved,error:null}}
       if(name==="crm_edit_document"){const rows=q.records[p.p_kind+"s"],old=rows.find(row=>row.id===p.p_id);if(JSON.stringify(old)!==JSON.stringify(p.p_previous))return {data:null,error:{message:"This record changed. Refresh and review before saving again."}};const data={...old,...p.p_changes,editHistory:[...(old.editHistory||[]),{at:new Date().toISOString(),actorId:"test-owner",before:old.title||old.amount,changes:p.p_changes}]};q.records[p.p_kind+"s"]=rows.map(row=>row.id===old.id?data:row);persist();return {data:structuredClone(data),error:null}}
@@ -79,13 +80,29 @@ try {
     await button('Add option');await set('select[aria-label="Option 1 add Condenser"]','chp-xc336');
     await wait("document.querySelector('[aria-label=\"Option 1 pricing\"]').innerText.includes('$4,654.19')");
     await button('Duplicate option');await wait("document.querySelectorAll('[data-testid=manual-option]').length===2");
+    await wait("!!document.querySelector('select[aria-label=\"Option 1 add Surge protection\"] option[value=\"catalog-surge\"]')");
+    assert.equal(await evaluate("document.querySelector('select[aria-label=\"Option 1 add Electrical whip\"]').disabled"),true);
+    await set('select[aria-label="Option 1 add Surge protection"]','catalog-surge');
+    await set('input[aria-label="Option 1 HVAC Surge Protector quantity"]','2');
+    await wait("document.querySelector('[aria-label=\"Option 1 pricing\"]').innerText.includes('$5,052.19')");
     await set('input[aria-label="Option 2 labor cost"]','1300');
     await evaluate("Array.from(document.querySelectorAll('[data-testid=manual-option]')[1].querySelectorAll('label')).find(e=>e.textContent.includes('10-year labor warranty')).querySelector('input').click()");
     await click('[data-testid="button-generate-quote"]');await wait("!document.querySelector('[data-testid=manual-quote-builder]')");
     const manual=await evaluate("window.__qa.records.quotes[3]");assert.equal(manual.options.length,2);
     assert.ok(manual.options.every(o=>o.manualConfiguration));assert.equal(manual.options[0].laborCost,1200);assert.equal(manual.options[1].laborCost,1300);assert.equal(manual.options[1].laborWarrantyCost,350);
-    assert.equal(manual.options[1].customerPrice-manual.options[0].customerPrice,562.5);
-    console.log('PASS: both maintenance routes plus customer-detail manual quote builder; empty validation, exact $99, no equipment, duplicate clicks, failure retention, cancel/reopen, mobile, pending-save navigation, independent manual options and $350 warranty. Synthetic records only.');
+    assert.equal(manual.options[1].customerPrice-manual.options[0].customerPrice,164.5);
+    assert.equal(manual.options[0].accessories[0].quantity,2);assert.equal(manual.options[1].accessories.length,0);
+    await evaluate("location.reload()");await wait("window.__qa?.records.quotes.length===4");
+    assert.equal(await evaluate("window.__qa.records.quotes[3].options[0].accessories[0].quantity"),2);
+    await evaluate("location.hash='/proposals/'+window.__qa.records.quotes[3].id");
+    await click('[data-testid="button-edit-quote"]');
+    await set('input[aria-label="Option 1 HVAC Surge Protector quantity"]','3');
+    await click('[data-testid="button-save-quote"]');
+    await wait("!document.querySelector('[data-testid=form-edit-quote]')");
+    assert.equal(await evaluate("window.__qa.records.quotes[3].options[0].accessories[0].quantity"),3);
+    assert.equal(await evaluate("window.__qa.records.quotes[3].options[0].customerPrice"),5251.19);
+    assert.ok(await evaluate("document.body.innerText.includes('3 each × HVAC Surge Protector')"));
+    console.log('PASS: both maintenance routes plus customer-detail manual quote builder; empty validation, exact $99, no equipment, duplicate clicks, failure retention, cancel/reopen, mobile, pending-save navigation, independent manual options, live-pricebook accessory selection, missing whip, quantities, reload, editing, proposal text and $350 warranty. Synthetic records only.');
 
   }
 } finally {ws?.close();chrome?.kill();await vite?.close();await rm(fixture,{recursive:true,force:true});await rm(profile,{recursive:true,force:true}).catch(()=>{});}

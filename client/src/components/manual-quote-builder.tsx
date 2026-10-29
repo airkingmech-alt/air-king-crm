@@ -1,3 +1,5 @@
+import { QuoteAccessoryPicker } from './quote-accessory-picker';
+import { accessoryTotals, optionAccessoryServiceIds } from '@shared/quote-accessories';
 import { useState } from "react";
 import { Copy, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,6 +18,7 @@ import { fmtCurrencyExact, type Quote } from "@/data/mock-data";
 import { documentNumber } from "@shared/document-number";
 import { potentialChampionRebates, championRebateSummary } from "@shared/champion-rebates";
 
+const sharedAddOns = addOnServices.filter(item => !optionAccessoryServiceIds.includes(item.id));
 const tiers: ManualQuoteOptionInput["tier"][] = ["Value", "Good", "Better", "Best"];
 const categories: EquipmentCategory[] = ["Condenser", "Furnace", "Evaporator Coil", "Heat Pump", "Air Handler", "Heat Strip", "Accessory"];
 type OptionForm = Omit<ManualQuoteOptionInput, "laborCost" | "materialsCost" | "customerPriceOverride"> & {
@@ -88,9 +91,10 @@ function OptionCard({ option, index, canDuplicate, onChange, onDuplicate, onRemo
           } catch (e) { setManualError((e as Error).message); } }}>Add manual equipment</Button>
         </div>}
       </div>
+      <QuoteAccessoryPicker value={option.accessories || []} onChange={accessories => onChange({accessories})} optionNumber={index + 1} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Label className="block">Labor cost<Input aria-label={`Option ${index + 1} labor cost`} type="number" min="0" step="0.01" className="mt-1" value={option.laborCost} onChange={e => onChange({ laborCost: e.target.value })} /></Label>
-        <Label className="block">Materials cost<Input aria-label={`Option ${index + 1} materials cost`} type="number" min="0" step="0.01" className="mt-1" value={option.materialsCost} onChange={e => onChange({ materialsCost: e.target.value })} /></Label>
+        <Label className="block">Other materials cost (excludes listed accessory parts)<Input aria-label={`Option ${index + 1} materials cost`} type="number" min="0" step="0.01" className="mt-1" value={option.materialsCost} onChange={e => onChange({ materialsCost: e.target.value })} /></Label>
       </div>
       <fieldset className="space-y-2"><legend className="text-sm font-semibold mb-2">Warranty</legend>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={option.partsWarranty} onChange={e => onChange({ partsWarranty: e.target.checked })} />10-year parts warranty</label>
@@ -104,9 +108,9 @@ function OptionCard({ option, index, canDuplicate, onChange, onDuplicate, onRemo
       <div className="space-y-2 rounded-lg bg-muted/40 p-3 text-sm" aria-label={`Option ${index + 1} pricing`}>
         {preview && <><div className="flex justify-between gap-2"><span>Equipment cost</span><span>{fmtCurrencyExact(preview.equipmentCost || 0)}</span></div>
           <div className="flex justify-between gap-2"><span>Purchase tax allowance</span><span>{fmtCurrencyExact(preview.purchaseTax || 0)}</span></div>
-          <div className="flex justify-between gap-2"><span>Total internal cost</span><span>{fmtCurrencyExact(preview.totalCost)}</span></div>
+          <div className="flex justify-between gap-2"><span>{accessoryTotals(option.accessories).missingServiceCost ? "Known internal cost (service costs incomplete)" : "Total internal cost"}</span><span>{fmtCurrencyExact(preview.totalCost)}</span></div>
           <div className="flex justify-between gap-2 font-semibold"><span>{option.override ? "Selling price override" : "Calculated selling price"}</span><span>{fmtCurrencyExact(preview.customerPrice)}</span></div>
-          <p className="text-xs text-muted-foreground">Includes only this option’s equipment, labor, materials, and selected warranty coverage.</p></>}
+          <p className="text-xs text-muted-foreground">Includes this option’s equipment, accessories, labor, other materials, and selected warranty coverage. Remove itemized accessory parts from any existing materials allowance to avoid counting them twice.</p></>}
         {error && <p role="status" className="text-amber-700">{error}</p>}
         <label className="flex items-center gap-2"><input type="checkbox" checked={option.override} onChange={e => onChange({ override: e.target.checked, customerPriceOverride: option.customerPriceOverride || String(preview?.customerPrice || "") })} />Override selling price</label>
         {option.override && <Label className="block">Selling price<Input aria-label={`Option ${index + 1} selling price`} type="number" min="0.01" step="0.01" className="mt-1" value={option.customerPriceOverride} onChange={e => onChange({ customerPriceOverride: e.target.value })} /><span className="text-xs text-muted-foreground">This price stays fixed when costs change. Uncheck to return to calculated pricing.</span></Label>}
@@ -126,7 +130,7 @@ export function ManualQuoteBuilder({ customerId, jobType = "Changeout", onCancel
   const [scopeNotes, setScopeNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const updateOptions = (next: OptionForm[]) => setOptions(next.map((option, index) => ({ ...option, tier: tiers[index] })));
-  const addOption = () => updateOptions([...options, { key: Date.now(), tier: tiers[options.length], label: `Option ${options.length + 1}`, equipmentItems: [], laborCost: "1200", materialsCost: "450", partsWarranty: false, laborWarranty: false, rebateConfirmed: false, override: false, customerPriceOverride: "" }]);
+  const addOption = () => updateOptions([...options, { key: Date.now(), tier: tiers[options.length], label: `Option ${options.length + 1}`, equipmentItems: [], accessories: [], laborCost: "1200", materialsCost: "450", partsWarranty: false, laborWarranty: false, rebateConfirmed: false, override: false, customerPriceOverride: "" }]);
   let valid = options.length > 0;
   try { options.forEach(option => buildManualQuoteOption(optionInput(option))); } catch { valid = false; }
   return <div className="space-y-5" data-testid="manual-quote-builder">
@@ -139,9 +143,9 @@ export function ManualQuoteBuilder({ customerId, jobType = "Changeout", onCancel
         onRemove={() => updateOptions(options.filter((_, i) => i !== index))} />)}
       <Button type="button" variant="outline" disabled={options.length >= 4} onClick={addOption} data-testid="add-quote-option"><Plus size={16} className="mr-1" />Add option</Button>
       <p className="text-xs text-muted-foreground">The description helper below writes shared installation scope. Alternative equipment remains listed separately in each option.</p>
-      <LaborDescriptionBuilder equipment={[]} addOns={addOnServices.filter(addOn => addOns.includes(addOn.id))} scope={scopeNotes} onScopeChange={setScopeNotes} onApply={setDescription} />
+      <LaborDescriptionBuilder equipment={[]} addOns={sharedAddOns.filter(addOn => addOns.includes(addOn.id))} scope={scopeNotes} onScopeChange={setScopeNotes} onApply={setDescription} />
       <Label className="block">Shared scope of work<Textarea className="mt-1" rows={4} maxLength={10000} value={description} onChange={e => setDescription(e.target.value)} /><span className="text-xs text-muted-foreground">Applies to whichever option the customer chooses. Each option lists its own equipment.</span></Label>
-      <Card><CardHeader><CardTitle className="text-sm">Customer add-on choices</CardTitle></CardHeader><CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">{addOnServices.map(addOn => <label key={addOn.id} className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={addOns.includes(addOn.id)} onChange={e => setAddOns(e.target.checked ? [...addOns, addOn.id] : addOns.filter(id => id !== addOn.id))} /><span>{addOn.name} — {fmtCurrencyExact(addOn.price)}</span></label>)}</CardContent></Card>
+      <Card><CardHeader><CardTitle className="text-sm">Customer add-on choices</CardTitle></CardHeader><CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">{sharedAddOns.map(addOn => <label key={addOn.id} className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={addOns.includes(addOn.id)} onChange={e => setAddOns(e.target.checked ? [...addOns, addOn.id] : addOns.filter(id => id !== addOn.id))} /><span>{addOn.name} — {fmtCurrencyExact(addOn.price)}</span></label>)}</CardContent></Card>
     </fieldset>
     {options.some(option => option.rebateConfirmed) && <QuoteRebateTerms />}
     <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={saving} onClick={onCancel}>Cancel</Button><Button type="button" data-testid="button-generate-quote" disabled={saving || !valid || !customerId || !title.trim() || !description.trim()} onClick={guardSave("create-manual-quote", async () => {

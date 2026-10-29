@@ -433,7 +433,9 @@ test('manual option costs, warranties and overrides persist through database rel
  const { buildManualQuoteOption }=await import('../client/src/lib/manual-quote-options');
  const { pricebook }=await import('../client/src/data/pricebook');
  const configs=['Value','Good','Better','Best'].map((tier,i)=>({tier:tier as 'Value'|'Good'|'Better'|'Best',label:`Custom package ${i+1}`,equipmentItems:['chp-xc636','chp-z9t080','chp-ec36bn'],laborCost:700+i*100,materialsCost:100+i*25,partsWarranty:i!==1,laborWarranty:i>1,rebateConfirmed:i===3,...(i===2?{customerPriceOverride:8999.99}:{})}));
- const options=configs.map(c=>buildManualQuoteOption(c,pricebook,'2026-10-27'));
+ const { snapshotAccessory }=await import('../shared/quote-accessories');
+ const accessory=snapshotAccessory({id:'catalog-surge',name:'HVAC Surge Protector',sku:'ADDON-surge-protector',category:'Add-ons',item_type:'service',unit:'each',cost_cents:0,price_cents:19900,active:true});
+ const options=configs.map((c,i)=>buildManualQuoteOption({...c,accessories:[{...accessory,quantity:i+1}]},pricebook,'2026-10-27'));
  for(const [i,config] of configs.entries()) {
   const id=`manual-option-${i}`;
   const original=await insert('quotes',quote({id,options,selectedOption:undefined,selectedAddOns:[]}));
@@ -452,6 +454,12 @@ test('manual option costs, warranties and overrides persist through database rel
   const billed=(await asRole('service_role',"select crm_invoice_accepted_quote('airking',$1,$2) saved",[employee,id]))[0].saved;
   assert.equal(billed.amount,options[i].customerPrice);
   assert.ok(billed.items[0].description.includes(config.label));
+  assert.match(billed.items[0].description,new RegExp(`${i+1} each × HVAC Surge Protector`));
+  assert.equal(accepted.acceptedScope.option.accessories[0].quantity,i+1);
+  const jobs=(await pg.query<Data>("select data from work_orders where data->>'quoteId'=$1",[id])).rows;
+  assert.equal(jobs.length,1);assert.equal(jobs[0].data.selectedOption,config.tier);
+  assert.equal(jobs[0].data.quoteId,accepted.id,'work order resolves the immutable accepted accessory scope by quote ID');
+  assert.equal(pub.options[i].accessories,undefined);
   assert.equal(billed.quoteAcceptance.option.rebateConfirmed,config.rebateConfirmed);
   await assert.rejects(edit('quote',accepted,{options},id),/locked|accepted/i);
  }
