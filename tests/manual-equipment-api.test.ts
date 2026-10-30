@@ -131,3 +131,19 @@ test("scan adds a distinct unit alongside manual equipment without duplicate con
   assert.equal(systems.length, 3); assert.equal(new Set(systems.map((s: any) => s.id)).size, 3);
   assert.deepEqual(systems[0], scanned); assert.equal(systems[2].sourcePhotoId, "photo-new");
 });
+
+test("filter details persist, can be cleared and reject invalid quantities without cross-property writes", async () => {
+  const input = payload();
+  input.equipment = { ...input.equipment, filterSize: "20x25x4", filterQuantity: 2, filterNotes: "MERV 11; owner supplies", location: "Hall closet" };
+  assert.equal((await send(input)).status, 200);
+  const record = (await load()).properties[0].systems[1];
+  assert.equal(record.filterQuantity, 2); assert.equal(record.location, "Hall closet");
+  assert.equal((await send(input)).status, 200);
+  assert.equal((await send({ ...payload(), equipment: {...input.equipment, filterQuantity: -1} })).status, 400);
+  const edit = { ...payload(), systemId: record.id, original: equipmentDetails(record), equipment: { ...equipmentDetails(record), filterSize: "", filterQuantity: null, filterNotes: "", location: "" } };
+  assert.equal((await send(edit)).status, 200);
+  const saved = await load();
+  assert.equal(saved.properties[0].systems[1].filterQuantity, null);
+  assert.equal(saved.properties[0].systems[1].filterSize, "");
+  assert.equal(saved.properties[1].systems.length, 0);
+});

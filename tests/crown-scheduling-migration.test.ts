@@ -584,3 +584,18 @@ test("both new functions execute as invoker and anonymous users cannot call the 
   }), /permission denied/);
   await assertNothingBooked();
 });
+
+test("multi-property customer JSON persists through guarded RPC with company isolation and retries", async () => {
+  const previous = { id: "customer-one", name: "First customer" };
+  const data = { ...previous, contacts: [{ name: "Synthetic owner", phone: "2025550111", email: "" }], properties: Array.from({length:9}, (_, i) => ({id:`house-${i}`,address:`${i} Synthetic Street`,city:"Lathrop",state:"CA",zip:"",serviceContacts:i===2?[{name:"Synthetic tenant",phone:"2025550122",email:"",role:"Tenant"}]:[],systems:i===3?[{id:"furnace",type:"Furnace",filterSize:"20x25x4",filterQuantity:2}]:[]})) };
+  const records = [{table:"customers",id:data.id,data,previous}];
+  const first = (await employeeQuery("select crm_save_records($1) result", [JSON.stringify(records)]))[0].result;
+  assert.deepEqual(first[0].properties, data.properties);
+  assert.deepEqual((await employeeQuery("select crm_save_records($1) result", [JSON.stringify(records)]))[0].result, first);
+  const reloaded = (await employeeQuery("select data from customers where id=$1", [data.id]))[0].data;
+  assert.equal(reloaded.properties.length, 9); assert.equal(reloaded.properties[3].systems[0].filterQuantity, 2);
+  assert.deepEqual(await employeeQuery("select data from customers where id='foreign-customer'"), []);
+  await assert.rejects(employeeQuery("select crm_save_records($1)", [JSON.stringify([{table:"customers",id:"foreign-customer",data:{...data,id:"foreign-customer"},previous:{id:"foreign-customer"}}])]));
+  await assert.rejects(employeeQuery("select crm_save_records($1)", [JSON.stringify([{...records[0],data:{...data,name:"Stale overwrite"}}])]));
+  assert.equal((await pg.query("select * from work_orders")).rows.length, 0);
+});

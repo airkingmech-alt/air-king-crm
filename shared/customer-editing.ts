@@ -10,6 +10,9 @@ export interface ServiceAddressDraft {
   city: string;
   state: string;
   zip: string;
+  accessNotes?: string;
+  gateCode?: string;
+  serviceContacts?: Contact[];
   addressProvenance?: AddressProvenance;
 }
 export interface CustomerEditDraft {
@@ -34,7 +37,7 @@ function propertyDraft(property: Property): ServiceAddressDraft {
   const unit = property.unit || "";
   const combined = property.address || "";
   const street = property.street !== undefined ? property.street : unit && combined.endsWith(`, ${unit}`) ? combined.slice(0, -(unit.length + 2)) : combined;
-  return { id: property.id, street, unit, city: property.city || "", state: property.state || "", zip: property.zip || "", ...(property.addressProvenance ? { addressProvenance: property.addressProvenance } : {}) };
+  return { accessNotes: property.accessNotes || "", gateCode: property.gateCode || "", serviceContacts: structuredClone(property.serviceContacts || []), id: property.id, street, unit, city: property.city || "", state: property.state || "", zip: property.zip || "", ...(property.addressProvenance ? { addressProvenance: property.addressProvenance } : {}) };
 }
 export function customerEditDraft(customer: CustomerRecord): CustomerEditDraft {
   const contact = customer.contacts[primaryContactIndex(customer)];
@@ -53,7 +56,17 @@ function cleanedAddress(address: CustomerAddress): CustomerAddress {
   return { street: clean(address.street), unit: clean(address.unit), city: clean(address.city), state: clean(address.state), postalCode: clean(address.postalCode) };
 }
 function cleanProperty(property: ServiceAddressDraft): ServiceAddressDraft {
-  return { id: property.id, street: clean(property.street), unit: clean(property.unit), city: clean(property.city), state: clean(property.state), zip: clean(property.zip), ...(property.addressProvenance ? { addressProvenance: property.addressProvenance } : {}) };
+  const serviceContacts = (property.serviceContacts || []).map(contact => {
+    const name = clean(contact.name), phone = clean(contact.phone), email = clean(contact.email);
+    if (!name && !phone && !email) throw new Error("Enter a service contact name, phone or email, or remove the empty contact.");
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid service contact email, or leave it blank.");
+    if (phone && (!/^\+?[\d\s().-]{7,30}$/.test(phone) || !/^\d{7,15}$/.test(phone.replace(/\D/g, "")))) throw new Error("Enter a valid service contact phone, or leave it blank.");
+    if ([name, phone, email, contact.role || ""].some(v => v.length > 1000)) throw new Error("Keep contact fields under 1,000 characters.");
+    return { ...contact, name, phone, email, role: contact.role || "Service contact" };
+  });
+  if (serviceContacts.length > 20) throw new Error("Use at most 20 service contacts per property.");
+  if ((property.accessNotes || "").length > 1000 || (property.gateCode || "").length > 1000) throw new Error("Keep access details under 1,000 characters.");
+  return { accessNotes: clean(property.accessNotes || ""), gateCode: clean(property.gateCode || ""), serviceContacts, id: property.id, street: clean(property.street), unit: clean(property.unit), city: clean(property.city), state: clean(property.state), zip: clean(property.zip), ...(property.addressProvenance ? { addressProvenance: property.addressProvenance } : {}) };
 }
 function updatePrimaryContact(contact: Contact | undefined, draft: CustomerEditDraft): Contact {
   const updated: Contact = { ...contact,
@@ -95,6 +108,7 @@ export function buildCustomerEdit(
     const value = cleanProperty(property);
     if (!value.street) throw new Error("A street address is required for each new or changed service address.");
     return { ...previous, id: value.id, address: [value.street, value.unit].filter(Boolean).join(", "), street: value.street,
+      accessNotes: value.accessNotes, gateCode: value.gateCode, serviceContacts: value.serviceContacts,
       unit: value.unit, city: value.city, state: value.state, zip: value.zip, systems: previous?.systems || [],
       ...(value.addressProvenance ? { addressProvenance: value.addressProvenance } : {}) };
   });

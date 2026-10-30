@@ -42,6 +42,9 @@ export interface HVACSystem {
   capacity?: string;
   efficiency?: string;
   filterSize?: string;
+  filterQuantity?: number | null;
+  filterNotes?: string;
+  location?: string;
   status: "Active" | "Inactive" | "Warranty";
   notes?: string;
 }
@@ -52,6 +55,7 @@ export interface Property {
   city: string;
   state: string;
   zip: string;
+  serviceContacts?: Contact[];
   accessNotes?: string;
   gateCode?: string;
   systems: HVACSystem[];

@@ -163,3 +163,32 @@ test("autocomplete selection explicitly fills locality fields while preserving u
   assert.match(source, /provenance=\{property.addressProvenance\}/);
   assert.match(source, /provenance=\{draft.billingAddressProvenance\}/);
 });
+
+test("nine properties keep independent optional service contacts, access details and owner", () => {
+  const original = fixture(); const draft = customerEditDraft(original);
+  for (let index = 2; index < 9; index++) draft.properties.push({ id: `house-${index}`, street: `${index} Synthetic Street`, unit: "", city: "Lathrop", state: "CA", zip: "" });
+  draft.properties[3].serviceContacts = [{ name: "Synthetic tenant", phone: "2025550145", email: "", role: "Tenant" }, { name: "Synthetic manager", phone: "", email: "manager@example.test", role: "Property manager" }];
+  draft.properties[3].gateCode = "Test gate"; draft.properties[3].accessNotes = "Call before visiting";
+  const saved = buildCustomerEdit(original, draft, audit);
+  assert.equal(saved.properties.length, 9);
+  assert.deepEqual(saved.contacts, original.contacts);
+  assert.equal(saved.properties[3].serviceContacts?.[1].role, "Property manager");
+  assert.equal(saved.properties[4].serviceContacts?.length, 0);
+  const reopened = customerEditDraft(JSON.parse(JSON.stringify(saved)));
+  reopened.properties[3].serviceContacts![0].phone = "2025550199";
+  const edited = buildCustomerEdit(saved, reopened, audit);
+  assert.equal(edited.properties[3].serviceContacts?.[0].phone, "2025550199");
+  assert.equal(saved.properties[3].serviceContacts?.[0].phone, "2025550145");
+  assert.deepEqual(edited.properties[0].systems, original.properties[0].systems);
+  assert.equal(edited.properties[3].gateCode, "Test gate");
+  assert.equal(buildCustomerEdit(edited, customerEditDraft(edited), audit), edited);
+});
+
+test("property contacts validate without accepting blank cards or mutating customer", () => {
+  const original = fixture(); const draft = customerEditDraft(original);
+  draft.properties[0].serviceContacts = [{ name: "", phone: "", email: "" }];
+  assert.throws(() => buildCustomerEdit(original, draft, audit), /remove the empty contact/);
+  draft.properties[0].serviceContacts[0] = { name: "Tenant", phone: "", email: "invalid" };
+  assert.throws(() => buildCustomerEdit(original, draft, audit), /valid service contact email/);
+  assert.equal(original.properties[0].serviceContacts, undefined);
+});

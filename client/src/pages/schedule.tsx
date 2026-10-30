@@ -1,3 +1,4 @@
+import { propertyServiceDetails } from "@shared/property-coverage";
 import { documentNumber } from "../../../shared/document-number";
 import { ServiceAddressActions } from "@/components/service-address-actions";
 import { jobServiceAddress } from "../../../shared/service-address";
@@ -121,6 +122,7 @@ export default function Schedule() {
   const { toast } = useToast();
   const {
     workOrders,
+    memberships,
     createInvoice,
     createWorkOrder,
     updateWorkOrder,
@@ -478,9 +480,14 @@ export default function Schedule() {
                       <MapPin size={11} /> {jobServiceAddress(wo, customers.find(c => c.id === wo.customerId)?.properties) || wo.property}
                     </p>
                     <ServiceAddressActions address={jobServiceAddress(wo, customers.find(c => c.id === wo.customerId)?.properties)} />
-                    <p className="text-xs text-muted-foreground mt-0.5">
+                    <p className="text-xs text-muted-foreground mt-0.5 whitespace-pre-wrap">
                       {wo.description}
                     </p>
+                    {wo.membershipId && <details className="text-xs mt-2">
+                      <summary className="cursor-pointer">Current property contacts & access</summary>
+                      {(customers.find(customer => customer.id === wo.customerId)?.properties || []).filter(property => memberships.find(member => member.id === wo.membershipId && member.customerId === wo.customerId)?.coveredEquipment?.some(item => item.propertyId === property.id)).map(property => <p key={property.id} className="whitespace-pre-wrap break-words mt-2">{propertyServiceDetails(property)}</p>)}
+                      <Link href={`/customers/${wo.customerId}?tab=properties`}><span className="underline">Open property equipment & filters</span></Link>
+                    </details>}
                     {!!getSelectedAddOnIds(wo).length && (
                       <p className="text-xs text-foreground mt-1">
                         <span className="font-medium">Add-ons:</span>{" "}

@@ -7,11 +7,11 @@ import { crm } from "@/lib/crm-api";
 import { useToast } from "@/hooks/use-toast";
 import type { CustomerRecord } from "@/data/customer-record";
 import type { HVACSystem } from "@/data/mock-data";
-import { equipmentDetails, equipmentTypes, type EquipmentDetails } from "@shared/manual-equipment";
-import { confirmedEquipment } from "@shared/equipment-analysis";
+import { equipmentDetails, equipmentTypes, manualEquipmentDetails, type EquipmentDetails } from "@shared/manual-equipment";
 
-type Draft = Omit<EquipmentDetails, "type" | "manufactureYear"> & { type: string; manufactureYear: string };
-const labels = { brand: "Brand / manufacturer", model: "Model", serial: "Serial", capacity: "Capacity / tonnage (with units)", efficiency: "Efficiency (rating and units)", refrigerant: "Refrigerant" } as const;
+
+type Draft = Omit<EquipmentDetails, "type" | "manufactureYear" | "filterQuantity"> & { type: string; manufactureYear: string; filterQuantity: string };
+const labels = { brand: "Brand / manufacturer", model: "Model", serial: "Serial", capacity: "Capacity / tonnage (with units)", efficiency: "Efficiency (rating and units)", refrigerant: "Refrigerant", location: "Equipment / filter location", filterSize: "Filter size (with units)", filterNotes: "Filter instructions / MERV / supplied by" } as const;
 export function EquipmentEditor({ customer, propertyId: initialPropertyId, system }: {
   customer: CustomerRecord; propertyId?: string; system?: HVACSystem;
 }) {
@@ -20,7 +20,7 @@ export function EquipmentEditor({ customer, propertyId: initialPropertyId, syste
   const saving = useRef(false);
   const [error, setError] = useState("");
   const [propertyId, setPropertyId] = useState("");
-  const [form, setForm] = useState<Draft>({ ...equipmentDetails({}), type: "", manufactureYear: "" });
+  const [form, setForm] = useState<Draft>({ ...equipmentDetails({}), type: "", manufactureYear: "", filterQuantity: "" });
   const original = useRef<EquipmentDetails>();
   const requestId = useRef("");
   const { toast } = useToast();
@@ -29,7 +29,7 @@ export function EquipmentEditor({ customer, propertyId: initialPropertyId, syste
     if (next) {
       const details = equipmentDetails(system || {});
       original.current = system ? details : undefined;
-      setForm({ ...details, type: system?.type || "", manufactureYear: details.manufactureYear?.toString() || "" });
+      setForm({ ...details, type: system?.type || "", manufactureYear: details.manufactureYear?.toString() || "", filterQuantity: details.filterQuantity?.toString() ?? "" });
       setPropertyId(initialPropertyId || customer.properties[0]?.id || "");
       requestId.current = crypto.randomUUID();
       setError("");
@@ -39,7 +39,7 @@ export function EquipmentEditor({ customer, propertyId: initialPropertyId, syste
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (saving.current) return;
-    const parsed = confirmedEquipment.safeParse({ ...form, manufactureYear: form.manufactureYear.trim() === "" ? null : Number(form.manufactureYear) });
+    const parsed = manualEquipmentDetails.safeParse({ ...form, filterQuantity: form.filterQuantity.trim() === "" ? null : Number(form.filterQuantity), manufactureYear: form.manufactureYear.trim() === "" ? null : Number(form.manufactureYear) });
     if (!parsed.success) {
       setError(parsed.error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`).join(" "));
       return;
@@ -76,8 +76,9 @@ export function EquipmentEditor({ customer, propertyId: initialPropertyId, syste
             <label className="text-sm">Equipment type<select required value={form.type} onChange={event => setForm({ ...form, type: event.target.value })} className="block w-full rounded border p-2 bg-background">
               <option value="">Choose type</option>{equipmentTypes.map(type => <option key={type}>{type}</option>)}
             </select></label>
-            {Object.entries(labels).map(([key, label]) => <label key={key} className="text-sm">{label}<Input value={form[key as keyof typeof labels]} maxLength={key === "refrigerant" ? 100 : 200}
+            {Object.entries(labels).map(([key, label]) => <label key={key} className="text-sm">{label}<Input value={form[key as keyof typeof labels]} maxLength={key === "filterNotes" ? 500 : key === "refrigerant" || key === "filterSize" ? 100 : 200}
               onChange={event => setForm({ ...form, [key]: event.target.value })}/></label>)}
+            <label className="text-sm">Filter quantity (blank if unknown)<Input type="number" min={0} max={100} step={1} value={form.filterQuantity} onChange={event => setForm({ ...form, filterQuantity: event.target.value })}/></label>
             <label className="text-sm">Manufacture year<Input type="number" min={1900} max={new Date().getUTCFullYear()} step={1} value={form.manufactureYear} onChange={event => setForm({ ...form, manufactureYear: event.target.value })}/></label>
           </div>
           <label className="block text-sm">Notes<Textarea maxLength={2000} value={form.notes} onChange={event => setForm({ ...form, notes: event.target.value })}/></label>

@@ -56,7 +56,7 @@ export function CustomerEditor({ customer }: { customer: CustomerRecord }) {
   return <Dialog open={!!session} onOpenChange={changeOpen}>
     <DialogTrigger asChild><Button size="sm" variant="outline" data-testid="edit-customer"><Pencil size={14} className="mr-1.5" />Edit customer</Button></DialogTrigger>
     <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl" onEscapeKeyDown={event => { if (saving.current) event.preventDefault(); }} onInteractOutside={event => { if (saving.current) event.preventDefault(); }}>
-      <DialogHeader><DialogTitle>Edit customer</DialogTitle><DialogDescription>Update this customer’s name, primary contact, and service and billing addresses. Existing quotes, invoices, and jobs keep their saved details.</DialogDescription></DialogHeader>
+      <DialogHeader><DialogTitle>Edit customer</DialogTitle><DialogDescription>Enter the owner once, then add each service property and its optional tenant or service contacts. Save at any point and return to add equipment and Crown Care. Existing quotes, invoices, and jobs keep their saved details.</DialogDescription></DialogHeader>
       {draft && session && <form onSubmit={save} className="space-y-5" noValidate aria-busy={busy}>
         <fieldset disabled={busy} className="space-y-5 min-w-0">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -64,7 +64,7 @@ export function CustomerEditor({ customer }: { customer: CustomerRecord }) {
             <div className="sm:col-span-2 space-y-1"><Label htmlFor="edit-customer-company">Company name (optional)</Label><Input id="edit-customer-company" maxLength={1000} value={draft.companyName} onChange={event => patch({ companyName: event.target.value })} /></div>
           </div>
           <section className="space-y-3" aria-labelledby="edit-contact-heading">
-            <h3 id="edit-contact-heading" className="font-semibold text-sm">Primary contact</h3>
+            <h3 id="edit-contact-heading" className="font-semibold text-sm">Owner / primary contact</h3>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="sm:col-span-2 space-y-1"><Label htmlFor="edit-customer-contact">Contact name</Label><Input id="edit-customer-contact" maxLength={1000} value={draft.contactName} onChange={event => patch({ contactName: event.target.value })} /></div>
               {(session.original.firstName !== undefined || session.original.lastName !== undefined) && <>
@@ -74,10 +74,10 @@ export function CustomerEditor({ customer }: { customer: CustomerRecord }) {
               <div className="space-y-1"><Label htmlFor="edit-customer-phone">Primary phone</Label><Input id="edit-customer-phone" type="tel" maxLength={1000} value={draft.phone} onChange={event => patch({ phone: event.target.value })} /></div>
               <div className="space-y-1"><Label htmlFor="edit-customer-email">Primary email</Label><Input id="edit-customer-email" type="email" maxLength={1000} value={draft.email} onChange={event => patch({ email: event.target.value })} /></div>
             </div>
-            <p className="text-xs text-muted-foreground">Additional contacts and their phone numbers stay on this customer.</p>
+            <p className="text-xs text-muted-foreground">The owner remains the account contact. Tenant and service contacts belong to the property below; entering a phone number does not change text consent.</p>
           </section>
           <section className="space-y-3" aria-labelledby="edit-service-heading">
-            <h3 id="edit-service-heading" className="font-semibold text-sm">Service addresses</h3>
+            <h3 id="edit-service-heading" className="font-semibold text-sm">Service properties ({draft.properties.length})</h3>
             {!draft.properties.length && <p className="text-sm text-muted-foreground">No service address recorded yet.</p>}
             {draft.properties.map((property, index) => <fieldset key={property.id} className="rounded-md border p-3 space-y-3 min-w-0">
               <legend className="px-1 font-medium text-sm">Service address {index + 1}</legend>
@@ -88,9 +88,23 @@ export function CustomerEditor({ customer }: { customer: CustomerRecord }) {
                 <div className="space-y-1"><Label htmlFor={`service-${index}-state`}>State</Label><Input id={`service-${index}-state`} maxLength={1000} value={property.state} onChange={event => patchProperty(property.id, { state: event.target.value })} /></div>
                 <div className="space-y-1"><Label htmlFor={`service-${index}-zip`}>ZIP / postal code</Label><Input id={`service-${index}-zip`} maxLength={1000} value={property.zip} onChange={event => patchProperty(property.id, { zip: event.target.value })} /></div>
               </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-sm">Access instructions<Input maxLength={1000} value={property.accessNotes || ""} onChange={event => patchProperty(property.id, { accessNotes: event.target.value })}/></label>
+                <label className="text-sm">Gate code<Input maxLength={1000} value={property.gateCode || ""} onChange={event => patchProperty(property.id, { gateCode: event.target.value })}/></label>
+              </div>
+              <p className="text-xs text-muted-foreground">Optional property contacts. Leave empty when the owner handles service access.</p>
+              {(property.serviceContacts || []).map((contact, contactIndex) => <div key={contactIndex} className="border rounded p-3 space-y-2">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {(["name", "phone", "email"] as const).map(field => <label key={field} className="text-sm">{field === "name" ? "Contact name" : field === "phone" ? "Contact phone" : "Contact email"}<Input type={field === "phone" ? "tel" : field === "email" ? "email" : "text"} maxLength={1000} value={contact[field]} onChange={event => patchProperty(property.id, { serviceContacts: property.serviceContacts!.map((item, i) => i === contactIndex ? { ...item, [field]: event.target.value } : item) })}/></label>)}
+                  <label className="text-sm">Contact role<select className="block w-full rounded border p-2 bg-background" value={contact.role || "Service contact"} onChange={event => patchProperty(property.id, { serviceContacts: property.serviceContacts!.map((item, i) => i === contactIndex ? { ...item, role: event.target.value } : item) })}>{["Tenant", "Property manager", "Owner", "Service contact"].map(role => <option key={role}>{role}</option>)}</select></label>
+                </div>
+                <Button type="button" variant="ghost" size="sm" onClick={() => patchProperty(property.id, { serviceContacts: property.serviceContacts!.filter((_, i) => i !== contactIndex) })}>Remove contact</Button>
+              </div>)}
+              <Button type="button" variant="outline" size="sm" disabled={(property.serviceContacts || []).length >= 20} onClick={() => patchProperty(property.id, { serviceContacts: [...(property.serviceContacts || []), { name: "", phone: "", email: "", role: "Tenant" }] })}>Add property contact</Button>
               {!session.original.properties.some(original => original.id === property.id) && <Button type="button" variant="ghost" size="sm" onClick={() => patch({ properties: draft.properties.filter(item => item.id !== property.id) })}><X size={14} className="mr-1" />Remove new address</Button>}
             </fieldset>)}
-            <Button type="button" variant="outline" size="sm" onClick={() => patch({ properties: [...draft.properties, { id: `prop-${crypto.randomUUID()}`, street: "", unit: "", city: "", state: "", zip: "" }] })}><Plus size={14} className="mr-1" />Add service address</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => patch({ properties: [...draft.properties, { id: `prop-${crypto.randomUUID()}`, street: "", unit: "", city: draft.properties.at(-1)?.city || "", state: draft.properties.at(-1)?.state || "", zip: "" }] })}><Plus size={14} className="mr-1" />Add service address</Button>
+            <p className="text-xs text-muted-foreground">New addresses reuse the previous city and state. Street, contacts, access details and equipment stay separate.</p>
           </section>
           <fieldset className="rounded-md border p-3 space-y-3 min-w-0">
             <legend className="px-1 font-medium text-sm">Billing address (optional)</legend>
