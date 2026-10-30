@@ -36,8 +36,8 @@ export function configurationFor(m:any):CrownConfiguration {
   return {...(m.tierPlan?{enrollmentTier:{tier:m.tierPlan.tier,catalogVersion:m.tierPlan.catalogVersion,systemCount:m.tierPlan.systemCount}}:{}),...(m.draftTier?{draftTier:{tier:m.draftTier.tier,catalogVersion:m.draftTier.catalogVersion,...(m.draftTier.systemCount?{systemCount:m.draftTier.systemCount}:{})}}:{}),coveredEquipment:m.coveredEquipment || [{id:crypto.randomUUID(),propertyId:"",type:"Other",description:m.systemDescription || "Existing coverage — confirm equipment",quantity:1,filterSize:"",filterQuantity:0,filterNotes:"",notes:""}],notes:m.notes || "",billingFrequency:m.billingFrequency || "Annual",visitsIncluded:m.visitsIncluded || 2,
     pricing:{baseAmountCents:m.pricing?.baseAmountCents ?? membershipPriceCents(m),adjustmentCents:m.pricing?.adjustmentCents ?? 0,adjustmentReason:m.pricing?.adjustmentReason || ""}};
 }
-export function serviceDetails(m:any):string {
-  return (m.coveredEquipment || []).map((e:CoveredEquipment)=>`${e.quantity} × ${e.type}${e.description?" — "+e.description:""}${e.filterSize?`\nFilter: ${e.filterSize}${e.filterQuantity?` × ${e.filterQuantity}`:""}`:""}${e.filterNotes?"\nFilter notes: "+e.filterNotes:""}${e.notes?"\nEquipment notes: "+e.notes:""}`).concat(m.notes?["Membership notes: "+m.notes]:[]).join("\n\n");
+export function serviceDetails(m:any, properties: { id: string; address: string }[] = []):string {
+  return (m.coveredEquipment || []).map((e:CoveredEquipment)=>`${properties.find(p=>p.id===e.propertyId)?.address ? properties.find(p=>p.id===e.propertyId)!.address + "\n" : ""}${e.quantity} × ${e.type}${e.description?" — "+e.description:""}${e.filterSize?`\nFilter: ${e.filterSize}${e.filterQuantity?` × ${e.filterQuantity}`:""}`:""}${e.filterNotes?"\nFilter notes: "+e.filterNotes:""}${e.notes?"\nEquipment notes: "+e.notes:""}`).concat(m.notes?["Membership notes: "+m.notes]:[]).join("\n\n");
 }
 export function renewalFrom(start:string) {
   const date=new Date(start+"T00:00:00Z");

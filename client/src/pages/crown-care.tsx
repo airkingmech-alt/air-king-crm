@@ -6,14 +6,14 @@ import {ServiceTextConsentField} from '@/components/service-text-consent-field';
 import { CrownChecklists } from "@/components/crown-checklists";
 import { membershipSummary } from "../../../shared/dashboard";
 import { guardSave } from "@/lib/confirmed-save";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/auth-context";
 import { canAccess } from "../../../shared/access";
 import { crm } from "@/lib/crm-api";
 import { CrownConfigurationFields, crownMoney } from "@/components/crown-configuration";
 import { configurationFor, membershipPriceCents, serviceDetails, type CrownConfiguration } from "../../../shared/crown-care";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import {
   Crown,
   Plus,
@@ -170,6 +170,18 @@ export default function CrownCare() {
     setShowNewCustomerForm(false);
   };
 
+  const search = useSearch();
+  const scopedCustomer = customers.find(customer => customer.id === new URLSearchParams(search).get("customer"));
+  const openedCustomer = useRef("");
+  useEffect(() => {
+    const customerId = new URLSearchParams(search).get("customer");
+    const customer = customers.find(item => item.id === customerId);
+    if (!customer || openedCustomer.current === customer.id) return;
+    openedCustomer.current = customer.id;
+    handleSelectCustomer(customer.id);
+    setMemberSearch(customer.name);
+  }, [search, customers]);
+
   const handleAddNewCustomer = guardSave("pages/crown-care.tsx:handleAddNewCustomer", async (e: React.SyntheticEvent) => {
     e.preventDefault();
     const name = newCustomer.name.trim() || customerSearch.trim();
@@ -232,7 +244,7 @@ export default function CrownCare() {
         membershipSeason: scheduleForm.visitType === "Spring Tune-Up (Cooling)" ? "spring" : "fall",
         type: scheduleForm.visitType,
         property: propertyAddress,
-        description: `Crown Care ${scheduleForm.visitType.toLowerCase()} — precision tune-up\nMembership: ${enrolledMembershipId}\n\n${serviceDetails(savedMembership || {})}`,
+        description: `Crown Care ${scheduleForm.visitType.toLowerCase()} — precision tune-up\nMembership: ${enrolledMembershipId}\n\n${serviceDetails(savedMembership || {}, selectedCustomer?.properties)}`,
         scheduledDate: scheduleForm.date,
         scheduledTime: scheduleForm.time,
         technicianId: scheduleForm.technician || undefined,
@@ -270,8 +282,8 @@ export default function CrownCare() {
     setEnrollmentMode("tier");setAgreement({accepted:false,acceptedOn:new Date().toISOString().slice(0,10),reference:""});
     setEnrolledMembershipId(null);
     setEnrolledCustomerName("");
-    setForm({ customer: "", billingFrequency: "Annual", autoRenew: "No", startDate: new Date().toISOString().slice(0, 10) });
-    setCustomerSearch("");
+    setForm({ customer: scopedCustomer?.id || "", billingFrequency: "Annual", autoRenew: "No", startDate: new Date().toISOString().slice(0, 10) });
+    setCustomerSearch(scopedCustomer?.name || "");
     setShowNewCustomerForm(false);
     setComboboxOpen(false);
   };
@@ -291,6 +303,20 @@ export default function CrownCare() {
           Enroll Customer
         </Button>
       </div>
+
+      {scopedCustomer && <Card><CardContent className="pt-5 space-y-3">
+        <h2 className="font-semibold">{scopedCustomer.name} · Property setup</h2>
+        <p className="text-sm text-muted-foreground">Review existing memberships before enrolling each house. Keep separate memberships when houses need separate visits.</p>
+        <Link href={`/customers/${scopedCustomer.id}?tab=properties`}><Button variant="outline" size="sm">Edit property contacts & equipment</Button></Link>
+        {scopedCustomer.properties.map(property => {
+          const existing = memberships.filter(member => member.customerId === scopedCustomer.id && member.status === "Active" && member.coveredEquipment?.some(item => item.propertyId === property.id));
+          return <div key={property.id} className="border rounded p-3 space-y-2">
+            <p className="font-medium text-sm">{property.address} · {property.city}</p>
+            <p className="text-xs text-muted-foreground">{property.systems.length} equipment records · {property.systems.filter(system => !!system.filterSize).length} with filter size · {existing.length ? `${existing.length} active membership(s)` : "No linked active membership"}</p>
+            {existing.map(member => <Button key={member.id} type="button" size="sm" variant="outline" disabled={saving} onClick={() => openEdit(member.id)}>Review existing coverage</Button>)}
+          </div>;
+        })}
+      </CardContent></Card>}
 
       {/* Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -341,7 +367,7 @@ export default function CrownCare() {
           <Input aria-label="Search Crown Care" placeholder="Search customer, equipment, filter size, or notes…" value={memberSearch} onChange={e=>setMemberSearch(e.target.value)}/>
         </CardHeader>
         <CardContent className="space-y-3">
-          {memberships.filter(m=>[m.customerName,m.systemDescription,m.notes,serviceDetails(m)].join(" ").toLowerCase().includes(memberSearch.toLowerCase())).map((m) => (
+          {memberships.filter(m=>(!scopedCustomer || m.customerId === scopedCustomer.id) && [m.customerName,m.systemDescription,m.notes,serviceDetails(m)].join(" ").toLowerCase().includes(memberSearch.toLowerCase())).map((m) => (
             <div key={m.id} className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-yellow-100 dark:bg-yellow-950/30 text-yellow-600 shrink-0">
                 <Crown size={18} />
@@ -356,7 +382,7 @@ export default function CrownCare() {
                 {m.tierPlan&&<details className="text-xs mt-1"><summary className="cursor-pointer">Saved tier benefits & agreement</summary><p className="mt-1">{crownMoney(m.tierPlan.annualPerSystemCents)} per complete system / year. This agreed price is protected from later catalog changes.</p><ul className="list-disc pl-5">{m.tierPlan.benefits.map(benefit=><li key={benefit}>{benefit}</li>)}</ul><p>{m.tierPlan.excludedFilterSupply}.</p>{m.agreement&&<p className="mt-1 whitespace-pre-wrap">Customer acceptance recorded: {m.agreement.acceptedOn}{m.agreement.reference?` · ${m.agreement.reference}`:""}</p>}</details>}
                 <p className="text-sm font-semibold mt-1">{crownMoney(membershipPriceCents(m))} / {m.billingFrequency==="Monthly"?"month":"year"} · {m.visitsIncluded} visits/year</p>
                 {!m.pricing&&<p className="text-xs text-muted-foreground">Legacy standard price — review when editing</p>}
-                {m.coveredEquipment?.map(e=><p key={e.id} className="text-xs mt-1 whitespace-pre-wrap">{e.type}{e.filterSize?` · Filter: ${e.filterSize} (${e.filterQuantity})`:""}{e.filterNotes?` · ${e.filterNotes}`:""}{e.notes?` · ${e.notes}`:""}</p>)}
+                {m.coveredEquipment?.map(e=><p key={e.id} className="text-xs mt-1 whitespace-pre-wrap">{customers.find(c => c.id === m.customerId)?.properties.find(p => p.id === e.propertyId)?.address || "Property not recorded"} · {e.type}{e.filterSize?` · Filter: ${e.filterSize} (${e.filterQuantity})`:""}{e.filterNotes?` · ${e.filterNotes}`:""}{e.notes?` · ${e.notes}`:""}</p>)}
                 {m.notes&&<p className="text-xs mt-2 whitespace-pre-wrap">Notes: {m.notes}</p>}
                 {m.pricing?.adjustmentReason&&<p className="text-xs text-muted-foreground mt-1">Price adjustment: {crownMoney(m.pricing.adjustmentCents)} — {m.pricing.adjustmentReason}</p>}
                 <Button size="sm" variant="outline" className="mt-2 mr-2" onClick={()=>setChecklistMembership(m.id)}>Maintenance checklists</Button>

@@ -318,7 +318,7 @@ export default function CustomerDetail() {
         </CardContent>
       </Card>
 
-      <Tabs key={search} defaultValue={new URLSearchParams(search).get("tab") === "activity" ? "activity" : "overview"}>
+      <Tabs key={search} defaultValue={new URLSearchParams(search).get("tab") === "activity" ? "activity" : new URLSearchParams(search).get("tab") === "properties" ? "properties" : "overview"}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="properties">Properties & Equipment</TabsTrigger>
@@ -479,6 +479,12 @@ export default function CustomerDetail() {
 
         {/* Properties & Equipment Tab */}
         <TabsContent value="properties" className="space-y-4">
+          <Card><CardContent className="pt-5 space-y-3">
+            <h3 className="font-semibold">Set up properties & Crown Care</h3>
+            <p className="text-sm text-muted-foreground">1. Save the owner and each service address. 2. Add equipment and filter details at each property. 3. Review Crown Care coverage and plan terms.</p>
+            <p className="text-sm">{customer.properties.length} properties · {customer.properties.reduce((total, property) => total + property.systems.length, 0)} equipment records. Unknown details can be added after the first visit.</p>
+            <div className="flex flex-wrap gap-2"><CustomerEditor key={customer.id} customer={customer}/><Link href={`/crown-care?customer=${encodeURIComponent(customer.id)}`}><Button variant="outline">Review Crown Care</Button></Link></div>
+          </CardContent></Card>
           <div className="flex flex-wrap gap-2">
             <EquipmentEditor key={customer.id} customer={customer} />
             <EquipmentScanner customer={customer} />
@@ -494,12 +500,16 @@ export default function CustomerDetail() {
                 <AddressAttribution provenance={prop.addressProvenance} />
               </CardHeader>
               <CardContent>
-                {prop.accessNotes && (
+                {(prop.accessNotes || prop.gateCode) && (
                   <div className="mb-3 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 text-xs text-amber-700 dark:text-amber-500">
                     ⚠ Access: {prop.accessNotes}
                     {prop.gateCode && ` · Gate code: ${prop.gateCode}`}
                   </div>
                 )}
+                <div className="mb-3 space-y-2 text-sm">
+                  {(prop.serviceContacts || []).map((contact, index) => <p key={index} className="break-words"><strong>{contact.role || "Service contact"}:</strong> {contact.name || "Name not recorded"} · {contact.phone || "No phone"} · {contact.email || "No email"}</p>)}
+                  <EquipmentEditor customer={customer} propertyId={prop.id}/>
+                </div>
                 <div className="space-y-3">
                   {prop.systems.map((sys) => (
                     <div
@@ -534,6 +544,10 @@ export default function CustomerDetail() {
                           {sys.refrigerant && (
                             <span>Refrigerant: {sys.refrigerant}</span>
                           )}
+                          {sys.location && <span>Location: {sys.location}</span>}
+                          {sys.filterQuantity != null && <span>Filter quantity: {sys.filterQuantity}</span>}
+                          {sys.filterNotes && <span>Filter instructions: {sys.filterNotes}</span>}
+                          {!sys.filterSize && <span>Filter size: Not recorded</span>}
                           {sys.filterSize && (
                             <span>Filter: {sys.filterSize}</span>
                           )}

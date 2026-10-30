@@ -1,3 +1,6 @@
+import type { HVACSystem } from "@/data/mock-data";
+import { useState } from "react";
+import { addPropertyCoverage, savedEquipmentCoverage } from "@shared/property-coverage";
 import { crownTierIds, crownEnrollmentSnapshot, type CrownTierId, type CrownCatalog, type CrownEnrollmentSnapshot, type CrownTierSnapshot } from "../../../shared/crown-tiers";
 import { selectEnrollmentTier } from "@/lib/crown-enrollment";
 import { Button } from "@/components/ui/button";
@@ -8,13 +11,20 @@ import { coverageTypes,type CrownConfiguration,type CoveredEquipment } from "../
 const selectClass="block w-full rounded-md border bg-background p-2 text-sm";
 export const crownMoney=(cents:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(cents/100);
 export function CrownConfigurationFields({customer,value,onChange,enrollment=false,catalog,lockedPlan,historicalDraft}:{customer?:Customer;value:CrownConfiguration;onChange:(v:CrownConfiguration)=>void;enrollment?:boolean;catalog?:CrownCatalog;lockedPlan?:CrownEnrollmentSnapshot;historicalDraft?:CrownTierSnapshot | null}){
+  const [propertySelection, setPropertySelection] = useState("");
   const selection=value.enrollmentTier;
   const stale=!!selection&&selection.catalogVersion!==catalog?.version;
   const selectedPlan=selection&&catalog&&!stale&&Number.isInteger(selection.systemCount)&&selection.systemCount>=1&&selection.systemCount<=100?crownEnrollmentSnapshot(selection,catalog):undefined;
   const update=(id:string,patch:Partial<CoveredEquipment>)=>onChange({...value,coveredEquipment:value.coveredEquipment.map(e=>e.id===id?{...e,...patch}:e)});
-  function add(system?:any,propertyId=customer?.properties[0]?.id || ""){
-    const type=coverageTypes.includes(system?.type)?system.type:"Other";
-    onChange({...value,coveredEquipment:[...value.coveredEquipment,{id:crypto.randomUUID(),propertyId,systemId:system?.id,type:system?type:"Furnace",description:system?[system.brand,system.model].filter(Boolean).join(" "):"",quantity:1,filterSize:system?.filterSize || "",filterQuantity:system?.filterSize?1:0,filterNotes:"",notes:""}]});
+  const selectedProperty = customer?.properties.find(property => property.id === propertySelection);
+  const availableSystems = selectedProperty?.systems.filter(system => system.status !== "Inactive" && !value.coveredEquipment.some(item => item.propertyId === selectedProperty.id && item.systemId === system.id)) || [];
+  function add(system?: HVACSystem, propertyId = propertySelection || (customer?.properties.length === 1 ? customer.properties[0].id : "")) {
+    if (value.coveredEquipment.length >= 100) return;
+    if (system && value.coveredEquipment.some(item => item.propertyId === propertyId && item.systemId === system.id)) return;
+    const equipment: CoveredEquipment = system ? savedEquipmentCoverage(propertyId, system, crypto.randomUUID()) : {
+      id: crypto.randomUUID(), propertyId, type: "Furnace", description: "", quantity: 1, filterSize: "", filterQuantity: 0, filterNotes: "", notes: "",
+    };
+    onChange({ ...value, coveredEquipment: [...value.coveredEquipment, equipment] });
   }
   return <div className="space-y-5">
     {lockedPlan?<section className="space-y-3 rounded-lg border border-yellow-300 p-3" aria-label="Saved tier agreement">
@@ -37,7 +47,14 @@ export function CrownConfigurationFields({customer,value,onChange,enrollment=fal
     </section>:null}
     {historicalDraft&&<section className="rounded-lg border p-3 text-sm"><h3 className="font-semibold">Historical draft interest: {historicalDraft.name}</h3><p className="text-xs text-muted-foreground">Saved draft version {historicalDraft.catalogVersion}{historicalDraft.systemCount?` · ${historicalDraft.systemCount} complete systems`:""}. This planning record did not activate benefits or set an agreed price.</p></section>}
     <section className="space-y-3"><h3 className="font-semibold">Covered equipment</h3><p className="text-xs text-muted-foreground">Select the customer's saved equipment or add a coverage item. Filter details and notes here belong to this membership.</p>
-      {customer&&<label className="block text-sm">Add saved equipment<select className={selectClass} value="" onChange={e=>{if(!e.target.value)return;const [propertyId,systemId]=JSON.parse(e.target.value);const system=customer.properties.find(p=>p.id===propertyId)?.systems.find(s=>s.id===systemId);if(system)add(system,propertyId);}}>
+      {customer && <div className="rounded border p-3 space-y-2">
+        <p className="text-sm">For separately scheduled houses, set up one membership per property. Complete-system counts and plan acceptance are reviewed separately.</p>
+        <label className="block text-sm">Property to prepare<select className={selectClass} value={propertySelection} onChange={event => setPropertySelection(event.target.value)}><option value="">Choose property…</option>{customer.properties.map(property => <option key={property.id} value={property.id}>{property.address} · {property.city}</option>)}</select></label>
+        <Button type="button" variant="outline" disabled={!selectedProperty || !availableSystems.length || value.coveredEquipment.length + availableSystems.length > 100} onClick={() => { if (selectedProperty) onChange({ ...value, coveredEquipment: addPropertyCoverage(value.coveredEquipment, selectedProperty, () => crypto.randomUUID()) }); }}>Add this property's saved equipment</Button>
+        {selectedProperty && !selectedProperty.systems.length && <p className="text-sm">No equipment recorded yet. Add it on the customer profile, or add an item below with the property selected.</p>}
+        <p className="text-xs text-muted-foreground">Copies saved filters and service notes for review. Existing coverage is retained. Later profile changes do not change agreed membership coverage.</p>
+      </div>}
+      {customer&&<label className="block text-sm">Add saved equipment<select className={selectClass} disabled={value.coveredEquipment.length >= 100} value="" onChange={e=>{if(!e.target.value)return;const [propertyId,systemId]=JSON.parse(e.target.value);const system=customer.properties.find(p=>p.id===propertyId)?.systems.find(s=>s.id===systemId);if(system)add(system,propertyId);}}>
         <option value="">Choose equipment from customer profile…</option>{customer.properties.flatMap(p=>p.systems.filter(s=>!value.coveredEquipment.some(e=>e.systemId===s.id&&e.propertyId===p.id)).map(s=><option key={p.id+":"+s.id} value={JSON.stringify([p.id,s.id])}>{p.address} · {s.brand} {s.type} {s.model}</option>))}
       </select></label>}
       {value.coveredEquipment.map((equipment,index)=><div key={equipment.id} className="rounded-lg border p-3 space-y-3">
